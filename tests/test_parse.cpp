@@ -48,7 +48,8 @@ static const uint32_t kBoise = 68, kOregon = 2483, kBallState = 2050, kOhioState
 
 static void test_urls() {
   CHECK_EQ(team_url(League::NFL, 6), std::string("https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/6"));
-  CHECK_EQ(scoreboard_url(League::NFL, 0, 0), std::string("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"));
+  // Monday night kickoff 00:20Z on 9/15 is still 9/14 in the US
+  CHECK_EQ(scoreboard_url(League::NFL, 0, parse_iso8601_z("2026-09-15T00:20Z")), std::string("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20260914"));
   // 2026-09-05T19:30Z is Sep 5 in the US; 2026-09-06T02:00Z is still Sep 5 Eastern
   CHECK_EQ(scoreboard_url(League::NCAA, 1, parse_iso8601_z("2026-09-05T19:30Z")),
            std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=1&dates=20260905"));

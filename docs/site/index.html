@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game Day Scoreboard installer</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0f14; color: #e6edf3; }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1 { font-size: 2rem; margin: 0 0 4px; }
+    .sub { color: #9da7b3; margin: 0 0 32px; }
+    .card { background: #151b23; border: 1px solid #262e38; border-radius: 12px; padding: 20px 24px; margin: 0 0 20px; }
+    .card h2 { margin: 0 0 6px; font-size: 1.2rem; }
+    .card p { margin: 0 0 14px; color: #c3ccd6; }
+    esp-web-install-button { --esp-tools-button-color: #f2b632; --esp-tools-button-text-color: #0b0f14; }
+    ol li { margin: 6px 0; }
+    code { background: #1f2731; padding: 1px 6px; border-radius: 4px; }
+    .note { font-size: 0.9rem; color: #9da7b3; }
+    a { color: #7cc4ff; }
+    footer { margin-top: 40px; font-size: 0.85rem; color: #6f7a86; }
+  </style>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</head>
+<body>
+<main>
+  <h1>Game Day Scoreboard</h1>
+  <p class="sub">Football scoreboard for the Apollo M-1 HUB75 matrix. Version __VERSION__.</p>
+
+  <div class="card">
+    <h2>1. Install</h2>
+    <p>Plug the M-1 into this computer over USB and pick your panel layout. Use Chrome or Edge; Firefox and Safari cannot talk to serial ports.</p>
+    <p>
+      <esp-web-install-button manifest="firmware/64x64/manifest.json">
+        <button slot="activate">Install: one 64x64 panel</button>
+        <span slot="unsupported">This browser cannot install firmware. Use Chrome or Edge on a desktop.</span>
+        <span slot="not-allowed">Open this page over HTTPS to install.</span>
+      </esp-web-install-button>
+      &nbsp;
+      <esp-web-install-button manifest="firmware/128x64/manifest.json">
+        <button slot="activate">Install: two panels wide (128x64)</button>
+        <span slot="unsupported"></span>
+        <span slot="not-allowed"></span>
+      </esp-web-install-button>
+    </p>
+    <p class="note">Installing erases whatever firmware was on the M-1. Your WiFi details and team choice are asked for afterwards.</p>
+  </div>
+
+  <div class="card">
+    <h2>2. Join WiFi</h2>
+    <p>When the install finishes the same dialog offers to connect the device to WiFi. Enter your network name and password. If you skip it, the panel starts a hotspot called <code>Game Day Scoreboard</code>; join it and a setup page opens.</p>
+  </div>
+
+  <div class="card">
+    <h2>3. Pick your team</h2>
+    <p>The dialog can open the device's web page for you. Otherwise browse to <code>http://gameday-scoreboard-xxxxxx.local</code> (the six characters are shown on the panel at boot) or to the IP address your router gave it.</p>
+    <ol>
+      <li>Choose your team in the <strong>Team</strong> dropdown (NFL and college).</li>
+      <li>Set your <strong>Timezone</strong> so kickoff times read right.</li>
+      <li>Optional: turn ticker parts and opponent splashes on or off.</li>
+    </ol>
+    <p class="note">The panel shows the next game, switches to the live layout at kickoff, celebrates scores, and lingers on the final. Everything is fetched from ESPN by the device itself. No Home Assistant needed, though the device does show up there if you want it.</p>
+  </div>
+
+  <footer>
+    Source, issues and the YAML for building it yourself: <a href="https://github.com/bharvey88/gameday-scoreboard">bharvey88/gameday-scoreboard</a>.
+    Built on <a href="https://github.com/pavlov-net/hub75-studio">hub75-studio</a> and ESPHome.
+  </footer>
+</main>
+</body>
+</html>

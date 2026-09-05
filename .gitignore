@@ -5,3 +5,5 @@ tests/build/
 secrets.yaml
 HANDOFF.md
 __pycache__/
+build-*.log
+firmware/build/

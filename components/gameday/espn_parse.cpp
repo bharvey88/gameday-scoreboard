@@ -33,17 +33,18 @@ static void civil_from_epoch(int64_t epoch, int &y, int &m, int &d) {
 
 std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch) {
   std::string url = std::string(kSite) + league_path(league) + "/scoreboard";
-  if (league == League::NCAA) {
-    int y, m, d;
-    // ESPN's date parameter is in US Eastern; shift the UTC kickoff by five
-    // hours so late east-coast games stay on the right day. Being off by an
-    // hour around a DST change only matters for a game kicking off between
-    // 11 PM and midnight Eastern, which does not happen in college football.
-    civil_from_epoch(kickoff_epoch - 5 * 3600, y, m, d);
-    char buf[64];
+  int y, m, d;
+  // ESPN's date parameter is in US Eastern; shift the UTC kickoff by five
+  // hours so late east-coast games stay on the right day. Being off by an
+  // hour around a DST change only matters for a game kicking off between
+  // 11 PM and midnight Eastern, which does not happen in football.
+  civil_from_epoch(kickoff_epoch - 5 * 3600, y, m, d);
+  char buf[64];
+  if (league == League::NCAA)
     snprintf(buf, sizeof(buf), "?groups=%u&dates=%04d%02d%02d", (unsigned) group, y, m, d);
-    url += buf;
-  }
+  else
+    snprintf(buf, sizeof(buf), "?dates=%04d%02d%02d", y, m, d);
+  url += buf;
   return url;
 }
 

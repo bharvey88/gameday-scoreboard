@@ -1,0 +1,350 @@
+﻿# Game Day Scoreboard, shared configuration.
+# Do not build this file directly: use gameday-64x64.yaml or gameday-128x64.yaml,
+# which set the panel layout and include this file.
+
+substitutions:
+  name: "gameday-scoreboard"
+  friendly_name: "Game Day Scoreboard"
+  version: "0.1.0"
+  variant: "64x64"
+
+  display_panel_width: "64"
+  display_panel_height: "64"
+  display_layout: HORIZONTAL
+  display_layout_rows: "1"
+  display_layout_cols: "1"
+  display_scan_wiring: STANDARD_TWO_SCAN
+
+  # hub75-studio packages (controller, theme, clock page). Pinned to a commit
+  # so a release always builds the same thing.
+  hub75_studio_ref: "2c121972321cc1e3c2c87d9647fd3beb9a5e2271"
+
+esphome:
+  name: "${name}"
+  friendly_name: "${friendly_name}"
+  name_add_mac_suffix: true
+  build_path: build/gameday-${variant}
+  project:
+    name: bharvey88.gameday-scoreboard
+    version: "${version}"
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [gameday]
+  - source: github://pavlov-net/lvgl-page-manager@v0.3.0
+    components: [lvgl_page_manager]
+
+packages:
+  hub75_studio:
+    url: https://github.com/pavlov-net/hub75-studio
+    ref: "${hub75_studio_ref}"
+    refresh: 1d
+    files:
+      - path: packages/common/esphome-version.yaml
+      - path: packages/controllers/apollo-automation-m1-rev6.yaml
+        vars:
+          panel_width: ${display_panel_width}
+          panel_height: ${display_panel_height}
+          layout: ${display_layout}
+          layout_rows: ${display_layout_rows}
+          layout_cols: ${display_layout_cols}
+          scan_wiring: ${display_scan_wiring}
+      - path: packages/common/theme.yaml
+      - path: packages/pages/clock.yaml
+        vars:
+          page_friendly_name: "Clock"
+  boot: !include pages/boot.yaml
+  scoreboard: !include pages/gameday-live.yaml
+
+logger:
+  baud_rate: 115200
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  power_save_mode: none
+  ap:
+    ssid: "Game Day Scoreboard"
+
+captive_portal:
+
+improv_serial:
+
+web_server:
+  version: 3
+
+http_request:
+  id: http_client
+  timeout: 20s
+  watchdog_timeout: 30s
+  # ESPN's CDN certificate chain changes; skipping verification keeps the
+  # prebuilt binary working without a bundle refresh. Scores are public data.
+  verify_ssl: false
+  buffer_size_rx: 2048
+
+time:
+  - platform: sntp
+    id: ha_time  # the clock page extends this id
+
+# Team logos, decoded on the device from ESPN's dark-background PNGs.
+online_image:
+  - id: gd_team_logo
+    url: https://a.espncdn.com/i/teamlogos/nfl/500-dark/dal.png
+    type: RGB565
+    format: PNG
+    resize: 32x32
+    transparency: alpha_channel
+    update_interval: never
+    on_download_finished:
+      - lvgl.image.update:
+          id: gd_team_logo_img
+          src: gd_team_logo
+    on_error:
+      - logger.log: "Team logo download failed"
+  - id: gd_opp_logo
+    url: https://a.espncdn.com/i/teamlogos/nfl/500-dark/phi.png
+    type: RGB565
+    format: PNG
+    resize: 32x32
+    transparency: alpha_channel
+    update_interval: never
+    on_download_finished:
+      - lvgl.image.update:
+          id: gd_opp_logo_img
+          src: gd_opp_logo
+    on_error:
+      - logger.log: "Opponent logo download failed"
+
+globals:
+  - id: gd_last_team_logo
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: gd_last_opp_logo
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+
+gameday:
+  id: gameday_ctl
+  http_request_id: http_client
+  time_id: ha_time
+  on_update:
+    - text_sensor.template.publish:
+        id: gd_status_sensor
+        state: !lambda 'return x.status_text;'
+    - text_sensor.template.publish:
+        id: gd_last_play_sensor
+        state: !lambda 'return x.last_play;'
+    - script.execute:
+        id: gd_update
+        game_state: !lambda 'return x.game_state;'
+        team_abbr: !lambda 'return x.team_abbr;'
+        team_score: !lambda 'return x.team_score;'
+        opponent_abbr: !lambda 'return x.opponent_abbr;'
+        opponent_score: !lambda 'return x.opponent_score;'
+        status_text: !lambda 'return x.status_text;'
+        possession: !lambda 'return x.possession;'
+        team_timeouts: !lambda 'return x.team_timeouts;'
+        opponent_timeouts: !lambda 'return x.opponent_timeouts;'
+        team_record: !lambda 'return x.team_record;'
+        opponent_record: !lambda 'return x.opponent_record;'
+        splash_text: !lambda 'return x.splash_text;'
+        splash_color: !lambda 'return (int) x.splash_color;'
+    - if:
+        condition:
+          lambda: 'return !x.team_logo.empty() && x.team_logo != id(gd_last_team_logo);'
+        then:
+          - lambda: 'id(gd_last_team_logo) = x.team_logo;'
+          - online_image.set_url:
+              id: gd_team_logo
+              url: !lambda 'return x.team_logo;'
+              update: true
+    - if:
+        condition:
+          lambda: 'return !x.opponent_logo.empty() && x.opponent_logo != id(gd_last_opp_logo);'
+        then:
+          - lambda: 'id(gd_last_opp_logo) = x.opponent_logo;'
+          - online_image.set_url:
+              id: gd_opp_logo
+              url: !lambda 'return x.opponent_logo;'
+              update: true
+
+lvgl_page_manager:
+  sort: by_order
+  default_page: gameday_live
+  select:
+    name: "Select Page"
+    icon: "mdi:book-open-page-variant"
+  next_button:
+    name: "Page Next"
+    icon: "mdi:page-next"
+  prev_button:
+    name: "Page Previous"
+    icon: "mdi:page-previous"
+
+select:
+  - platform: gameday
+    gameday_id: gameday_ctl
+    type: team
+    name: "Team"
+    icon: "mdi:football"
+  - platform: gameday
+    gameday_id: gameday_ctl
+    type: timezone
+    name: "Timezone"
+    icon: "mdi:map-clock"
+    entity_category: config
+
+switch:
+  - platform: template
+    name: "Power"
+    id: power
+    icon: "mdi:power"
+    restore_mode: RESTORE_DEFAULT_ON
+    optimistic: true
+    turn_on_action:
+      - hub75.set_brightness:
+          id: matrix
+          brightness: !lambda return id(brightness).state;
+    turn_off_action:
+      - hub75.set_brightness:
+          id: matrix
+          brightness: 0
+  - platform: template
+    name: "Ticker: Game Clock"
+    id: gd_sw_clock
+    icon: "mdi:clock-outline"
+    entity_category: config
+    restore_mode: DISABLED
+    lambda: 'return id(gameday_ctl).ticker_clock();'
+    turn_on_action:
+      - lambda: 'id(gameday_ctl).set_ticker_clock(true);'
+    turn_off_action:
+      - lambda: 'id(gameday_ctl).set_ticker_clock(false);'
+  - platform: template
+    name: "Ticker: Down and Distance"
+    id: gd_sw_down
+    icon: "mdi:ruler"
+    entity_category: config
+    restore_mode: DISABLED
+    lambda: 'return id(gameday_ctl).ticker_down_distance();'
+    turn_on_action:
+      - lambda: 'id(gameday_ctl).set_ticker_down_distance(true);'
+    turn_off_action:
+      - lambda: 'id(gameday_ctl).set_ticker_down_distance(false);'
+  - platform: template
+    name: "Ticker: Last Play"
+    id: gd_sw_play
+    icon: "mdi:text"
+    entity_category: config
+    restore_mode: DISABLED
+    lambda: 'return id(gameday_ctl).ticker_last_play();'
+    turn_on_action:
+      - lambda: 'id(gameday_ctl).set_ticker_last_play(true);'
+    turn_off_action:
+      - lambda: 'id(gameday_ctl).set_ticker_last_play(false);'
+  - platform: template
+    name: "Ticker: Odds and TV"
+    id: gd_sw_odds
+    icon: "mdi:television-classic"
+    entity_category: config
+    restore_mode: DISABLED
+    lambda: 'return id(gameday_ctl).ticker_odds();'
+    turn_on_action:
+      - lambda: 'id(gameday_ctl).set_ticker_odds(true);'
+    turn_off_action:
+      - lambda: 'id(gameday_ctl).set_ticker_odds(false);'
+  - platform: template
+    name: "Opponent Splashes"
+    id: gd_sw_opp
+    icon: "mdi:party-popper"
+    entity_category: config
+    restore_mode: DISABLED
+    lambda: 'return id(gameday_ctl).opponent_splashes();'
+    turn_on_action:
+      - lambda: 'id(gameday_ctl).set_opponent_splashes(true);'
+    turn_off_action:
+      - lambda: 'id(gameday_ctl).set_opponent_splashes(false);'
+
+number:
+  - platform: template
+    name: "Brightness"
+    id: brightness
+    icon: "mdi:brightness-6"
+    min_value: 1
+    max_value: 255
+    step: 1
+    optimistic: true
+    restore_value: true
+    initial_value: 128
+    on_value:
+      then:
+        - if:
+            condition:
+              switch.is_on: power
+            then:
+              - hub75.set_brightness:
+                  id: matrix
+                  brightness: !lambda return x;
+  - platform: template
+    name: "Scroll Speed"
+    id: shared_scroll_speed
+    icon: "mdi:speedometer"
+    min_value: 1
+    max_value: 10
+    step: 1
+    optimistic: true
+    restore_value: true
+    initial_value: 5
+    entity_category: config
+
+button:
+  - platform: template
+    name: "Refresh Now"
+    id: gd_refresh
+    icon: "mdi:refresh"
+    on_press:
+      - lambda: 'id(gameday_ctl).refresh_now();'
+  - platform: restart
+    icon: mdi:power-cycle
+    name: "Reboot"
+    entity_category: "diagnostic"
+
+text_sensor:
+  - platform: template
+    name: "Game Status"
+    id: gd_status_sensor
+    icon: "mdi:scoreboard"
+  - platform: template
+    name: "Last Play"
+    id: gd_last_play_sensor
+    icon: "mdi:football-helmet"
+  - platform: wifi_info
+    ip_address:
+      name: "IP"
+      icon: "mdi:ip-outline"
+      entity_category: "diagnostic"
+
+sensor:
+  - platform: template
+    name: "Free Heap (PSRAM)"
+    device_class: data_size
+    state_class: measurement
+    entity_category: diagnostic
+    unit_of_measurement: "KiB"
+    update_interval: 30s
+    lambda: |-
+      #include "esp_heap_caps.h"
+      return (float) heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024;
+    disabled_by_default: true
+  - platform: wifi_signal
+    name: RSSI
+    update_interval: 60s
+    entity_category: "diagnostic"
+    disabled_by_default: true
