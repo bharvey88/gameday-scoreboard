@@ -1,0 +1,7 @@
+.esphome/
+firmware/.esphome/
+*.bin
+tests/build/
+secrets.yaml
+HANDOFF.md
+__pycache__/

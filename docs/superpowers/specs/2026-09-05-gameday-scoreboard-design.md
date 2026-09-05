@@ -183,8 +183,7 @@ bottom).
 
 | Entity | Type | Options / notes |
 | --- | --- | --- |
-| League | select | NFL, College. Restored from flash |
-| Team | select | Options rebuilt at runtime from the generated table for the chosen league; a change restarts the poller; the stored preference is the ESPN team id |
+| Team | select | One combined list, "NFL: Dallas Cowboys" and "NCAA: Boise State Broncos" entries from the generated table, options set at boot by the component; a change restarts the poller; the stored preference is league plus ESPN id |
 | Timezone | select | US Eastern, Central, Mountain, Arizona, Pacific, Alaska, Hawaii, UTC, UK, Central Europe |
 | Ticker: game clock | switch | default on |
 | Ticker: down and distance | switch | default on |
