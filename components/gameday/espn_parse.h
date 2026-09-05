@@ -8,7 +8,7 @@
 
 #include "teams.h"
 
-namespace gameday {
+namespace espn {
 
 enum class GameState : uint8_t { NOT_FOUND, PRE, IN, POST };
 
@@ -72,7 +72,7 @@ std::string kickoff_label(const struct tm &kick_local, const struct tm &now_loca
 int64_t parse_iso8601_z(const std::string &s);
 const char *state_name(GameState s);
 
-}  // namespace gameday
+}  // namespace espn
 
 // Streaming entry points live in the header because they are templates on
 // the reader type (a std::string on the host, an HTTP container on device).

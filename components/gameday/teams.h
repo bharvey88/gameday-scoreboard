@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace gameday {
+namespace espn {
 
 enum class League : uint8_t { NFL = 0, NCAA = 1 };
 
@@ -190,4 +190,4 @@ constexpr Team kTeams[] = {
 
 constexpr size_t kTeamCount = sizeof(kTeams) / sizeof(kTeams[0]);
 
-}  // namespace gameday
+}  // namespace espn

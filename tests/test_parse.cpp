@@ -6,7 +6,7 @@
 
 #include "espn_parse.h"
 
-using namespace gameday;
+using namespace espn;
 
 static int failures = 0;
 static int checks = 0;

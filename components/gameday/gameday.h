@@ -17,11 +17,11 @@
 namespace esphome {
 namespace gameday {
 
-using ::gameday::GameSnapshot;
-using ::gameday::GameState;
-using ::gameday::League;
-using ::gameday::Schedule;
-using ::gameday::TickerOptions;
+using ::espn::GameSnapshot;
+using ::espn::GameState;
+using ::espn::League;
+using ::espn::Schedule;
+using ::espn::TickerOptions;
 
 // Exactly the fields the Home Assistant blueprint used to push to the page.
 struct UpdateFields {
@@ -108,7 +108,7 @@ class GamedayComponent : public Component {
   void set_flag_(uint8_t f, bool on);
   void save_prefs_();
   void apply_timezone_();
-  const ::gameday::Team *current_team_() const;
+  const ::espn::Team *current_team_() const;
   std::string team_option_() const;
 
   void tick_();
@@ -117,7 +117,7 @@ class GamedayComponent : public Component {
   std::shared_ptr<http_request::HttpContainer> open_(const std::string &url);
   void schedule_next_(uint32_t ms) { this->next_fetch_ms_ = millis() + ms; }
   uint32_t interval_for_phase_() const;
-  void emit_(const ::gameday::Splash &splash);
+  void emit_(const ::espn::Splash &splash);
   void reset_game_();
 
   http_request::HttpRequestComponent *http_{nullptr};

@@ -3,7 +3,7 @@
 
 #include <ArduinoJson.h>
 
-namespace gameday {
+namespace espn {
 namespace detail {
 
 inline std::string str_or_empty(JsonVariantConst v) {
@@ -178,4 +178,4 @@ bool parse_scoreboard(TInput &input, const std::string &event_id, uint32_t our_t
   return false;
 }
 
-}  // namespace gameday
+}  // namespace espn

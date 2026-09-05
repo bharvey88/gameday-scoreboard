@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 
-namespace gameday {
+namespace espn {
 
 static const char *kSite = "https://site.api.espn.com/apis/site/v2/sports/football/";
 
@@ -229,4 +229,4 @@ const char *state_name(GameState s) {
   }
 }
 
-}  // namespace gameday
+}  // namespace espn

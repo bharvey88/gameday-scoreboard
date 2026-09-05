@@ -2,7 +2,7 @@
 // table, so keep each entry on one line in this exact shape.
 #pragma once
 
-namespace gameday {
+namespace espn {
 
 struct Timezone {
   const char *name;
@@ -25,4 +25,4 @@ constexpr Timezone kTimezones[] = {
 constexpr size_t kTimezoneCount = sizeof(kTimezones) / sizeof(kTimezones[0]);
 constexpr size_t kDefaultTimezone = 1;  // US Central
 
-}  // namespace gameday
+}  // namespace espn
