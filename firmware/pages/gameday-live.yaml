@@ -72,17 +72,17 @@ script:
             lv_obj_set_width(id(tt_home_rec_lbl), colw);
             // Game clock takes the records row while the game is live
             lv_obj_set_style_text_font(id(tt_clock_lbl), id(spleen_12), 0);
-            lv_obj_set_pos(id(tt_clock_lbl), 36, 34);
+            lv_obj_set_pos(id(tt_clock_lbl), 36, 35);
             lv_obj_set_width(id(tt_clock_lbl), W - 72);
             // Timeout pips centered under each logo
             const int acx = 18, hcx = W - 18;
             for (int i = 0; i < 3; i++) {
               lv_obj_clear_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
               lv_obj_clear_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
-              lv_obj_set_pos(abars[i], acx - 9 + i * 7, 46);
-              lv_obj_set_pos(hbars[i], hcx - 9 + i * 7, 46);
+              lv_obj_set_pos(abars[i], acx - 9 + i * 7, 50);
+              lv_obj_set_pos(hbars[i], hcx - 9 + i * 7, 50);
             }
-            lv_obj_set_pos(id(tt_game_status_lbl), 0, 54);
+            lv_obj_set_pos(id(tt_game_status_lbl), 0, 56);
             lv_obj_set_style_text_font(id(tt_splash_lbl), id(spleen_16), 0);
             lv_obj_set_pos(id(tt_splash_lbl), 0, 16);
           } else {
@@ -112,7 +112,7 @@ script:
               lv_obj_add_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
               lv_obj_add_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
             }
-            lv_obj_set_pos(id(tt_game_status_lbl), 0, 55);
+            lv_obj_set_pos(id(tt_game_status_lbl), 0, 56);
             lv_obj_set_style_text_font(id(tt_splash_lbl), id(spleen_12), 0);
             lv_obj_set_pos(id(tt_splash_lbl), 0, 18);
           }

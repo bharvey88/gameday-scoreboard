@@ -92,7 +92,7 @@ and `json` (for ArduinoJson) and exposes:
 | schedule | no known event, or the last one is final and lingered out | team endpoint | 6 hours, plus on boot and on team change |
 | pre_far | kickoff more than 60 minutes away | scoreboard | 15 minutes |
 | pre_near | kickoff within 60 minutes | scoreboard | 60 seconds |
-| in | ESPN state `in` | scoreboard | 10 seconds |
+| in | ESPN state `in` | scoreboard | 5 seconds |
 | post | ESPN state `post`, first 30 minutes | scoreboard | 60 seconds |
 
 After the 30 minute linger the phase returns to schedule. A team change resets
