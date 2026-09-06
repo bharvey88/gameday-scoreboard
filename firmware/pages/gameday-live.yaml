@@ -70,6 +70,10 @@ script:
             lv_obj_set_width(id(tt_away_rec_lbl), colw);
             lv_obj_set_pos(id(tt_home_rec_lbl), W / 2, 36);
             lv_obj_set_width(id(tt_home_rec_lbl), colw);
+            // Game clock takes the records row while the game is live
+            lv_obj_set_style_text_font(id(tt_clock_lbl), id(spleen_12), 0);
+            lv_obj_set_pos(id(tt_clock_lbl), 36, 34);
+            lv_obj_set_width(id(tt_clock_lbl), W - 72);
             // Timeout pips centered under each logo
             const int acx = 18, hcx = W - 18;
             for (int i = 0; i < 3; i++) {
@@ -93,6 +97,10 @@ script:
             lv_obj_set_width(id(tt_away_team_lbl), W / 2);
             lv_obj_set_pos(id(tt_home_team_lbl), W / 2, 33);
             lv_obj_set_width(id(tt_home_team_lbl), W / 2);
+            // Game clock replaces the abbreviations while the game is live
+            lv_obj_set_style_text_font(id(tt_clock_lbl), id(spleen_8), 0);
+            lv_obj_set_pos(id(tt_clock_lbl), 0, 33);
+            lv_obj_set_width(id(tt_clock_lbl), W);
             lv_obj_set_pos(id(tt_away_score_lbl), 0, 42);
             lv_obj_set_width(id(tt_away_score_lbl), W / 2);
             lv_obj_set_pos(id(tt_home_score_lbl), W / 2, 42);
@@ -117,6 +125,7 @@ script:
       opponent_abbr: string
       opponent_score: int
       status_text: string
+      clock_text: string
       possession: int
       team_timeouts: int
       opponent_timeouts: int
@@ -173,6 +182,11 @@ script:
           lv_color_t idle = lv_color_hex(0xFFFFFF);
           lv_obj_set_style_text_color(id(tt_away_team_lbl), possession == 1 ? active : idle, 0);
           lv_obj_set_style_text_color(id(tt_home_team_lbl), possession == 2 ? active : idle, 0);
+          // Narrow displays hide the abbreviations during the game, so the
+          // scores carry the possession color there.
+          const bool narrow = lv_disp_get_hor_res(lv_disp_get_default()) < 128;
+          lv_obj_set_style_text_color(id(tt_away_score_lbl), (narrow && possession == 1) ? active : idle, 0);
+          lv_obj_set_style_text_color(id(tt_home_score_lbl), (narrow && possession == 2) ? active : idle, 0);
       - lambda: |-
           // Toggle between the game layout and the "no game" layout
           if (game_state == "NOT_FOUND" || game_state == "BYE" || game_state == "") {
@@ -191,6 +205,22 @@ script:
           } else {
             lv_obj_clear_flag(id(tt_away_rec_lbl), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(tt_home_rec_lbl), LV_OBJ_FLAG_HIDDEN);
+          }
+          // Big game clock while live: its own row on wide displays, the
+          // abbreviation row on a single panel (the logos still say who is who).
+          const bool show_clock = game_state == "IN" && !clock_text.empty();
+          if (show_clock) {
+            lv_label_set_text(id(tt_clock_lbl), clock_text.c_str());
+            lv_obj_clear_flag(id(tt_clock_lbl), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(tt_clock_lbl), LV_OBJ_FLAG_HIDDEN);
+          }
+          if (W < 128 && show_clock) {
+            lv_obj_add_flag(id(tt_away_team_lbl), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(tt_home_team_lbl), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_clear_flag(id(tt_away_team_lbl), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(tt_home_team_lbl), LV_OBJ_FLAG_HIDDEN);
           }
       - if:
           condition:
@@ -270,6 +300,16 @@ lvgl:
                   width: 32
                   text_align: CENTER
                   text: "-"
+                  styles: ["tt_st_score_text"]
+
+              - label:
+                  id: tt_clock_lbl
+                  x: 0
+                  y: 33
+                  width: 64
+                  text_align: CENTER
+                  hidden: true
+                  text: ""
                   styles: ["tt_st_score_text"]
 
               - label:

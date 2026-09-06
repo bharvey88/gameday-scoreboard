@@ -41,6 +41,7 @@ struct UpdateFields {
   std::string splash_text;
   uint32_t splash_color{0};
   std::string last_play;
+  std::string clock_text;  // "5:36 - 3rd" while the game is live, else empty
 };
 
 enum class SelectType : uint8_t { TEAM, TIMEZONE };
@@ -95,7 +96,7 @@ class GamedayComponent : public Component {
   static constexpr uint8_t FLAG_PLAY = 4;
   static constexpr uint8_t FLAG_ODDS = 8;
   static constexpr uint8_t FLAG_OPP = 16;
-  static constexpr uint8_t FLAGS_DEFAULT = FLAG_CLOCK | FLAG_DOWN | FLAG_PLAY | FLAG_ODDS | FLAG_OPP;
+  static constexpr uint8_t FLAGS_DEFAULT = FLAG_DOWN | FLAG_PLAY | FLAG_ODDS | FLAG_OPP;
 
   struct Prefs {
     uint8_t league;

@@ -363,6 +363,8 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   f.team_record = g.team_record;
   f.opponent_record = g.opp_record;
   f.last_play = g.last_play;
+  if (g.valid && g.state == GameState::IN)
+    f.clock_text = g.short_detail;
   f.splash_text = splash.text;
   f.splash_color = splash.color;
 

@@ -5,7 +5,7 @@
 substitutions:
   name: "gameday-scoreboard"
   friendly_name: "Game Day Scoreboard"
-  version: "0.1.0"
+  version: "0.1.1"
   variant: "64x64"
 
   display_panel_width: "64"
@@ -149,6 +149,7 @@ gameday:
         opponent_abbr: !lambda 'return x.opponent_abbr;'
         opponent_score: !lambda 'return x.opponent_score;'
         status_text: !lambda 'return x.status_text;'
+        clock_text: !lambda 'return x.clock_text;'
         possession: !lambda 'return x.possession;'
         team_timeouts: !lambda 'return x.team_timeouts;'
         opponent_timeouts: !lambda 'return x.opponent_timeouts;'
