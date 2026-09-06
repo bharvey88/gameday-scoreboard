@@ -99,7 +99,7 @@ const TEAMS=[["nfl",22,"ARI","Arizona Cardinals"],["nfl",1,"ATL","Atlanta Falcon
     <div class="sheet">
       <div class="head">
         <input type="search" id="q" placeholder="Search teams" autocomplete="off">
-        <div class="tabs"><button data-lg="nfl" class="on">NFL</button><button data-lg="ncaa">College</button></div>
+        <div class="tabs"><button data-lg="now" class="on">On now</button><button data-lg="nfl">NFL</button><button data-lg="ncaa">College</button></div>
         <button class="btn" id="close">Close</button>
       </div>
       <div class="tiles" id="tiles"></div>
@@ -117,15 +117,22 @@ const TEAMS=[["nfl",22,"ARI","Arizona Cardinals"],["nfl",1,"ATL","Atlanta Falcon
     toastTimer = setTimeout(() => n.classList.remove("on"), 1800);
   };
 
-  const post = async (id, action, params) => {
+  const post = async (id, action, params, attempt = 0) => {
     const [domain, ...rest] = id.split("-");
     const objectId = rest.join("-");
-    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+    const qs = params
+      ? "?" + Object.entries(params).map(([k, v]) => k + "=" + encodeURIComponent(v)).join("&")
+      : "";
     try {
       const r = await fetch(`/${domain}/${objectId}/${action}${qs}`, { method: "POST" });
-      if (!r.ok) throw new Error(r.status);
+      if (!r.ok) throw new Error("HTTP " + r.status);
     } catch (e) {
-      toast("The device did not accept that");
+      if (attempt < 1) {
+        // The device only has a handful of sockets; a busy moment is normal.
+        await new Promise((res) => setTimeout(res, 500));
+        return post(id, action, params, attempt + 1);
+      }
+      toast("Device did not respond (" + (e.message || "network") + "). Try again.");
     }
   };
 
@@ -252,9 +259,104 @@ const TEAMS=[["nfl",22,"ARI","Arizona Cardinals"],["nfl",1,"ATL","Atlanta Falcon
     return { update() {} };
   };
 
+  // ---- today's games (fetched by the browser, not the device) -------------
+  const ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/";
+  let games = null;        // [{league, id, state, detail, away:{...}, home:{...}}]
+  let gamesAt = 0;
+  const teamById = (lg, id) => TEAMS.find((t) => t[0] === lg && t[1] === id);
+  const easternDate = () => {
+    // ESPN's dates parameter is US Eastern
+    const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    const g = (t) => p.find((x) => x.type === t).value;
+    return g("year") + g("month") + g("day");
+  };
+  const loadGames = async (force) => {
+    if (!force && games && Date.now() - gamesAt < 60000) return games;
+    const d = easternDate();
+    const urls = [["nfl", `${ESPN}nfl/scoreboard?dates=${d}`], ["ncaa", `${ESPN}college-football/scoreboard?groups=80&limit=300&dates=${d}`]];
+    const out = [];
+    await Promise.all(urls.map(async ([lg, u]) => {
+      try {
+        const j = await (await fetch(u)).json();
+        for (const ev of j.events || []) {
+          const c = ev.competitions?.[0];
+          if (!c) continue;
+          const side = (ha) => {
+            const x = c.competitors.find((k) => k.homeAway === ha) || {};
+            return { id: Number(x.team?.id), abbr: x.team?.abbreviation || "", score: x.score || "0", name: x.team?.shortDisplayName || x.team?.displayName || "" };
+          };
+          out.push({ league: lg, id: ev.id, state: ev.status?.type?.state || "pre", detail: ev.status?.type?.shortDetail || "", away: side("away"), home: side("home"), date: ev.date });
+        }
+      } catch (_) { /* one league failing should not hide the other */ }
+    }));
+    const rank = { in: 0, pre: 1, post: 2 };
+    out.sort((a, b) => (rank[a.state] - rank[b.state]) || (a.date < b.date ? -1 : 1));
+    games = out;
+    gamesAt = Date.now();
+    return out;
+  };
+
+  const renderGames = async () => {
+    const tiles = $("#tiles");
+    tiles.className = "games";
+    tiles.innerHTML = "";
+    tiles.appendChild(el("div", "none", "Loading today's games"));
+    const list = await loadGames(false);
+    if (league !== "now") return;  // the user moved on while we were loading
+    tiles.innerHTML = "";
+    const q = $("#q").value.trim().toLowerCase();
+    const shown = list.filter((g) => !q || (g.away.name + " " + g.home.name + " " + g.away.abbr + " " + g.home.abbr).toLowerCase().includes(q));
+    if (!shown.length) {
+      tiles.appendChild(el("div", "none", list.length ? "No game matches" : "No NFL or FBS games today"));
+      return;
+    }
+    const cur = ents[byName["Team"]]?.value;
+    let lastState = null;
+    for (const g of shown) {
+      if (g.state !== lastState) {
+        lastState = g.state;
+        tiles.appendChild(el("div", "gh", g.state === "in" ? "Live now" : g.state === "pre" ? "Later today" : "Final"));
+      }
+      const card = el("div", "game" + (g.state === "in" ? " live" : ""));
+      const mkSide = (s) => {
+        const t = teamById(g.league, s.id);
+        const b = el("button", "side" + (t && optionFor(t) === cur ? " on" : ""));
+        b.disabled = !t;
+        b.title = t ? "Follow the " + t[3] : "Not in the team list";
+        const img = el("img");
+        img.loading = "lazy";
+        img.src = logoUrl(g.league, s.id, s.abbr);
+        img.alt = "";
+        b.appendChild(img);
+        const txt = el("div", "st");
+        txt.appendChild(el("div", "n", s.name));
+        txt.appendChild(el("div", "a", s.abbr));
+        b.appendChild(txt);
+        b.appendChild(el("div", "sc", g.state === "pre" ? "" : String(s.score)));
+        b.onclick = () => {
+          const id = byName["Team"];
+          if (!t || !id) return;
+          post(id, "set", { option: optionFor(t) });
+          toast("Now following the " + t[3]);
+          $("#modal").classList.remove("open");
+        };
+        return b;
+      };
+      card.appendChild(mkSide(g.away));
+      const mid = el("div", "gm");
+      mid.appendChild(el("div", "at", "@"));
+      mid.appendChild(el("div", "det", g.detail));
+      card.appendChild(mid);
+      card.appendChild(mkSide(g.home));
+      tiles.appendChild(card);
+    }
+  };
+
   // ---- team chooser ------------------------------------------------------
-  let league = "nfl";
+  let league = "now";
   const renderTiles = () => {
+    if (league === "now") return renderGames();
+    $("#tiles").className = "tiles";
     const q = $("#q").value.trim().toLowerCase();
     const cur = ents[byName["Team"]]?.value;
     const tiles = $("#tiles");
@@ -283,9 +385,13 @@ const TEAMS=[["nfl",22,"ARI","Arizona Cardinals"],["nfl",1,"ATL","Atlanta Falcon
       tiles.appendChild(tile);
     }
   };
-  $("#pick").onclick = () => {
+  $("#pick").onclick = async () => {
     const cur = teamByOption(ents[byName["Team"]]?.value);
-    if (cur) league = cur[0];
+    league = cur ? cur[0] : "nfl";
+    try {
+      const list = await loadGames(false);
+      if (list.some((g) => g.state === "in")) league = "now";
+    } catch (_) {}
     $$tabs(league);
     $("#q").value = "";
     renderTiles();

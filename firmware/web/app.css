@@ -164,3 +164,24 @@ button { font: inherit; color: inherit; }
   padding: 10px 14px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none;
 }
 .toast.on { opacity: 1; }
+
+/* Today's games */
+.games { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.gh { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 8px 2px 0; }
+.game { display: grid; grid-template-columns: 1fr 74px 1fr; align-items: stretch; gap: 6px; }
+.game .side {
+  display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 8px;
+  background: #0a0d12; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; cursor: pointer; text-align: left;
+}
+.game .side:hover { border-color: #3a4556; background: #0e131b; }
+.game .side.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.game .side:disabled { opacity: .45; cursor: default; }
+.game .side img { width: 36px; height: 36px; object-fit: contain; }
+.game .side .n { font-size: 13px; line-height: 1.2; color: #d6dde7; }
+.game .side .a { font-size: 10px; color: var(--muted); letter-spacing: .08em; }
+.game .side .sc { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 20px; font-weight: 700; min-width: 1.4em; text-align: right; }
+.game .gm { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.game .gm .at { color: #3a4150; font-size: 12px; }
+.game .gm .det { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.2; }
+.game.live .gm .det { color: var(--red); font-weight: 700; }
+@media (max-width: 560px) { .game { grid-template-columns: 1fr 58px 1fr; } .game .side { grid-template-columns: 28px 1fr auto; padding: 7px 8px; } .game .side img { width: 28px; height: 28px; } .game .side .n { font-size: 12px; } }

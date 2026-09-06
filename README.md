@@ -27,7 +27,7 @@ Team changes take effect immediately and survive reboots. Nothing needs reflashi
 
 ## The device page
 
-The M-1 serves its own page: a live board that mirrors the panel (logos, score, clock, down and distance, timeout pips, last play), a team chooser with logos and search, and the settings grouped in plain language. It is plain HTML and JavaScript embedded in the firmware, so it works with no internet beyond the logos. Home Assistant users get the same controls as entities.
+The M-1 serves its own page: a live board that mirrors the panel (logos, score, clock, down and distance, timeout pips, last play), a team chooser with logos and search plus an "On now" tab listing today's NFL and FBS games straight from ESPN (tap the side you want to follow), and the settings grouped in plain language. It is plain HTML and JavaScript embedded in the firmware, so it works with no internet beyond the logos. Home Assistant users get the same controls as entities.
 
 | Control | What it does |
 | --- | --- |
