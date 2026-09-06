@@ -23,6 +23,8 @@ inline void fill_scoreboard_filter(JsonDocument &f) {
   JsonObject comp = ev["competitions"].add<JsonObject>();
   comp["situation"]["lastPlay"]["text"] = true;
   comp["situation"]["downDistanceText"] = true;
+  comp["situation"]["shortDownDistanceText"] = true;
+  comp["situation"]["isRedZone"] = true;
   comp["situation"]["possession"] = true;
   comp["situation"]["homeTimeouts"] = true;
   comp["situation"]["awayTimeouts"] = true;
@@ -85,6 +87,8 @@ inline bool snapshot_from_event(JsonObjectConst ev, uint32_t our_team_id, GameSn
   JsonObjectConst sit = comp["situation"];
   s.last_play = str_or_empty(sit["lastPlay"]["text"]);
   s.down_distance = str_or_empty(sit["downDistanceText"]);
+  s.short_down_distance = str_or_empty(sit["shortDownDistanceText"]);
+  s.is_red_zone = sit["isRedZone"] | false;
   std::string possession = str_or_empty(sit["possession"]);
   int home_to = sit["homeTimeouts"] | 0;
   int away_to = sit["awayTimeouts"] | 0;

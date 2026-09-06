@@ -42,6 +42,10 @@ struct UpdateFields {
   uint32_t splash_color{0};
   std::string last_play;
   std::string clock_text;  // "5:36 - 3rd" while the game is live, else empty
+  std::string down_distance;  // "3rd & 10" while live, else empty
+  bool is_red_zone{false};
+  uint32_t team_color{0xFFFFFF};
+  uint32_t opponent_color{0xFFFFFF};
 };
 
 enum class SelectType : uint8_t { TEAM, TIMEZONE };

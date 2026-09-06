@@ -66,10 +66,16 @@ script:
             lv_obj_set_width(id(tt_away_score_lbl), colw);
             lv_obj_set_pos(id(tt_home_score_lbl), W / 2, 18);
             lv_obj_set_width(id(tt_home_score_lbl), colw);
-            lv_obj_set_pos(id(tt_away_rec_lbl), 36, 36);
-            lv_obj_set_width(id(tt_away_rec_lbl), colw);
-            lv_obj_set_pos(id(tt_home_rec_lbl), W / 2, 36);
-            lv_obj_set_width(id(tt_home_rec_lbl), colw);
+            // Records sit under each logo so they stay visible during the game
+            lv_obj_set_style_text_font(id(tt_away_rec_lbl), id(spleen_8), 0);
+            lv_obj_set_style_text_font(id(tt_home_rec_lbl), id(spleen_8), 0);
+            lv_obj_set_pos(id(tt_away_rec_lbl), 0, 38);
+            lv_obj_set_width(id(tt_away_rec_lbl), 36);
+            lv_obj_set_pos(id(tt_home_rec_lbl), W - 36, 38);
+            lv_obj_set_width(id(tt_home_rec_lbl), 36);
+            // Down and distance under the clock, in the middle
+            lv_obj_set_pos(id(tt_down_lbl), 36, 48);
+            lv_obj_set_width(id(tt_down_lbl), W - 72);
             // Game clock takes the records row while the game is live
             lv_obj_set_style_text_font(id(tt_clock_lbl), id(spleen_12), 0);
             lv_obj_set_pos(id(tt_clock_lbl), 36, 35);
@@ -79,8 +85,8 @@ script:
             for (int i = 0; i < 3; i++) {
               lv_obj_clear_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
               lv_obj_clear_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
-              lv_obj_set_pos(abars[i], acx - 9 + i * 7, 50);
-              lv_obj_set_pos(hbars[i], hcx - 9 + i * 7, 50);
+              lv_obj_set_pos(abars[i], acx - 9 + i * 7, 48);
+              lv_obj_set_pos(hbars[i], hcx - 9 + i * 7, 48);
             }
             lv_obj_set_pos(id(tt_game_status_lbl), 0, 56);
             lv_obj_set_style_text_font(id(tt_splash_lbl), id(spleen_16), 0);
@@ -105,6 +111,7 @@ script:
             lv_obj_set_width(id(tt_away_score_lbl), W / 2);
             lv_obj_set_pos(id(tt_home_score_lbl), W / 2, 42);
             lv_obj_set_width(id(tt_home_score_lbl), W / 2);
+            lv_obj_add_flag(id(tt_down_lbl), LV_OBJ_FLAG_HIDDEN);
             // No room for records or pips on a single panel
             lv_obj_add_flag(id(tt_away_rec_lbl), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(tt_home_rec_lbl), LV_OBJ_FLAG_HIDDEN);
@@ -126,6 +133,10 @@ script:
       opponent_score: int
       status_text: string
       clock_text: string
+      down_distance: string
+      is_red_zone: bool
+      team_color: int
+      opponent_color: int
       possession: int
       team_timeouts: int
       opponent_timeouts: int
@@ -177,11 +188,24 @@ script:
             lv_obj_set_style_bg_color(hbars[i], i < h ? lv_color_hex(0xFFD000) : lv_color_hex(0x202020), 0);
           }
       - lambda: |-
-          // Possession: the team with the ball gets a gold abbreviation
+          // Abbreviations in team colors; the team with the ball turns gold.
+          // Dark team colors vanish on the panel, so lift them to full brightness.
+          auto bright = [](uint32_t c) -> lv_color_t {
+            uint32_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+            uint32_t m = std::max(r, std::max(g, b));
+            if (m == 0)
+              return lv_color_hex(0xFFFFFF);
+            if (m < 0xC0) {
+              r = r * 0xC0 / m;
+              g = g * 0xC0 / m;
+              b = b * 0xC0 / m;
+            }
+            return lv_color_make(r, g, b);
+          };
           lv_color_t active = lv_color_hex(0xFFD000);
           lv_color_t idle = lv_color_hex(0xFFFFFF);
-          lv_obj_set_style_text_color(id(tt_away_team_lbl), possession == 1 ? active : idle, 0);
-          lv_obj_set_style_text_color(id(tt_home_team_lbl), possession == 2 ? active : idle, 0);
+          lv_obj_set_style_text_color(id(tt_away_team_lbl), possession == 1 ? active : bright((uint32_t) team_color), 0);
+          lv_obj_set_style_text_color(id(tt_home_team_lbl), possession == 2 ? active : bright((uint32_t) opponent_color), 0);
           // Narrow displays hide the abbreviations during the game, so the
           // scores carry the possession color there.
           const bool narrow = lv_disp_get_hor_res(lv_disp_get_default()) < 128;
@@ -199,12 +223,20 @@ script:
           // Records are pre/post-game info; hide them while the game is live
           // (the layout also hides them entirely on narrow displays).
           const int W = lv_disp_get_hor_res(lv_disp_get_default());
-          if (game_state == "IN" || W < 128) {
+          if (W < 128) {
             lv_obj_add_flag(id(tt_away_rec_lbl), LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(id(tt_home_rec_lbl), LV_OBJ_FLAG_HIDDEN);
           } else {
             lv_obj_clear_flag(id(tt_away_rec_lbl), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(tt_home_rec_lbl), LV_OBJ_FLAG_HIDDEN);
+          }
+          // Down and distance under the clock while live; red in the red zone
+          if (W >= 128 && game_state == "IN" && !down_distance.empty()) {
+            lv_label_set_text(id(tt_down_lbl), down_distance.c_str());
+            lv_obj_set_style_text_color(id(tt_down_lbl), is_red_zone ? lv_color_hex(0xFF3030) : lv_color_hex(0xFFFFFF), 0);
+            lv_obj_clear_flag(id(tt_down_lbl), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(tt_down_lbl), LV_OBJ_FLAG_HIDDEN);
           }
           // Big game clock while live: its own row on wide displays, the
           // abbreviation row on a single panel (the logos still say who is who).
@@ -311,6 +343,16 @@ lvgl:
                   hidden: true
                   text: ""
                   styles: ["tt_st_score_text"]
+
+              - label:
+                  id: tt_down_lbl
+                  x: 0
+                  y: 48
+                  width: 64
+                  text_align: CENTER
+                  hidden: true
+                  text: ""
+                  styles: ["tt_st_status_text"]
 
               - label:
                   id: tt_away_rec_lbl

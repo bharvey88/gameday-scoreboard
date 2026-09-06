@@ -7,7 +7,7 @@ It is the standalone cousin of [gameday-matrix](https://github.com/bharvey88/gam
 ## What it does
 
 - Next-game card while you wait: both logos, season records, kickoff day and time in your timezone, and a ticker with the betting line, over/under, TV network and venue
-- Live scoreboard at kickoff: scores, the game clock and quarter in large type under them, gold abbreviation for the team with the ball, timeout pips, and a scrolling ticker with down and distance and the last play (the clock can be added to the ticker too)
+- Live scoreboard at kickoff: scores, the game clock and quarter in large type under them, down and distance beneath that (red in the red zone), abbreviations in team colors with the team holding the ball in gold, records under the logos, timeout pips, and a scrolling ticker with the last play (clock and down and distance can be added to the ticker too)
 - Full-screen splashes in your team's color for touchdowns, field goals, extra points and two-point conversions, the opponent's scores acknowledged in theirs, and a victory splash on a win
 - Lingers on the final for half an hour, then looks up the next game
 - Adapts to one 64x64 panel (logos side by side, stacked scores) or two panels wide (logos at the edges, big scores, records and pips in the middle)

@@ -102,6 +102,8 @@ static void test_scoreboard_live() {
   CHECK_EQ(s.team_timeouts, 1);
   CHECK_EQ(s.opp_timeouts, 1);
   CHECK_EQ(s.down_distance, std::string("3rd & 10 at BOIS 25"));
+  CHECK_EQ(s.short_down_distance, std::string("3rd & 10"));
+  CHECK(!s.is_red_zone);
   CHECK_EQ(s.short_detail, std::string("15:00 - 4th"));
   CHECK_EQ(s.period, 4);
   CHECK_EQ(s.team_color, std::string("0033a0"));

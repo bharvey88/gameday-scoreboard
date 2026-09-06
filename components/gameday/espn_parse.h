@@ -41,6 +41,8 @@ struct GameSnapshot {
   int possession{0};
   int team_timeouts{0}, opp_timeouts{0};
   std::string last_play, down_distance;
+  std::string short_down_distance;  // "3rd & 10"
+  bool is_red_zone{false};
   std::string odds, over_under, tv, venue;
 };
 
