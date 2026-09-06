@@ -53,7 +53,7 @@ The two variant files only differ in panel count. Everything else lives in `game
 
 ## How it works
 
-The `gameday` component asks ESPN's public site API for the team's next event, then polls that day's scoreboard: every 15 minutes while the game is far off, every minute inside the last hour, every 20 seconds during the game, and every minute for half an hour after the final. The JSON is streamed through a filter on the device so a 200KB scoreboard never has to fit in memory at once. Score deltas between polls decide the splashes, the same rules the blueprint uses. Logos are ESPN's dark-background PNGs, decoded and shrunk to 32x32 on the ESP32.
+The `gameday` component asks ESPN's public site API for the team's next event, then polls that day's scoreboard: every 15 minutes while the game is far off, every minute inside the last hour, every 10 seconds during the game, and every minute for half an hour after the final. The JSON is streamed through a filter on the device so a 200KB scoreboard never has to fit in memory at once. Score deltas between polls decide the splashes, the same rules the blueprint uses. Logos are ESPN's dark-background PNGs, decoded and shrunk to 32x32 on the ESP32.
 
 The parser and game logic have host tests: `make -C tests` (needs g++). To refresh the team list at the start of a season, run `python scripts/build_teams.py` and commit the regenerated header.
 
@@ -62,7 +62,7 @@ The parser and game logic have host tests: `make -C tests` (needs g++). To refre
 - ESPN's API is unofficial and can change without notice. The device sends a curl-style User-Agent because ESPN's edge rejects unfamiliar ones.
 - TLS certificate verification is off for the ESPN requests so the prebuilt binary keeps working when their certificate chain rotates. Scores are public data.
 - Team logos are ESPN's and are fetched at runtime, not bundled.
-- A fetch briefly pauses the ticker animation while the document downloads. During a game that is about a second every 20 seconds.
+- Fetching runs on its own task, so the panel animation keeps going while a document downloads.
 
 ## Credits
 

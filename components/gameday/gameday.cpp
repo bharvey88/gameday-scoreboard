@@ -8,6 +8,9 @@
 
 #include "timezones.h"
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 namespace esphome {
 namespace gameday {
 
@@ -20,7 +23,7 @@ static const uint32_t MINUTE = 60 * 1000;
 static const uint32_t SCHEDULE_INTERVAL = 6 * 60 * MINUTE;
 static const uint32_t PRE_FAR_INTERVAL = 15 * MINUTE;
 static const uint32_t PRE_NEAR_INTERVAL = MINUTE;
-static const uint32_t IN_INTERVAL = 20 * 1000;
+static const uint32_t IN_INTERVAL = 10 * 1000;
 static const uint32_t POST_INTERVAL = MINUTE;
 static const uint32_t POST_LINGER = 30 * MINUTE;
 static const uint32_t RETRY_INTERVAL = MINUTE;
@@ -61,7 +64,6 @@ class ContainerReader {
       return true;
     if (this->eof_)
       return false;
-    App.feed_wdt();
     int n = this->container_->read(this->buf_, sizeof(this->buf_));
     if (n <= 0) {
       this->eof_ = true;
@@ -122,17 +124,21 @@ void GamedayComponent::dump_config() {
 }
 
 void GamedayComponent::loop() {
-  if (this->busy_)
+  if (this->busy_) {
+    if (!this->job_done_)
+      return;
+    this->busy_ = false;
+    this->job_done_ = false;
+    this->apply_job_();
     return;
+  }
   if ((int32_t) (millis() - this->next_fetch_ms_) < 0)
     return;
   if (!network::is_connected() || this->time_ == nullptr || !this->time_->now().is_valid()) {
     this->schedule_next_(NOT_READY_INTERVAL);
     return;
   }
-  this->busy_ = true;
-  this->tick_();
-  this->busy_ = false;
+  this->start_job_();
 }
 
 const ::espn::Team *GamedayComponent::current_team_() const {
@@ -164,6 +170,7 @@ void GamedayComponent::select_team(const std::string &option) {
     this->save_prefs_();
     ESP_LOGI(TAG, "Team changed to %s", t.name);
     this->reset_game_();
+    this->generation_++;  // a fetch already in flight belongs to the old team
     this->schedule_next_(0);
     return;
   }
@@ -234,10 +241,7 @@ std::shared_ptr<http_request::HttpContainer> GamedayComponent::open_(const std::
   return container;
 }
 
-bool GamedayComponent::fetch_schedule_() {
-  const ::espn::Team *team = this->current_team_();
-  if (team == nullptr)
-    return false;
+bool GamedayComponent::fetch_schedule_(const ::espn::Team *team, Schedule &out) {
   std::string url = ::espn::team_url(team->league, team->espn_id);
   ESP_LOGD(TAG, "Fetching schedule: %s", url.c_str());
   auto container = this->open_(url);
@@ -251,35 +255,30 @@ bool GamedayComponent::fetch_schedule_() {
     ESP_LOGW(TAG, "Schedule parse failed after %u bytes", (unsigned) reader.total());
     return false;
   }
-  this->schedule_ = s;
-  this->schedule_fetched_ms_ = millis();
   ESP_LOGI(TAG, "Schedule: event %s kickoff %lld group %u (%u bytes)", s.event_id.c_str(),
            (long long) s.kickoff_epoch, (unsigned) s.group, (unsigned) reader.total());
+  out = s;
   return true;
 }
 
-bool GamedayComponent::fetch_game_() {
-  const ::espn::Team *team = this->current_team_();
-  if (team == nullptr)
-    return false;
-  std::string url = ::espn::scoreboard_url(team->league, this->schedule_.group, this->schedule_.kickoff_epoch);
+bool GamedayComponent::fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out) {
+  std::string url = ::espn::scoreboard_url(team->league, schedule.group, schedule.kickoff_epoch);
   ESP_LOGD(TAG, "Fetching game: %s", url.c_str());
   auto container = this->open_(url);
   if (container == nullptr)
     return false;
   ContainerReader reader(container);
   GameSnapshot g;
-  bool ok = ::espn::parse_scoreboard(reader, this->schedule_.event_id, team->espn_id, g);
+  bool ok = ::espn::parse_scoreboard(reader, schedule.event_id, team->espn_id, g);
   container->end();
   if (!ok) {
-    ESP_LOGW(TAG, "Game %s not parsed from scoreboard (%u bytes)", this->schedule_.event_id.c_str(),
+    ESP_LOGW(TAG, "Game %s not parsed from scoreboard (%u bytes)", schedule.event_id.c_str(),
              (unsigned) reader.total());
     return false;
   }
   ESP_LOGI(TAG, "Game: %s %s %d - %s %d [%s] (%u bytes)", ::espn::state_name(g.state), g.team_abbr.c_str(),
            g.team_score, g.opp_abbr.c_str(), g.opp_score, g.short_detail.c_str(), (unsigned) reader.total());
-  this->prev_ = this->game_;
-  this->game_ = g;
+  out = g;
   return true;
 }
 
@@ -299,28 +298,79 @@ uint32_t GamedayComponent::interval_for_phase_() const {
   }
 }
 
-void GamedayComponent::tick_() {
+// Main loop: decide what this cycle needs and hand it to the worker task.
+void GamedayComponent::start_job_() {
   uint32_t now = millis();
-  bool need_schedule = !this->schedule_.valid || (now - this->schedule_fetched_ms_) >= SCHEDULE_INTERVAL;
+  Job &j = this->job_;
+  j = Job{};
+  j.generation = this->generation_;
+  j.team = this->current_team_();
+  if (j.team == nullptr) {
+    this->schedule_next_(SCHEDULE_INTERVAL);
+    return;
+  }
+  j.need_schedule = !this->schedule_.valid || (now - this->schedule_fetched_ms_) >= SCHEDULE_INTERVAL;
   if (this->post_since_ms_ != 0 && (now - this->post_since_ms_) >= POST_LINGER) {
     // Game is over and lingered: look for the next one.
     this->prev_ = GameSnapshot{};
     this->game_ = GameSnapshot{};
     this->post_since_ms_ = 0;
-    need_schedule = true;
+    j.need_schedule = true;
   }
-  if (need_schedule) {
-    if (!this->fetch_schedule_()) {
+  j.schedule = this->schedule_;
+  this->job_done_ = false;
+  this->busy_ = true;
+  // TLS plus a nested JSON parse needs a roomy stack; 16KB has headroom.
+  BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
+  if (ok != pdPASS) {
+    ESP_LOGW(TAG, "Could not start the fetch task");
+    this->busy_ = false;
+    this->schedule_next_(RETRY_INTERVAL);
+  }
+}
+
+void GamedayComponent::worker_(void *arg) {
+  auto *self = static_cast<GamedayComponent *>(arg);
+  self->run_job_();
+  self->job_done_ = true;
+  vTaskDelete(nullptr);
+}
+
+// Worker task: network and parsing only, no display or entity access.
+void GamedayComponent::run_job_() {
+  Job &j = this->job_;
+  if (j.need_schedule) {
+    Schedule s;
+    j.schedule_ok = this->fetch_schedule_(j.team, s);
+    if (!j.schedule_ok)
+      return;
+    j.schedule = s;
+    if (s.event_id.empty()) {
+      j.no_event = true;
+      return;
+    }
+  }
+  j.game_ok = this->fetch_game_(j.team, j.schedule, j.game);
+}
+
+// Main loop: fold the worker's result into the component state and render.
+void GamedayComponent::apply_job_() {
+  Job &j = this->job_;
+  if (j.generation != this->generation_) {
+    ESP_LOGD(TAG, "Discarding a fetch for the previous team");
+    return;
+  }
+  uint32_t now = millis();
+  if (j.need_schedule) {
+    if (!j.schedule_ok) {
       this->misses_++;
-      if (!this->game_.valid) {
-        GameSnapshot none;
-        this->game_ = none;
-      }
       this->emit_({});
       this->schedule_next_(RETRY_INTERVAL);
       return;
     }
-    if (this->schedule_.event_id.empty()) {
+    this->schedule_ = j.schedule;
+    this->schedule_fetched_ms_ = now;
+    if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
       this->misses_ = 0;
@@ -329,12 +379,14 @@ void GamedayComponent::tick_() {
       return;
     }
   }
-  if (!this->fetch_game_()) {
+  if (!j.game_ok) {
     this->misses_++;
     this->emit_({});
     this->schedule_next_(RETRY_INTERVAL);
     return;
   }
+  this->prev_ = this->game_;
+  this->game_ = j.game;
   this->misses_ = 0;
   ::espn::Splash splash = ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes());
   if (this->game_.state == GameState::POST) {

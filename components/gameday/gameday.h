@@ -112,9 +112,25 @@ class GamedayComponent : public Component {
   const ::espn::Team *current_team_() const;
   std::string team_option_() const;
 
-  void tick_();
-  bool fetch_schedule_();
-  bool fetch_game_();
+  // One fetch cycle runs on its own FreeRTOS task so the display loop never
+  // waits on the network. The main loop fills a Job, the worker performs the
+  // HTTP requests and parsing into it, and the main loop applies the result.
+  struct Job {
+    uint32_t generation{0};
+    const ::espn::Team *team{nullptr};
+    bool need_schedule{false};
+    Schedule schedule;
+    bool schedule_ok{false};
+    bool no_event{false};
+    GameSnapshot game;
+    bool game_ok{false};
+  };
+  void start_job_();
+  static void worker_(void *arg);
+  void run_job_();
+  void apply_job_();
+  bool fetch_schedule_(const ::espn::Team *team, Schedule &out);
+  bool fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out);
   std::shared_ptr<http_request::HttpContainer> open_(const std::string &url);
   void schedule_next_(uint32_t ms) { this->next_fetch_ms_ = millis() + ms; }
   uint32_t interval_for_phase_() const;
@@ -137,7 +153,10 @@ class GamedayComponent : public Component {
   uint32_t post_since_ms_{0};
   uint32_t next_fetch_ms_{0};
   uint8_t misses_{0};
+  Job job_;
+  uint32_t generation_{0};
   bool busy_{false};
+  volatile bool job_done_{false};
 };
 
 class UpdateTrigger : public Trigger<const UpdateFields &> {
