@@ -36,7 +36,7 @@ def team_options():
     text = (COMPONENT_DIR / "teams.h").read_text(encoding="utf-8")
     opts = []
     for league, _tid, _abbr, name, _group in _TEAM_RE.findall(text):
-        prefix = "NFL" if league == "NFL" else "NCAA"
+        prefix = "NFL" if league == "NFL" else "NCAAF"
         opts.append(f"{prefix}: {name}")
     if len(opts) < 100:
         raise cv.Invalid("teams.h looks truncated; run scripts/build_teams.py")

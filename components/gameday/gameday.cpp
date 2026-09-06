@@ -148,13 +148,13 @@ std::string GamedayComponent::team_option_() const {
   const ::espn::Team *t = this->current_team_();
   if (t == nullptr)
     return "";
-  return std::string(t->league == League::NFL ? "NFL: " : "NCAA: ") + t->name;
+  return std::string(t->league == League::NFL ? "NFL: " : "NCAAF: ") + t->name;
 }
 
 void GamedayComponent::select_team(const std::string &option) {
   for (size_t i = 0; i < ::espn::kTeamCount; i++) {
     const auto &t = ::espn::kTeams[i];
-    std::string name = std::string(t.league == League::NFL ? "NFL: " : "NCAA: ") + t.name;
+    std::string name = std::string(t.league == League::NFL ? "NFL: " : "NCAAF: ") + t.name;
     if (name != option)
       continue;
     if ((uint8_t) t.league == this->prefs_.league && t.espn_id == this->prefs_.team_id)
