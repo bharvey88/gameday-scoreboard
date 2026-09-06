@@ -25,7 +25,9 @@ It is the standalone cousin of [gameday-matrix](https://github.com/bharvey88/gam
 
 Team changes take effect immediately and survive reboots. Nothing needs reflashing to change teams.
 
-## Controls on the device page
+## The device page
+
+The M-1 serves its own page: a live board that mirrors the panel (logos, score, clock, down and distance, timeout pips, last play), a team chooser with logos and search, and the settings grouped in plain language. It is plain HTML and JavaScript embedded in the firmware, so it works with no internet beyond the logos. Home Assistant users get the same controls as entities.
 
 | Control | What it does |
 | --- | --- |
@@ -49,7 +51,7 @@ cd gameday-scoreboard/firmware
 esphome run gameday-128x64.yaml
 ```
 
-The two variant files only differ in panel count. Everything else lives in `gameday-common.yaml`, the scoreboard page in `pages/gameday-live.yaml`, and the ESPN logic in `components/gameday`. The controller, theme and clock packages come from [hub75-studio](https://github.com/pavlov-net/hub75-studio), pinned to a commit.
+The two variant files only differ in panel count. Everything else lives in `gameday-common.yaml`, the scoreboard page in `pages/gameday-live.yaml`, the ESPN logic in `components/gameday`, and the device web page in `firmware/web` (edit `app.js` or `app.css`, then run `python scripts/build_web.py` to refresh the embedded bundle). The controller, theme and clock packages come from [hub75-studio](https://github.com/pavlov-net/hub75-studio), pinned to a commit.
 
 ## How it works
 

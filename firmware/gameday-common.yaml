@@ -5,7 +5,7 @@
 substitutions:
   name: "gameday-scoreboard"
   friendly_name: "Game Day Scoreboard"
-  version: "0.1.3"
+  version: "0.2.0"
   variant: "64x64"
 
   display_panel_width: "64"
@@ -23,6 +23,7 @@ esphome:
   name: "${name}"
   friendly_name: "${friendly_name}"
   name_add_mac_suffix: true
+  comment: "v${version}"
   build_path: build/gameday-${variant}
   project:
     name: bharvey88.gameday-scoreboard
@@ -79,6 +80,9 @@ improv_serial:
 
 web_server:
   version: 3
+  # Custom page (firmware/web). Regenerate bundle.js with scripts/build_web.py.
+  js_include: web/bundle.js
+  css_include: web/app.css
 
 http_request:
   id: http_client
@@ -143,6 +147,9 @@ gameday:
     - text_sensor.template.publish:
         id: gd_last_play_sensor
         state: !lambda 'return x.last_play;'
+    - text_sensor.template.publish:
+        id: gd_game_sensor
+        state: !lambda 'return x.json;'
     - script.execute:
         id: gd_update
         game_state: !lambda 'return x.game_state;'
@@ -332,6 +339,11 @@ text_sensor:
     name: "Last Play"
     id: gd_last_play_sensor
     icon: "mdi:football-helmet"
+  - platform: template
+    name: "Game"
+    id: gd_game_sensor
+    icon: "mdi:code-json"
+    entity_category: diagnostic
   - platform: wifi_info
     ip_address:
       name: "IP"

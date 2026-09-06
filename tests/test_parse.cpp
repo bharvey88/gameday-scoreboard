@@ -96,6 +96,8 @@ static void test_scoreboard_live() {
   CHECK(s.state == GameState::IN);
   CHECK_EQ(s.team_abbr, std::string("BOIS"));
   CHECK_EQ(s.opp_abbr, std::string("ORE"));
+  CHECK_EQ(s.team_id, kBoise);
+  CHECK_EQ(s.opp_id, kOregon);
   CHECK_EQ(s.team_score, 24);
   CHECK_EQ(s.opp_score, 24);
   CHECK_EQ(s.possession, 2);  // Oregon has the ball

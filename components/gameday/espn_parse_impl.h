@@ -109,6 +109,7 @@ inline bool snapshot_from_event(JsonObjectConst ev, uint32_t our_team_id, GameSn
       found_us = true;
     std::string &t_abbr = ours ? s.team_abbr : s.opp_abbr;
     t_abbr = abbr;
+    (ours ? s.team_id : s.opp_id) = id;
     (ours ? s.team_score : s.opp_score) = score;
     (ours ? s.team_record : s.opp_record) = record;
     (ours ? s.team_color : s.opp_color) = color;

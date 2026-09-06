@@ -108,11 +108,20 @@ void GamedayComponent::setup() {
   if (this->prefs_.tz_index >= ::espn::kTimezoneCount)
     this->prefs_.tz_index = ::espn::kDefaultTimezone;
   this->apply_timezone_();
+  this->publish_selects_();
+  this->schedule_next_(3000);
+}
+
+// Push the stored choices into the two selects. Runs at setup and once more
+// after the network is up, so the web page and the API always see them.
+void GamedayComponent::publish_selects_() {
+  std::string team = this->team_option_();
+  ESP_LOGI(TAG, "Publishing selects: team '%s', timezone '%s'", team.c_str(),
+           ::espn::kTimezones[this->prefs_.tz_index].name);
   if (this->team_select_ != nullptr)
-    this->team_select_->publish_state(this->team_option_());
+    this->team_select_->publish_state(team);
   if (this->timezone_select_ != nullptr)
     this->timezone_select_->publish_state(::espn::kTimezones[this->prefs_.tz_index].name);
-  this->schedule_next_(3000);
 }
 
 void GamedayComponent::dump_config() {
@@ -137,6 +146,10 @@ void GamedayComponent::loop() {
   if (!network::is_connected() || this->time_ == nullptr || !this->time_->now().is_valid()) {
     this->schedule_next_(NOT_READY_INTERVAL);
     return;
+  }
+  if (!this->selects_published_) {
+    this->selects_published_ = true;
+    this->publish_selects_();
   }
   this->start_job_();
 }
@@ -444,6 +457,23 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   f.status_text = ::espn::status_text(g, opts, kickoff);
   if (this->misses_ >= 3)
     f.status_text += " *";
+
+  // Compact JSON for the web page. Kept under 255 bytes so Home Assistant
+  // accepts it as a text sensor state too.
+  {
+    const ::espn::Team *team = this->current_team_();
+    char buf[320];
+    snprintf(buf, sizeof(buf),
+             "{\"s\":\"%s\",\"l\":\"%s\",\"ta\":\"%s\",\"ti\":%u,\"ts\":%d,\"oa\":\"%s\",\"oi\":%u,\"os\":%d,"
+             "\"tr\":\"%s\",\"or\":\"%s\",\"c\":\"%s\",\"d\":\"%s\",\"p\":%d,\"tt\":%d,\"ot\":%d,"
+             "\"tc\":\"%06X\",\"oc\":\"%06X\",\"rz\":%d,\"tv\":\"%s\",\"k\":\"%s\",\"m\":%d}",
+             f.game_state.c_str(), team && team->league == League::NFL ? "nfl" : "ncaa", g.team_abbr.c_str(),
+             (unsigned) g.team_id, g.team_score, g.opp_abbr.c_str(), (unsigned) g.opp_id, g.opp_score,
+             g.team_record.c_str(), g.opp_record.c_str(), f.clock_text.c_str(), f.down_distance.c_str(), g.possession,
+             g.team_timeouts, g.opp_timeouts, (unsigned) f.team_color, (unsigned) f.opponent_color, f.is_red_zone ? 1 : 0,
+             g.tv.c_str(), kickoff.c_str(), (int) this->misses_);
+    f.json = buf;
+  }
 
   if (!f.splash_text.empty())
     ESP_LOGI(TAG, "Splash: %s", f.splash_text.c_str());

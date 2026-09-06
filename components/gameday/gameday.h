@@ -46,6 +46,7 @@ struct UpdateFields {
   bool is_red_zone{false};
   uint32_t team_color{0xFFFFFF};
   uint32_t opponent_color{0xFFFFFF};
+  std::string json;  // compact snapshot for the device web page
 };
 
 enum class SelectType : uint8_t { TEAM, TIMEZONE };
@@ -112,6 +113,7 @@ class GamedayComponent : public Component {
   bool flag_(uint8_t f) const { return (this->prefs_.flags & f) != 0; }
   void set_flag_(uint8_t f, bool on);
   void save_prefs_();
+  void publish_selects_();
   void apply_timezone_();
   const ::espn::Team *current_team_() const;
   std::string team_option_() const;
@@ -160,6 +162,7 @@ class GamedayComponent : public Component {
   Job job_;
   uint32_t generation_{0};
   bool busy_{false};
+  bool selects_published_{false};
   volatile bool job_done_{false};
 };
 

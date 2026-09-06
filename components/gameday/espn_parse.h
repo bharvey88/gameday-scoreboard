@@ -33,6 +33,7 @@ struct GameSnapshot {
   std::string display_clock;
   int period{0};
   std::string team_abbr, opp_abbr;
+  uint32_t team_id{0}, opp_id{0};
   int team_score{0}, opp_score{0};
   std::string team_record, opp_record;
   std::string team_color, opp_color;
