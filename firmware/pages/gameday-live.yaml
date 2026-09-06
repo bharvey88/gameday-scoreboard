@@ -74,12 +74,12 @@ script:
             lv_obj_set_pos(id(tt_home_rec_lbl), W - 36, 38);
             lv_obj_set_width(id(tt_home_rec_lbl), 36);
             // Down and distance under the clock, in the middle
-            lv_obj_set_pos(id(tt_down_lbl), 36, 48);
-            lv_obj_set_width(id(tt_down_lbl), W - 72);
+            lv_obj_set_pos(id(tt_down_lbl), 32, 48);
+            lv_obj_set_width(id(tt_down_lbl), W - 64);
             // Game clock takes the records row while the game is live
             lv_obj_set_style_text_font(id(tt_clock_lbl), id(spleen_12), 0);
-            lv_obj_set_pos(id(tt_clock_lbl), 36, 35);
-            lv_obj_set_width(id(tt_clock_lbl), W - 72);
+            lv_obj_set_pos(id(tt_clock_lbl), 32, 35);
+            lv_obj_set_width(id(tt_clock_lbl), W - 64);
             // Timeout pips centered under each logo
             const int acx = 18, hcx = W - 18;
             for (int i = 0; i < 3; i++) {
@@ -340,6 +340,7 @@ lvgl:
                   y: 33
                   width: 64
                   text_align: CENTER
+                  long_mode: CLIP
                   hidden: true
                   text: ""
                   styles: ["tt_st_score_text"]
@@ -350,6 +351,7 @@ lvgl:
                   y: 48
                   width: 64
                   text_align: CENTER
+                  long_mode: CLIP
                   hidden: true
                   text: ""
                   styles: ["tt_st_status_text"]
