@@ -5,7 +5,7 @@
 substitutions:
   name: "gameday-scoreboard"
   friendly_name: "Game Day Scoreboard"
-  version: "0.3.0"
+  version: "0.4.0"
   variant: "64x64"
 
   display_panel_width: "64"
@@ -58,6 +58,7 @@ packages:
           page_friendly_name: "Clock"
   boot: !include pages/boot.yaml
   scoreboard: !include pages/gameday-live.yaml
+  wizmote: !include pages/wizmote.yaml
 
 logger:
   baud_rate: 115200
@@ -224,6 +225,34 @@ select:
     type: mode
     name: "Mode"
     icon: "mdi:shuffle-variant"
+  - platform: gameday
+    gameday_id: gameday_ctl
+    type: favorite
+    slot: 1
+    name: "Favorite 1"
+    icon: "mdi:numeric-1-box"
+    entity_category: config
+  - platform: gameday
+    gameday_id: gameday_ctl
+    type: favorite
+    slot: 2
+    name: "Favorite 2"
+    icon: "mdi:numeric-2-box"
+    entity_category: config
+  - platform: gameday
+    gameday_id: gameday_ctl
+    type: favorite
+    slot: 3
+    name: "Favorite 3"
+    icon: "mdi:numeric-3-box"
+    entity_category: config
+  - platform: gameday
+    gameday_id: gameday_ctl
+    type: favorite
+    slot: 4
+    name: "Favorite 4"
+    icon: "mdi:numeric-4-box"
+    entity_category: config
   - platform: gameday
     gameday_id: gameday_ctl
     type: timezone

@@ -87,6 +87,18 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
         <div id="panelCtls"></div>
       </div>
       <div class="card">
+        <h2>Favorites</h2>
+        <p class="hint">Buttons 1 to 4 on a WizMote remote jump straight to these teams.</p>
+        <div id="favCtls"></div>
+      </div>
+      <div class="card">
+        <h2>Remote</h2>
+        <p class="hint">Pair a WizMote: turn on discovery, then press any button on the remote.</p>
+        <div class="ctl"><label>Status</label><span class="val" id="wizStatus" style="min-width:0;text-align:left"></span></div>
+        <div id="remoteCtls"></div>
+        <div class="actions" id="remoteActions" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
         <h2>Device</h2>
         <div class="actions" id="actions"></div>
         <div class="fw" id="fw" hidden>
@@ -245,6 +257,12 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     { name: "Brightness", into: "#panelCtls", label: "Brightness" },
     { name: "Scroll Speed", into: "#panelCtls", label: "Ticker speed" },
     { name: "Select Page", into: "#panelCtls", label: "Showing" },
+    { name: "Favorite 1", into: "#favCtls", label: "Button 1" },
+    { name: "Favorite 2", into: "#favCtls", label: "Button 2" },
+    { name: "Favorite 3", into: "#favCtls", label: "Button 3" },
+    { name: "Favorite 4", into: "#favCtls", label: "Button 4" },
+    { name: "WizMote Auto-Discovery", into: "#remoteCtls", label: "Discovery" },
+    { name: "Clear WizMote Pairing", into: "#remoteActions", label: "Unpair remote", danger: true },
     { name: "Refresh Now", into: "#actions", label: "Refresh scores" },
     { name: "Check for Updates", into: "#actions", label: "Check for updates" },
     { name: "Reboot", into: "#actions", label: "Reboot", danger: true },
@@ -257,7 +275,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     if (domain === "button") {
       const b = el("button", "btn" + (def.danger ? " danger" : ""), def.label);
       b.onclick = () => {
-        if (def.danger && !confirm("Reboot the panel now?")) return;
+        if (def.danger && !confirm(def.label + "?")) return;
         post(e.id, "press");
         toast(def.label);
       };
@@ -619,6 +637,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       case "Firmware": renderUpdate(ents[e.id]); break;
       case "Timezone":
       case "Auto Timezone": renderTime(); break;
+      case "WizMote Status": $("#wizStatus").textContent = e.value || ""; break;
       case "IP": $("#ip").textContent = e.value || ""; break;
       case "RSSI": $("#rssi").textContent = e.value ? e.value + " dBm" : ""; break;
       case "Free Heap (PSRAM)": $("#psram").textContent = e.value ? Math.round(e.value) + " KiB" : ""; break;

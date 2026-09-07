@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.4.0
+
+- WizMote remote support. Turn on discovery in the Remote card, press any button on the remote, and it's paired. ON and OFF control the panel, the brightness buttons work, NIGHT dims it.
+- Four favorite teams. Set them in the Favorites card; buttons 1 to 4 on the remote switch the panel to that team (and back to My team mode if it was showing live games).
+
 ## v0.3.0
 
 - Live game modes. A new Show dropdown on the device page: My team, Live NFL, Live college, or Live anything. In a live mode the panel picks a game in progress at random, follows it, and jumps to another when it ends or when the "switch games every" timer runs out (2 to 30 minutes, default 5).

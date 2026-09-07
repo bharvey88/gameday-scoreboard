@@ -36,6 +36,8 @@ The M-1 serves its own page: a live board that mirrors the panel (logos, score, 
 | Timezone | US zones plus UTC, UK and Central Europe; used for kickoff times |
 | Ticker: Down and Distance, Last Play, Odds and TV | Choose what scrolls along the bottom |
 | Opponent Splashes | Turn the opponent's scoring splashes off if you only want yours |
+| Favorite 1 to 4 | Teams for the numbered buttons on a WizMote remote |
+| WizMote Auto-Discovery, Clear WizMote Pairing | Pair a WizMote: turn discovery on, press any button on the remote. ON/OFF, brightness and NIGHT buttons control the panel |
 | Refresh Now | Re-fetch the schedule and game right away |
 | Firmware / Check for Updates | The device checks this project's releases every 6 hours; an Install button appears on the page when a newer version exists and updates over WiFi |
 | Brightness, Power, Scroll Speed | Panel brightness, panel on or off, ticker speed |

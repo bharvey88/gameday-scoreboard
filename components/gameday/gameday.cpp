@@ -99,6 +99,8 @@ void GamedaySelect::control(const std::string &value) {
     this->parent_->select_team(value);
   else if (this->type_ == SelectType::MODE)
     this->parent_->select_mode(value);
+  else if (this->type_ == SelectType::FAVORITE)
+    this->parent_->select_favorite(this->slot_, value);
   else
     this->parent_->select_timezone(value);
 }
@@ -121,9 +123,69 @@ void GamedayComponent::setup() {
     this->prefs2_.mode = (uint8_t) Mode::MY_TEAM;
     this->prefs2_.rotate_minutes = 5;
   }
+  this->pref3_ = global_preferences->make_preference<Prefs3>(fnv1_hash("gameday_prefs3_v1"));
+  if (!this->pref3_.load(&this->prefs3_))
+    this->prefs3_ = Prefs3{};
   this->apply_timezone_();
   this->publish_selects_();
   this->schedule_next_(3000);
+}
+
+std::string GamedayComponent::favorite_option_(uint8_t slot) const {
+  if (slot < 1 || slot > 4 || this->prefs3_.fav_id[slot - 1] == 0)
+    return "None";
+  for (size_t i = 0; i < ::espn::kTeamCount; i++) {
+    const auto &t = ::espn::kTeams[i];
+    if ((uint8_t) t.league == this->prefs3_.fav_league[slot - 1] && t.espn_id == this->prefs3_.fav_id[slot - 1])
+      return std::string(t.league == League::NFL ? "NFL: " : "NCAAF: ") + t.name;
+  }
+  return "None";
+}
+
+void GamedayComponent::select_favorite(uint8_t slot, const std::string &option) {
+  if (slot < 1 || slot > 4)
+    return;
+  uint8_t league = 0;
+  uint32_t id = 0;
+  if (option != "None") {
+    for (size_t i = 0; i < ::espn::kTeamCount; i++) {
+      const auto &t = ::espn::kTeams[i];
+      if (std::string(t.league == League::NFL ? "NFL: " : "NCAAF: ") + t.name == option) {
+        league = (uint8_t) t.league;
+        id = t.espn_id;
+        break;
+      }
+    }
+    if (id == 0) {
+      ESP_LOGW(TAG, "Unknown favorite '%s'", option.c_str());
+      return;
+    }
+  }
+  this->prefs3_.fav_league[slot - 1] = league;
+  this->prefs3_.fav_id[slot - 1] = id;
+  this->pref3_.save(&this->prefs3_);
+  ESP_LOGI(TAG, "Favorite %u: %s", (unsigned) slot, option.c_str());
+}
+
+void GamedayComponent::press_favorite(uint8_t slot) {
+  std::string option = this->favorite_option_(slot);
+  if (option == "None") {
+    ESP_LOGI(TAG, "Favorite %u is empty", (unsigned) slot);
+    return;
+  }
+  ESP_LOGI(TAG, "Remote button %u: %s", (unsigned) slot, option.c_str());
+  if (this->prefs2_.mode != (uint8_t) Mode::MY_TEAM) {
+    this->prefs2_.mode = (uint8_t) Mode::MY_TEAM;
+    this->pref2_.save(&this->prefs2_);
+    if (this->mode_select_ != nullptr)
+      this->mode_select_->publish_state(MODE_OPTIONS[0]);
+    this->reset_game_();
+    this->generation_++;
+    this->schedule_next_(0);
+  }
+  if (this->team_select_ != nullptr)
+    this->team_select_->publish_state(option);
+  this->select_team(option);
 }
 
 // Push the stored choices into the two selects. Runs at setup and once more
@@ -138,6 +200,9 @@ void GamedayComponent::publish_selects_() {
     this->timezone_select_->publish_state(::espn::kTimezones[this->prefs_.tz_index].name);
   if (this->mode_select_ != nullptr)
     this->mode_select_->publish_state(MODE_OPTIONS[this->prefs2_.mode]);
+  for (uint8_t slot = 1; slot <= 4; slot++)
+    if (this->favorite_selects_[slot - 1] != nullptr)
+      this->favorite_selects_[slot - 1]->publish_state(this->favorite_option_(slot));
 }
 
 void GamedayComponent::select_mode(const std::string &option) {

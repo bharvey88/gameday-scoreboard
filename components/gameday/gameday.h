@@ -49,7 +49,7 @@ struct UpdateFields {
   std::string json;  // compact snapshot for the device web page
 };
 
-enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE };
+enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE, FAVORITE };
 
 enum class Mode : uint8_t { MY_TEAM = 0, LIVE_NFL = 1, LIVE_NCAA = 2, LIVE_ANY = 3 };
 
@@ -58,11 +58,13 @@ class GamedayComponent;
 class GamedaySelect : public select::Select, public Component {
  public:
   void set_type(SelectType type) { this->type_ = type; }
+  void set_slot(uint8_t slot) { this->slot_ = slot; }
   void set_parent(GamedayComponent *parent) { this->parent_ = parent; }
 
  protected:
   void control(const std::string &value) override;
   SelectType type_{SelectType::TEAM};
+  uint8_t slot_{0};
   GamedayComponent *parent_{nullptr};
 };
 
@@ -73,6 +75,10 @@ class GamedayComponent : public Component {
   void set_team_select(select::Select *s) { this->team_select_ = s; }
   void set_timezone_select(select::Select *s) { this->timezone_select_ = s; }
   void set_mode_select(select::Select *s) { this->mode_select_ = s; }
+  void set_favorite_select(uint8_t slot, select::Select *s) {
+    if (slot >= 1 && slot <= 4)
+      this->favorite_selects_[slot - 1] = s;
+  }
   void add_on_update_callback(std::function<void(const UpdateFields &)> &&cb) {
     this->callbacks_.push_back(std::move(cb));
   }
@@ -81,6 +87,9 @@ class GamedayComponent : public Component {
   void select_team(const std::string &option);
   void select_timezone(const std::string &option);
   void select_mode(const std::string &option);
+  // Favorites: four team slots for the remote's numbered buttons.
+  void select_favorite(uint8_t slot, const std::string &option);
+  void press_favorite(uint8_t slot);
   void set_rotate_minutes(int minutes);
   int rotate_minutes() const { return this->prefs2_.rotate_minutes; }
   void refresh_now();
@@ -124,6 +133,10 @@ class GamedayComponent : public Component {
   struct Prefs2 {
     uint8_t mode;
     uint8_t rotate_minutes;
+  } __attribute__((packed));
+  struct Prefs3 {
+    uint8_t fav_league[4];
+    uint32_t fav_id[4];  // 0 = slot empty
   } __attribute__((packed));
 
   bool flag_(uint8_t f) const { return (this->prefs_.flags & f) != 0; }
@@ -177,6 +190,10 @@ class GamedayComponent : public Component {
   ESPPreferenceObject pref2_;
   Prefs2 prefs2_{};
   select::Select *mode_select_{nullptr};
+  select::Select *favorite_selects_[4]{nullptr, nullptr, nullptr, nullptr};
+  ESPPreferenceObject pref3_;
+  Prefs3 prefs3_{};
+  std::string favorite_option_(uint8_t slot) const;
   uint32_t live_away_id_{0};      // the followed live game's away team
   uint32_t live_started_ms_{0};   // when the current live game was picked
   bool live_none_{false};         // last scan found nothing in progress
