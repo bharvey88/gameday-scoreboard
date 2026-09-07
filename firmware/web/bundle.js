@@ -480,6 +480,25 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     }
   };
 
+  // After an install the device reboots. The event stream only retries every
+  // 30 seconds, so poll the root page instead and reload as soon as it answers.
+  let es = null;
+  const waitForReboot = () => {
+    const started = Date.now();
+    let sawDown = false;
+    const tick = async () => {
+      try {
+        const r = await fetch("/?" + Date.now(), { cache: "no-store" });
+        if (r.ok && (sawDown || Date.now() - started > 45000)) { location.reload(); return; }
+      } catch (_) {
+        sawDown = true;
+        if (es) { es.close(); es = null; }
+      }
+      if (Date.now() - started < 5 * 60 * 1000) setTimeout(tick, 2000);
+    };
+    setTimeout(tick, 4000);
+  };
+
   // ---- firmware update -----------------------------------------------------
   let installing = false;
   const renderUpdate = (u) => {
@@ -504,6 +523,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
         renderUpdate(u);
         post(u.id, "install");
         toast("Installing " + latest);
+        waitForReboot();
       };
     } else if (st.includes("NO UPDATE")) {
       $("#fwText").textContent = "Firmware " + cur + " is up to date";
@@ -550,7 +570,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
   };
 
   const connect = () => {
-    const es = new EventSource("/events");
+    es = new EventSource("/events");
     es.addEventListener("ping", (ev) => {
       setConn(true);
       if (!ev.data) return;
@@ -563,10 +583,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     es.addEventListener("state", (ev) => {
       try { onState(JSON.parse(ev.data)); } catch (_) {}
     });
-    es.onopen = () => {
-      if (installing) location.reload();
-      setConn(true);
-    };
+    es.onopen = () => setConn(true);
     es.onerror = () => setConn(false);
   };
   connect();

@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.2.5
+
+- After installing an update from the device page, the page now reloads itself as soon as the panel is back, instead of waiting on the slow reconnect.
+
 ## v0.2.4
 
 - The timezone now sets itself from whatever browser opens the device page. Picking a zone by hand turns that off so your choice sticks; the "Set from this browser" toggle in the Time card turns it back on.
