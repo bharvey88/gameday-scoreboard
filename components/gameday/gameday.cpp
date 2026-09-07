@@ -443,7 +443,7 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   f.splash_color = splash.color;
 
   TickerOptions opts;
-  opts.clock = this->ticker_clock();
+  opts.clock = false;  // the clock has its own row on the panel; never in the ticker
   opts.down_distance = this->ticker_down_distance();
   opts.last_play = this->ticker_last_play();
   opts.odds = this->ticker_odds();

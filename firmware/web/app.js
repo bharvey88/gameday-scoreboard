@@ -200,7 +200,6 @@
 
   // ---- controls --------------------------------------------------------
   const controlDefs = [
-    { name: "Ticker: Game Clock", into: "#tickerCtls", label: "Game clock" },
     { name: "Ticker: Down and Distance", into: "#tickerCtls", label: "Down and distance" },
     { name: "Ticker: Last Play", into: "#tickerCtls", label: "Last play" },
     { name: "Ticker: Odds and TV", into: "#tickerCtls", label: "Pre-game odds and TV" },

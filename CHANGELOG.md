@@ -12,6 +12,7 @@ owns the panel, not for the code.
 
 - The timezone now sets itself from whatever browser opens the device page. Picking a zone by hand turns that off so your choice sticks; the "Set from this browser" toggle in the Time card turns it back on.
 - Shorter timezone list (US, Canada, Mexico, UK, Central Europe, Australia, UTC) and the stray "Display name" entry is gone.
+- Removed the "Game clock in the ticker" toggle. The clock has its own row on the panel.
 
 ## v0.2.3
 

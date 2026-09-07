@@ -242,17 +242,6 @@ switch:
           id: matrix
           brightness: 0
   - platform: template
-    name: "Ticker: Game Clock"
-    id: gd_sw_clock
-    icon: "mdi:clock-outline"
-    entity_category: config
-    restore_mode: DISABLED
-    lambda: 'return id(gameday_ctl).ticker_clock();'
-    turn_on_action:
-      - lambda: 'id(gameday_ctl).set_ticker_clock(true);'
-    turn_off_action:
-      - lambda: 'id(gameday_ctl).set_ticker_clock(false);'
-  - platform: template
     name: "Ticker: Down and Distance"
     id: gd_sw_down
     icon: "mdi:ruler"
