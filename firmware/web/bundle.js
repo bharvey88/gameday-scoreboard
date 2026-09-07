@@ -121,14 +121,19 @@ const TEAMS=[["nfl",22,"ARI","Arizona Cardinals"],["nfl",1,"ATL","Atlanta Falcon
     toastTimer = setTimeout(() => n.classList.remove("on"), 1800);
   };
 
+  // Entity ids come as "domain/Name" (ESPHome 2026.x) or "domain-object_id"
+  // (older builds). Control URLs are /{domain}/{entity name}/{action}, matched
+  // against the entity's name, so the name is what goes in the URL.
+  const domainOf = (e) => e.domain || String(e.id || "").split(/[\/-]/)[0];
   const post = async (id, action, params, attempt = 0) => {
-    const [domain, ...rest] = id.split("-");
-    const objectId = rest.join("-");
+    const e = ents[id] || { id };
+    const domain = domainOf(e);
+    const target = e.name || String(id).split("/")[1] || String(id).split("-").slice(1).join("-");
     const qs = params
       ? "?" + Object.entries(params).map(([k, v]) => k + "=" + encodeURIComponent(v)).join("&")
       : "";
     try {
-      const r = await fetch(`/${domain}/${objectId}/${action}${qs}`, { method: "POST" });
+      const r = await fetch(`/${domain}/${encodeURIComponent(target)}/${action}${qs}`, { method: "POST" });
       if (!r.ok) throw new Error("HTTP " + r.status);
     } catch (e) {
       if (attempt < 1) {
@@ -213,7 +218,7 @@ const TEAMS=[["nfl",22,"ARI","Arizona Cardinals"],["nfl",1,"ATL","Atlanta Falcon
   const built = {};
 
   const buildControl = (def, e) => {
-    const domain = e.id.split("-")[0];
+    const domain = domainOf(e);
     const host = $(def.into);
     if (domain === "button") {
       const b = el("button", "btn" + (def.danger ? " danger" : ""), def.label);
