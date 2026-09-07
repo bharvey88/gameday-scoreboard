@@ -15,6 +15,7 @@ enum class GameState : uint8_t { NOT_FOUND, PRE, IN, POST };
 // What the team endpoint tells us about the next game.
 struct Schedule {
   bool valid{false};
+  uint8_t league{0};  // League as uint8_t; set for live-mode games
   std::string event_id;
   int64_t kickoff_epoch{0};
   uint32_t group{0};
@@ -47,6 +48,15 @@ struct GameSnapshot {
   std::string odds, over_under, tv, venue;
 };
 
+// A game found by scanning a day's scoreboard (live-game modes).
+struct LiveGame {
+  uint8_t league{0};
+  std::string event_id;
+  uint32_t group{0};        // home team's conference, for the follow-up polls
+  uint32_t away_id{0};      // shown on the left, like a broadcast
+  std::string away_abbr, home_abbr;
+};
+
 struct TickerOptions {
   bool clock{true};
   bool down_distance{true};
@@ -62,13 +72,15 @@ struct Splash {
 const char *league_path(League league);
 std::string team_url(League league, uint32_t espn_id);
 std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch);
+std::string scan_url(League league, int64_t now_epoch);  // every game of the day for one league
 std::string dark_logo(const std::string &url);
 
 bool parse_team_str(const std::string &json, Schedule &out);
 bool parse_scoreboard_str(const std::string &json, const std::string &event_id, uint32_t our_team_id,
                           GameSnapshot &out);
 
-Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes);
+// neutral = nobody is "our" team (live-game modes): both sides splash with their abbreviation.
+Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral = false);
 uint32_t parse_color(const std::string &hex);
 std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local);
 std::string kickoff_label(const struct tm &kick_local, const struct tm &now_local);

@@ -62,6 +62,11 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       <div class="cur"><img id="curLogo" alt=""><div><div class="name" id="curName">No team chosen</div><div class="lg" id="curLg">Pick the team the panel should follow</div></div></div>
       <button class="btn primary" id="pick">Change team</button>
     </div>
+    <div class="modebar">
+      <div class="ctl"><label>Show</label><select id="modeSel"></select></div>
+      <div class="ctl" id="rotateRow"><label>Switch games every</label><input type="range" id="rotate" min="2" max="30" step="1"><span class="val" id="rotateVal"></span></div>
+      <p class="hint" id="modeNote"></p>
+    </div>
 
     <div class="grid">
       <div class="card">
@@ -178,7 +183,8 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       st.textContent = g ? "NO GAME" : "WAITING";
       st.classList.remove("live");
       msg.hidden = false;
-      msg.textContent = g ? "No upcoming game for this team" : "Waiting for the first fetch";
+      const liveMode = g && g.md && g.md !== 0;
+      msg.textContent = !g ? "Waiting for the first fetch" : liveMode ? "No live games right now" : "No upcoming game for this team";
       $("#clock").innerHTML = "&nbsp;";
       $("#down").textContent = "";
       return;
@@ -199,6 +205,34 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     d.textContent = g.s === "IN" ? g.d || "" : g.s === "PRE" && g.tv ? "on " + g.tv : "";
     d.classList.toggle("rz", g.s === "IN" && !!g.rz);
     $("#stale").classList.toggle("on", (g.m || 0) >= 3);
+  };
+
+  // ---- mode bar --------------------------------------------------------------
+  const renderMode = () => {
+    const mid = byName["Mode"];
+    const rid = byName["Rotate Minutes"];
+    if (!mid) return;
+    const sel = $("#modeSel");
+    const m = ents[mid];
+    if (m.option && sel.options.length !== m.option.length) {
+      sel.innerHTML = "";
+      m.option.forEach((o) => sel.appendChild(el("option", null, o)));
+    }
+    if (document.activeElement !== sel) sel.value = m.value;
+    sel.onchange = () => { post(mid, "set", { option: sel.value }); toast(sel.value); };
+    const live = m.value && m.value !== "My team";
+    $("#rotateRow").hidden = !live;
+    $("#pick").hidden = live;
+    $("#modeNote").textContent = live
+      ? "Picks a game in progress at random and follows it, then moves on when it ends or the timer runs out."
+      : "";
+    if (rid) {
+      const r = $("#rotate");
+      const v = ents[rid].value;
+      if (document.activeElement !== r) { r.value = v; $("#rotateVal").textContent = v + " min"; }
+      r.oninput = () => ($("#rotateVal").textContent = r.value + " min");
+      r.onchange = () => post(rid, "set", { value: r.value });
+    }
   };
 
   // ---- controls --------------------------------------------------------
@@ -574,6 +608,8 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     }
     switch (name) {
       case "Team": renderCurrentTeam(); break;
+      case "Mode":
+      case "Rotate Minutes": renderMode(); break;
       case "Game":
         try { game = JSON.parse(e.value); } catch (_) { game = null; }
         renderBoard();

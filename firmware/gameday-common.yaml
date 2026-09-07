@@ -5,7 +5,7 @@
 substitutions:
   name: "gameday-scoreboard"
   friendly_name: "Game Day Scoreboard"
-  version: "0.2.5"
+  version: "0.3.0"
   variant: "64x64"
 
   display_panel_width: "64"
@@ -221,6 +221,11 @@ select:
     icon: "mdi:football"
   - platform: gameday
     gameday_id: gameday_ctl
+    type: mode
+    name: "Mode"
+    icon: "mdi:shuffle-variant"
+  - platform: gameday
+    gameday_id: gameday_ctl
     type: timezone
     name: "Timezone"
     icon: "mdi:map-clock"
@@ -317,6 +322,17 @@ number:
               - hub75.set_brightness:
                   id: matrix
                   brightness: !lambda return x;
+  - platform: template
+    name: "Rotate Minutes"
+    id: gd_rotate
+    icon: "mdi:timer-outline"
+    min_value: 2
+    max_value: 30
+    step: 1
+    entity_category: config
+    lambda: 'return id(gameday_ctl).rotate_minutes();'
+    set_action:
+      - lambda: 'id(gameday_ctl).set_rotate_minutes((int) x);'
   - platform: template
     name: "Scroll Speed"
     id: shared_scroll_speed

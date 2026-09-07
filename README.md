@@ -31,6 +31,7 @@ The M-1 serves its own page: a live board that mirrors the panel (logos, score, 
 
 | Control | What it does |
 | --- | --- |
+| Show | My team, or a live game picked at random from the NFL, college, or both, switching every few minutes |
 | Team | One list of all 32 NFL teams and every FBS college team |
 | Timezone | US zones plus UTC, UK and Central Europe; used for kickoff times |
 | Ticker: Down and Distance, Last Play, Odds and TV | Choose what scrolls along the bottom |

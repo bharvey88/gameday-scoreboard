@@ -48,6 +48,19 @@ std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch)
   return url;
 }
 
+std::string scan_url(League league, int64_t now_epoch) {
+  std::string url = std::string(kSite) + league_path(league) + "/scoreboard";
+  int y, m, d;
+  civil_from_epoch(now_epoch - 5 * 3600, y, m, d);
+  char buf[64];
+  if (league == League::NCAA)
+    snprintf(buf, sizeof(buf), "?groups=80&limit=300&dates=%04d%02d%02d", y, m, d);
+  else
+    snprintf(buf, sizeof(buf), "?dates=%04d%02d%02d", y, m, d);
+  url += buf;
+  return url;
+}
+
 std::string dark_logo(const std::string &url) {
   std::string out = url;
   size_t pos = out.find("/500/");
@@ -90,18 +103,22 @@ static const char *score_word(int delta, bool ours) {
   }
 }
 
-Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes) {
+Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral) {
   Splash none;
   if (!prev.valid || !cur.valid || prev.event_id != cur.event_id)
     return none;
   if (prev.state == GameState::IN && cur.state == GameState::POST) {
     if (cur.team_score > cur.opp_score)
       return Splash{cur.team_abbr + " WINS!", parse_color(cur.team_color)};
+    if (neutral && cur.opp_score > cur.team_score)
+      return Splash{cur.opp_abbr + " WINS!", parse_color(cur.opp_color)};
     return none;
   }
   if (prev.state != GameState::IN || cur.state != GameState::IN)
     return none;
   int delta = cur.team_score - prev.team_score;
+  if (delta > 0 && neutral)
+    return Splash{cur.team_abbr + " " + score_word(delta, false), parse_color(cur.team_color)};
   if (delta > 0)
     return Splash{score_word(delta, true), parse_color(cur.team_color)};
   int odelta = cur.opp_score - prev.opp_score;

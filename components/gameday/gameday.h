@@ -49,7 +49,9 @@ struct UpdateFields {
   std::string json;  // compact snapshot for the device web page
 };
 
-enum class SelectType : uint8_t { TEAM, TIMEZONE };
+enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE };
+
+enum class Mode : uint8_t { MY_TEAM = 0, LIVE_NFL = 1, LIVE_NCAA = 2, LIVE_ANY = 3 };
 
 class GamedayComponent;
 
@@ -70,6 +72,7 @@ class GamedayComponent : public Component {
   void set_time(time::RealTimeClock *time) { this->time_ = time; }
   void set_team_select(select::Select *s) { this->team_select_ = s; }
   void set_timezone_select(select::Select *s) { this->timezone_select_ = s; }
+  void set_mode_select(select::Select *s) { this->mode_select_ = s; }
   void add_on_update_callback(std::function<void(const UpdateFields &)> &&cb) {
     this->callbacks_.push_back(std::move(cb));
   }
@@ -77,6 +80,9 @@ class GamedayComponent : public Component {
   // Called by the selects and by template entities in YAML.
   void select_team(const std::string &option);
   void select_timezone(const std::string &option);
+  void select_mode(const std::string &option);
+  void set_rotate_minutes(int minutes);
+  int rotate_minutes() const { return this->prefs2_.rotate_minutes; }
   void refresh_now();
 
   bool ticker_clock() const { return this->flag_(FLAG_CLOCK); }
@@ -114,6 +120,11 @@ class GamedayComponent : public Component {
     uint8_t tz_index;
     uint8_t flags;
   } __attribute__((packed));
+  // Kept separate so adding fields never invalidates the original blob.
+  struct Prefs2 {
+    uint8_t mode;
+    uint8_t rotate_minutes;
+  } __attribute__((packed));
 
   bool flag_(uint8_t f) const { return (this->prefs_.flags & f) != 0; }
   void set_flag_(uint8_t f, bool on);
@@ -129,6 +140,10 @@ class GamedayComponent : public Component {
   struct Job {
     uint32_t generation{0};
     const ::espn::Team *team{nullptr};
+    // live-game modes: scan the day's games first, then follow one
+    bool need_scan{false};
+    std::vector<::espn::LiveGame> live;
+    bool scan_ok{false};
     bool need_schedule{false};
     Schedule schedule;
     bool schedule_ok{false};
@@ -142,6 +157,9 @@ class GamedayComponent : public Component {
   void apply_job_();
   bool fetch_schedule_(const ::espn::Team *team, Schedule &out);
   bool fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out);
+  bool fetch_live_games_(League league, std::vector<::espn::LiveGame> &out);
+  bool live_mode_() const { return this->prefs2_.mode != (uint8_t) Mode::MY_TEAM; }
+  uint32_t our_id_() const;  // team id the snapshot is oriented around
   std::shared_ptr<http_request::HttpContainer> open_(const std::string &url);
   void schedule_next_(uint32_t ms) { this->next_fetch_ms_ = millis() + ms; }
   uint32_t interval_for_phase_() const;
@@ -156,6 +174,12 @@ class GamedayComponent : public Component {
 
   ESPPreferenceObject pref_;
   Prefs prefs_{};
+  ESPPreferenceObject pref2_;
+  Prefs2 prefs2_{};
+  select::Select *mode_select_{nullptr};
+  uint32_t live_away_id_{0};      // the followed live game's away team
+  uint32_t live_started_ms_{0};   // when the current live game was picked
+  bool live_none_{false};         // last scan found nothing in progress
 
   Schedule schedule_;
   uint32_t schedule_fetched_ms_{0};

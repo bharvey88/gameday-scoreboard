@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "espn_parse.h"
 
@@ -272,6 +273,34 @@ static void test_kickoff_label() {
   CHECK_EQ(kickoff_label(mk(2026, 256, 1, 0, 5, 8, 14), now), std::string("Sep 14 12:05 AM"));
 }
 
+static void test_live_games() {
+  std::string json = slurp("fixtures/scoreboard_ncaa_live.json");
+  std::vector<LiveGame> games;
+  CHECK(parse_live_games(json, games));
+  CHECK(games.size() >= 1);
+  bool found = false;
+  for (const auto &g : games) {
+    if (g.event_id == kLiveEvent) {
+      found = true;
+      CHECK_EQ(g.away_abbr, std::string("BOIS"));
+      CHECK_EQ(g.home_abbr, std::string("ORE"));
+      CHECK_EQ(g.away_id, kBoise);
+      CHECK(g.group != 0);
+    }
+  }
+  CHECK(found);
+  std::vector<LiveGame> none;
+  std::string nfl = slurp("fixtures/scoreboard_nfl.json");
+  CHECK(parse_live_games(nfl, none));
+  CHECK_EQ(none.size(), (size_t) 0);
+  CHECK(scan_url(League::NFL, parse_iso8601_z("2026-09-14T01:00Z")).find("dates=20260913") != std::string::npos);
+  CHECK(scan_url(League::NCAA, 0).find("groups=80") != std::string::npos);
+  // neutral splashes name both sides
+  CHECK_EQ(decide_splash(live(0, 0), live(6, 0), true, true).text, std::string("DAL TOUCHDOWN"));
+  CHECK_EQ(decide_splash(live(0, 0), live(0, 3), true, true).text, std::string("PHI FIELD GOAL"));
+  CHECK_EQ(decide_splash(live(20, 21), live(20, 21, GameState::POST), true, true).text, std::string("PHI WINS!"));
+}
+
 static void test_color() {
   CHECK_EQ(parse_color("002a5c"), (uint32_t) 0x002a5c);
   CHECK_EQ(parse_color(""), (uint32_t) 0xFFFFFF);
@@ -288,6 +317,7 @@ int main() {
   test_splash();
   test_status_text();
   test_kickoff_label();
+  test_live_games();
   test_color();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;

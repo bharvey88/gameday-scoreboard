@@ -23,7 +23,7 @@ esp-app { display: none; }
 a { color: var(--accent); text-decoration: none; }
 button { font: inherit; color: inherit; }
 
-.wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
 
 /* Header */
 .top {
@@ -198,3 +198,20 @@ button { font: inherit; color: inherit; }
 .tzline { padding: 6px 0 2px; font-size: 14px; }
 .tzline .muted { color: var(--muted); }
 .tzline .lnk { margin-left: 10px; font-size: 12px; cursor: pointer; }
+
+/* Mode bar */
+.modebar { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 14px 10px; margin-top: 10px; }
+.modebar .hint { margin: 6px 0 0; }
+
+/* Wide screens: bigger board, controls side by side */
+@media (min-width: 900px) {
+  .board { padding: 26px 28px 18px; }
+  .team img { width: 120px; height: 120px; }
+  .team .abbr { font-size: 26px; }
+  .score { font-size: 84px; }
+  .clock { font-size: 28px; }
+  .down { font-size: 17px; }
+  .mid { min-width: 240px; }
+  .ticker, .play { font-size: 15px; }
+  .grid { grid-template-columns: 1fr 1fr; gap: 18px; }
+}

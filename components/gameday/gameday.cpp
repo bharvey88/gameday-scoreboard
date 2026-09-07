@@ -6,6 +6,9 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
+#include <cstring>
+#include <vector>
+
 #include "timezones.h"
 
 #include <freertos/FreeRTOS.h>
@@ -29,6 +32,9 @@ static const uint32_t POST_LINGER = 30 * MINUTE;
 static const uint32_t RETRY_INTERVAL = MINUTE;
 static const uint32_t NOT_READY_INTERVAL = 5 * 1000;
 static const int64_t PRE_NEAR_SECONDS = 60 * 60;
+static const uint32_t NO_LIVE_RESCAN = 2 * MINUTE;
+
+static const char *const MODE_OPTIONS[] = {"My team", "Live NFL", "Live college", "Live anything"};
 
 // Feeds ArduinoJson straight from the HTTP socket so a scoreboard document
 // never has to sit in RAM as a whole.
@@ -91,6 +97,8 @@ void GamedaySelect::control(const std::string &value) {
     return;
   if (this->type_ == SelectType::TEAM)
     this->parent_->select_team(value);
+  else if (this->type_ == SelectType::MODE)
+    this->parent_->select_mode(value);
   else
     this->parent_->select_timezone(value);
 }
@@ -107,6 +115,12 @@ void GamedayComponent::setup() {
   }
   if (this->prefs_.tz_index >= ::espn::kTimezoneCount)
     this->prefs_.tz_index = ::espn::kDefaultTimezone;
+  this->pref2_ = global_preferences->make_preference<Prefs2>(fnv1_hash("gameday_prefs2_v1"));
+  if (!this->pref2_.load(&this->prefs2_) || this->prefs2_.mode > (uint8_t) Mode::LIVE_ANY ||
+      this->prefs2_.rotate_minutes < 2 || this->prefs2_.rotate_minutes > 30) {
+    this->prefs2_.mode = (uint8_t) Mode::MY_TEAM;
+    this->prefs2_.rotate_minutes = 5;
+  }
   this->apply_timezone_();
   this->publish_selects_();
   this->schedule_next_(3000);
@@ -122,6 +136,43 @@ void GamedayComponent::publish_selects_() {
     this->team_select_->publish_state(team);
   if (this->timezone_select_ != nullptr)
     this->timezone_select_->publish_state(::espn::kTimezones[this->prefs_.tz_index].name);
+  if (this->mode_select_ != nullptr)
+    this->mode_select_->publish_state(MODE_OPTIONS[this->prefs2_.mode]);
+}
+
+void GamedayComponent::select_mode(const std::string &option) {
+  for (uint8_t i = 0; i < 4; i++) {
+    if (option != MODE_OPTIONS[i])
+      continue;
+    if (i == this->prefs2_.mode)
+      return;
+    this->prefs2_.mode = i;
+    this->pref2_.save(&this->prefs2_);
+    ESP_LOGI(TAG, "Mode: %s", option.c_str());
+    this->reset_game_();
+    this->generation_++;
+    this->schedule_next_(0);
+    return;
+  }
+  ESP_LOGW(TAG, "Unknown mode '%s'", option.c_str());
+}
+
+void GamedayComponent::set_rotate_minutes(int minutes) {
+  if (minutes < 2)
+    minutes = 2;
+  if (minutes > 30)
+    minutes = 30;
+  if (minutes == this->prefs2_.rotate_minutes)
+    return;
+  this->prefs2_.rotate_minutes = (uint8_t) minutes;
+  this->pref2_.save(&this->prefs2_);
+}
+
+uint32_t GamedayComponent::our_id_() const {
+  if (this->live_mode_())
+    return this->live_away_id_;
+  const ::espn::Team *t = this->current_team_();
+  return t ? t->espn_id : 0;
 }
 
 void GamedayComponent::dump_config() {
@@ -228,6 +279,9 @@ void GamedayComponent::apply_timezone_() {
 }
 
 void GamedayComponent::reset_game_() {
+  this->live_away_id_ = 0;
+  this->live_started_ms_ = 0;
+  this->live_none_ = false;
   this->schedule_ = Schedule{};
   this->schedule_fetched_ms_ = 0;
   this->game_ = GameSnapshot{};
@@ -274,15 +328,32 @@ bool GamedayComponent::fetch_schedule_(const ::espn::Team *team, Schedule &out) 
   return true;
 }
 
+bool GamedayComponent::fetch_live_games_(League league, std::vector<::espn::LiveGame> &out) {
+  std::string url = ::espn::scan_url(league, (int64_t) this->time_->timestamp_now());
+  ESP_LOGD(TAG, "Scanning for live games: %s", url.c_str());
+  auto container = this->open_(url);
+  if (container == nullptr)
+    return false;
+  ContainerReader reader(container);
+  size_t before = out.size();
+  bool ok = ::espn::parse_live_games(reader, out);
+  for (size_t i = before; i < out.size(); i++)
+    out[i].league = (uint8_t) league;
+  container->end();
+  ESP_LOGI(TAG, "Scan: %u live game(s) (%u bytes)", (unsigned) out.size(), (unsigned) reader.total());
+  return ok;
+}
+
 bool GamedayComponent::fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out) {
-  std::string url = ::espn::scoreboard_url(team->league, schedule.group, schedule.kickoff_epoch);
+  League league = this->live_mode_() ? (League) schedule.league : team->league;
+  std::string url = ::espn::scoreboard_url(league, schedule.group, schedule.kickoff_epoch);
   ESP_LOGD(TAG, "Fetching game: %s", url.c_str());
   auto container = this->open_(url);
   if (container == nullptr)
     return false;
   ContainerReader reader(container);
   GameSnapshot g;
-  bool ok = ::espn::parse_scoreboard(reader, schedule.event_id, team->espn_id, g);
+  bool ok = ::espn::parse_scoreboard(reader, schedule.event_id, this->our_id_(), g);
   container->end();
   if (!ok) {
     ESP_LOGW(TAG, "Game %s not parsed from scoreboard (%u bytes)", schedule.event_id.c_str(),
@@ -322,6 +393,21 @@ void GamedayComponent::start_job_() {
     this->schedule_next_(SCHEDULE_INTERVAL);
     return;
   }
+  if (this->live_mode_()) {
+    bool rotate = this->live_started_ms_ != 0 &&
+                  (now - this->live_started_ms_) >= (uint32_t) this->prefs2_.rotate_minutes * MINUTE;
+    bool ended = this->game_.valid && this->game_.state != GameState::IN;
+    j.need_scan = !this->schedule_.valid || rotate || ended || this->live_none_;
+    j.schedule = this->schedule_;
+    this->job_done_ = false;
+    this->busy_ = true;
+    BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
+    if (ok != pdPASS) {
+      this->busy_ = false;
+      this->schedule_next_(RETRY_INTERVAL);
+    }
+    return;
+  }
   j.need_schedule = !this->schedule_.valid || (now - this->schedule_fetched_ms_) >= SCHEDULE_INTERVAL;
   if (this->post_since_ms_ != 0 && (now - this->post_since_ms_) >= POST_LINGER) {
     // Game is over and lingered: look for the next one.
@@ -352,6 +438,15 @@ void GamedayComponent::worker_(void *arg) {
 // Worker task: network and parsing only, no display or entity access.
 void GamedayComponent::run_job_() {
   Job &j = this->job_;
+  if (j.need_scan) {
+    uint8_t mode = this->prefs2_.mode;
+    j.scan_ok = true;
+    if (mode == (uint8_t) Mode::LIVE_NFL || mode == (uint8_t) Mode::LIVE_ANY)
+      j.scan_ok = this->fetch_live_games_(League::NFL, j.live) && j.scan_ok;
+    if (mode == (uint8_t) Mode::LIVE_NCAA || mode == (uint8_t) Mode::LIVE_ANY)
+      j.scan_ok = this->fetch_live_games_(League::NCAA, j.live) && j.scan_ok;
+    return;  // the main loop picks a game, then the next cycle polls it
+  }
   if (j.need_schedule) {
     Schedule s;
     j.schedule_ok = this->fetch_schedule_(j.team, s);
@@ -374,6 +469,48 @@ void GamedayComponent::apply_job_() {
     return;
   }
   uint32_t now = millis();
+  if (j.need_scan) {
+    if (!j.scan_ok && j.live.empty()) {
+      this->misses_++;
+      this->emit_({});
+      this->schedule_next_(RETRY_INTERVAL);
+      return;
+    }
+    // Prefer a different game than the one we just showed.
+    std::vector<size_t> pick;
+    for (size_t i = 0; i < j.live.size(); i++)
+      if (j.live[i].event_id != this->schedule_.event_id)
+        pick.push_back(i);
+    if (pick.empty() && !j.live.empty())
+      pick.push_back(0);
+    if (pick.empty()) {
+      ESP_LOGI(TAG, "No live games right now");
+      this->live_none_ = true;
+      this->schedule_ = Schedule{};
+      this->game_ = GameSnapshot{};
+      this->prev_ = GameSnapshot{};
+      this->misses_ = 0;
+      this->emit_({});
+      this->schedule_next_(NO_LIVE_RESCAN);
+      return;
+    }
+    const ::espn::LiveGame &g = j.live[pick[random_uint32() % pick.size()]];
+    ESP_LOGI(TAG, "Following %s @ %s", g.away_abbr.c_str(), g.home_abbr.c_str());
+    this->live_none_ = false;
+    this->schedule_ = Schedule{};
+    this->schedule_.valid = true;
+    this->schedule_.event_id = g.event_id;
+    this->schedule_.group = g.group;
+    this->schedule_.league = g.league;
+    this->schedule_.kickoff_epoch = (int64_t) this->time_->timestamp_now();
+    this->schedule_fetched_ms_ = now;
+    this->live_away_id_ = g.away_id;
+    this->live_started_ms_ = now == 0 ? 1 : now;
+    this->game_ = GameSnapshot{};
+    this->prev_ = GameSnapshot{};
+    this->schedule_next_(0);  // poll the chosen game right away
+    return;
+  }
   if (j.need_schedule) {
     if (!j.schedule_ok) {
       this->misses_++;
@@ -401,7 +538,8 @@ void GamedayComponent::apply_job_() {
   this->prev_ = this->game_;
   this->game_ = j.game;
   this->misses_ = 0;
-  ::espn::Splash splash = ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes());
+  ::espn::Splash splash =
+      ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(), this->live_mode_());
   if (this->game_.state == GameState::POST) {
     if (this->post_since_ms_ == 0)
       this->post_since_ms_ = now == 0 ? 1 : now;
@@ -455,6 +593,8 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
     kickoff = ::espn::kickoff_label(kick, now);
   }
   f.status_text = ::espn::status_text(g, opts, kickoff);
+  if (this->live_mode_() && (!g.valid || g.state == GameState::NOT_FOUND))
+    f.status_text = this->live_none_ ? "No live games right now" : "Looking for a live game";
   if (this->misses_ >= 3)
     f.status_text += " *";
 
@@ -472,6 +612,11 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
              g.team_record.c_str(), g.opp_record.c_str(), f.clock_text.c_str(), f.down_distance.c_str(), g.possession,
              g.team_timeouts, g.opp_timeouts, (unsigned) f.team_color, (unsigned) f.opponent_color, f.is_red_zone ? 1 : 0,
              g.tv.c_str(), kickoff.c_str(), (int) this->misses_);
+    // mode and rotation, appended for the page
+    size_t n = strlen(buf);
+    if (n > 1 && n < sizeof(buf) - 24)
+      snprintf(buf + n - 1, sizeof(buf) - n + 1, ",\"md\":%u,\"rm\":%u}", (unsigned) this->prefs2_.mode,
+               (unsigned) this->prefs2_.rotate_minutes);
     f.json = buf;
   }
 

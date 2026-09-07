@@ -8,6 +8,12 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.3.0
+
+- Live game modes. A new Show dropdown on the device page: My team, Live NFL, Live college, or Live anything. In a live mode the panel picks a game in progress at random, follows it, and jumps to another when it ends or when the "switch games every" timer runs out (2 to 30 minutes, default 5).
+- In live modes both teams get scoring splashes with their abbreviation, and the winner gets the final splash.
+- The device page uses the width of the screen: bigger board and side-by-side settings on desktop.
+
 ## v0.2.5
 
 - After installing an update from the device page, the page now reloads itself as soon as the panel is back, instead of waiting on the slow reconnect.

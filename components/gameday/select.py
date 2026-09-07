@@ -12,7 +12,9 @@ SelectType = gameday_ns.enum("SelectType", is_class=True)
 SELECT_TYPES = {
     "team": SelectType.TEAM,
     "timezone": SelectType.TIMEZONE,
+    "mode": SelectType.MODE,
 }
+MODE_OPTIONS = ["My team", "Live NFL", "Live college", "Live anything"]  # must match gameday.cpp
 
 CONFIG_SCHEMA = (
     select.select_schema(GamedaySelect)
@@ -33,12 +35,18 @@ async def to_code(config):
     # Compare the plain string: codegen enum members are MockObj placeholders
     # and comparing them with == is always truthy.
     kind = config[CONF_TYPE]
-    is_team = kind == "team"
-    options = team_options() if is_team else timezone_options()
+    if kind == "team":
+        options = team_options()
+    elif kind == "mode":
+        options = MODE_OPTIONS
+    else:
+        options = timezone_options()
     await select.register_select(var, config, options=options)
     cg.add(var.set_type(SELECT_TYPES[kind]))
     cg.add(var.set_parent(parent))
-    if is_team:
+    if kind == "team":
         cg.add(parent.set_team_select(var))
+    elif kind == "mode":
+        cg.add(parent.set_mode_select(var))
     else:
         cg.add(parent.set_timezone_select(var))

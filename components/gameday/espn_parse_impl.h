@@ -43,6 +43,17 @@ inline void fill_scoreboard_filter(JsonDocument &f) {
   comp["venue"]["fullName"] = true;
 }
 
+inline void fill_scan_filter(JsonDocument &f) {
+  JsonObject ev = f["events"].add<JsonObject>();
+  ev["id"] = true;
+  ev["status"]["type"]["state"] = true;
+  JsonObject c = ev["competitions"].add<JsonObject>()["competitors"].add<JsonObject>();
+  c["id"] = true;
+  c["homeAway"] = true;
+  c["team"]["abbreviation"] = true;
+  c["team"]["conferenceId"] = true;
+}
+
 inline void fill_team_filter(JsonDocument &f) {
   f["team"]["color"] = true;
   f["team"]["record"]["items"].add<JsonObject>()["summary"] = true;
@@ -161,6 +172,37 @@ template<typename TInput> bool parse_team(TInput &input, Schedule &out) {
   }
   s.valid = true;
   out = s;
+  return true;
+}
+
+// Lists the in-progress games in a scoreboard document.
+template<typename TInput, typename TOut> bool parse_live_games(TInput &input, TOut &out) {
+  JsonDocument filter;
+  detail::fill_scan_filter(filter);
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
+                                              DeserializationOption::NestingLimit(40));
+  if (err)
+    return false;
+  for (JsonObjectConst ev : doc["events"].as<JsonArrayConst>()) {
+    if (detail::str_or_empty(ev["status"]["type"]["state"]) != "in")
+      continue;
+    LiveGame g;
+    g.event_id = detail::str_or_empty(ev["id"]);
+    for (JsonObjectConst c : ev["competitions"][0]["competitors"].as<JsonArrayConst>()) {
+      bool home = detail::str_or_empty(c["homeAway"]) == "home";
+      std::string abbr = detail::str_or_empty(c["team"]["abbreviation"]);
+      if (home) {
+        g.home_abbr = abbr;
+        g.group = (uint32_t) atol(detail::str_or_empty(c["team"]["conferenceId"]).c_str());
+      } else {
+        g.away_abbr = abbr;
+        g.away_id = (uint32_t) atol(detail::str_or_empty(c["id"]).c_str());
+      }
+    }
+    if (!g.event_id.empty() && g.away_id != 0)
+      out.push_back(g);
+  }
   return true;
 }
 
