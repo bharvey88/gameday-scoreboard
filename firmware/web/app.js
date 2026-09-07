@@ -72,7 +72,7 @@
         <div id="celebCtls"></div>
         <h2 style="margin-top:14px">Time</h2>
         <div id="timeCtls"></div>
-        <div class="tzhint" id="tzhint" hidden><span id="tzhintText"></span><button class="btn" id="tzUse">Use it</button></div>
+        <p class="hint" id="tzNote" style="margin:8px 0 0"></p>
       </div>
       <div class="card">
         <h2>Panel</h2>
@@ -206,6 +206,7 @@
     { name: "Ticker: Odds and TV", into: "#tickerCtls", label: "Pre-game odds and TV" },
     { name: "Opponent Splashes", into: "#celebCtls", label: "Opponent scores too" },
     { name: "Timezone", into: "#timeCtls", label: "Timezone" },
+    { name: "Auto Timezone", into: "#timeCtls", label: "Set from this browser" },
     { name: "Power", into: "#panelCtls", label: "Panel on" },
     { name: "Brightness", into: "#panelCtls", label: "Brightness" },
     { name: "Scroll Speed", into: "#panelCtls", label: "Ticker speed" },
@@ -260,7 +261,10 @@
     if (domain === "select") {
       const s = el("select");
       (e.option || []).forEach((o) => s.appendChild(el("option", null, o)));
-      s.onchange = () => post(e.id, "set", { option: s.value });
+      s.onchange = () => {
+        if (def.name === "Timezone" && byName["Auto Timezone"]) post(byName["Auto Timezone"], "turn_off");
+        post(e.id, "set", { option: s.value });
+      };
       row.appendChild(s);
       host.appendChild(row);
       return { update(ev) { if (ev.option) { s.innerHTML = ""; ev.option.forEach((o) => s.appendChild(el("option", null, o))); } s.value = ev.value; } };
@@ -453,15 +457,25 @@
     const hit = TZS.find((z) => z[1] === target);
     return hit ? hit[0] : null;
   };
-  const renderTzHint = () => {
-    const box = $("#tzhint");
+  // With "Set from this browser" on, the panel simply follows the browser's
+  // zone. Picking a zone by hand turns that off so the choice sticks.
+  let tzApplied = false;
+  const syncTimezone = () => {
     const id = byName["Timezone"];
-    const cur = id ? ents[id].value : null;
+    const autoId = byName["Auto Timezone"];
+    const note = $("#tzNote");
+    if (!id || !autoId) return;
+    const cur = ents[id].value;
+    const auto = ents[autoId].value === true || ents[autoId].state === "ON";
     const mine = browserZoneName();
-    if (!id || !mine || mine === cur) { box.hidden = true; return; }
-    $("#tzhintText").textContent = "This browser is in " + mine + ".";
-    $("#tzUse").onclick = () => { post(id, "set", { option: mine }); toast("Timezone set to " + mine); box.hidden = true; };
-    box.hidden = false;
+    if (!auto) { note.textContent = "Set by hand. Turn on \"Set from this browser\" to follow this device's zone."; return; }
+    if (!mine) { note.textContent = "This browser's timezone is not in the panel's list."; return; }
+    note.textContent = "Following this browser: " + mine + ".";
+    if (mine !== cur && !tzApplied) {
+      tzApplied = true;
+      post(id, "set", { option: mine });
+      toast("Timezone set to " + mine);
+    }
   };
 
   // ---- firmware update -----------------------------------------------------
@@ -525,7 +539,8 @@
       case "Game Status": $("#ticker").textContent = e.value || ""; break;
       case "Last Play": $("#play").textContent = e.value ? "Last play: " + e.value : ""; break;
       case "Firmware": renderUpdate(ents[e.id]); break;
-      case "Timezone": renderTzHint(); break;
+      case "Timezone":
+      case "Auto Timezone": syncTimezone(); break;
       case "IP": $("#ip").textContent = e.value || ""; break;
       case "RSSI": $("#rssi").textContent = e.value ? e.value + " dBm" : ""; break;
       case "Free Heap (PSRAM)": $("#psram").textContent = e.value ? Math.round(e.value) + " KiB" : ""; break;

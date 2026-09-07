@@ -5,7 +5,7 @@
 substitutions:
   name: "gameday-scoreboard"
   friendly_name: "Game Day Scoreboard"
-  version: "0.2.3"
+  version: "0.2.4"
   variant: "64x64"
 
   display_panel_width: "64"
@@ -285,6 +285,17 @@ switch:
       - lambda: 'id(gameday_ctl).set_ticker_odds(true);'
     turn_off_action:
       - lambda: 'id(gameday_ctl).set_ticker_odds(false);'
+  - platform: template
+    name: "Auto Timezone"
+    id: gd_sw_tzauto
+    icon: "mdi:map-clock"
+    entity_category: config
+    restore_mode: DISABLED
+    lambda: 'return id(gameday_ctl).tz_auto();'
+    turn_on_action:
+      - lambda: 'id(gameday_ctl).set_tz_auto(true);'
+    turn_off_action:
+      - lambda: 'id(gameday_ctl).set_tz_auto(false);'
   - platform: template
     name: "Opponent Splashes"
     id: gd_sw_opp

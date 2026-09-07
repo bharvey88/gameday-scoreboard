@@ -45,6 +45,7 @@ def team_options():
 
 def timezone_options():
     text = (COMPONENT_DIR / "timezones.h").read_text(encoding="utf-8")
+    text = "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("//"))
     opts = [name for name, _posix, _iana in _TZ_RE.findall(text)]
     if not opts:
         raise cv.Invalid("timezones.h has no entries")

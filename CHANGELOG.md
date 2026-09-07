@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.2.4
+
+- The timezone now sets itself from whatever browser opens the device page. Picking a zone by hand turns that off so your choice sticks; the "Set from this browser" toggle in the Time card turns it back on.
+- Shorter timezone list (US, Canada, Mexico, UK, Central Europe, Australia, UTC) and the stray "Display name" entry is gone.
+
 ## v0.2.3
 
 - A proper timezone list: all of North America plus the common zones worldwide.
