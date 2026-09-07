@@ -185,3 +185,8 @@ button { font: inherit; color: inherit; }
 .game .gm .det { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.2; }
 .game.live .gm .det { color: var(--red); font-weight: 700; }
 @media (max-width: 560px) { .game { grid-template-columns: 1fr 58px 1fr; } .game .side { grid-template-columns: 28px 1fr auto; padding: 7px 8px; } .game .side img { width: 28px; height: 28px; } .game .side .n { font-size: 12px; } }
+
+/* Firmware update */
+.fw { margin-top: 12px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
+.fwline { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 600; }
+.fwsub { color: var(--muted); font-size: 12px; margin-top: 4px; }

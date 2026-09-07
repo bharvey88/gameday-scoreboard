@@ -80,6 +80,10 @@
       <div class="card">
         <h2>Device</h2>
         <div class="actions" id="actions"></div>
+        <div class="fw" id="fw" hidden>
+          <div class="fwline"><span id="fwText">Firmware</span><button class="btn primary" id="fwInstall" hidden>Install</button></div>
+          <div class="fwsub" id="fwSub"></div>
+        </div>
         <div class="ctl" style="margin-top:8px"><label>Address</label><span class="val" id="ip"></span></div>
         <div class="ctl"><label>Signal</label><span class="val" id="rssi"></span></div>
         <div class="ctl"><label>Free PSRAM</label><span class="val" id="psram"></span></div>
@@ -201,6 +205,7 @@
     { name: "Scroll Speed", into: "#panelCtls", label: "Ticker speed" },
     { name: "Select Page", into: "#panelCtls", label: "Showing" },
     { name: "Refresh Now", into: "#actions", label: "Refresh scores" },
+    { name: "Check for Updates", into: "#actions", label: "Check for updates" },
     { name: "Reboot", into: "#actions", label: "Reboot", danger: true },
   ];
   const built = {};
@@ -413,6 +418,48 @@
     $("#curLg").textContent = t[0] === "nfl" ? "NFL" : "College football";
   };
 
+  // ---- firmware update -----------------------------------------------------
+  let installing = false;
+  const renderUpdate = (u) => {
+    const box = $("#fw");
+    box.hidden = false;
+    const cur = u.current_version ? "v" + u.current_version : "";
+    const latest = u.value ? "v" + u.value : "";
+    const st = String(u.state || "").toUpperCase();
+    const btn = $("#fwInstall");
+    const sub = $("#fwSub");
+    btn.hidden = true;
+    if (st.includes("INSTALLING") || installing) {
+      $("#fwText").textContent = "Installing " + (latest || "update");
+      sub.textContent = "Keep the panel powered. It reboots when done and this page reconnects.";
+    } else if (st.includes("AVAILABLE")) {
+      $("#fwText").textContent = "Update available: " + latest;
+      sub.textContent = (cur ? "You have " + cur + ". " : "") + (u.summary || "");
+      btn.hidden = false;
+      btn.onclick = () => {
+        if (!confirm("Install " + latest + " now? The panel will reboot.")) return;
+        installing = true;
+        renderUpdate(u);
+        post(u.id, "install");
+        toast("Installing " + latest);
+      };
+    } else if (st.includes("NO UPDATE")) {
+      $("#fwText").textContent = "Firmware " + cur + " is up to date";
+      sub.textContent = "";
+    } else {
+      $("#fwText").textContent = "Firmware " + cur;
+      sub.textContent = "Update status unknown. Try Check for updates.";
+    }
+    if (u.release_url && !st.includes("INSTALLING")) {
+      const a = el("a", null, "Release notes");
+      a.href = u.release_url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      sub.appendChild(document.createTextNode(sub.textContent ? " " : ""));
+      sub.appendChild(a);
+    }
+  };
+
   // ---- event stream ------------------------------------------------------
   const onState = (e) => {
     ents[e.id] = Object.assign(ents[e.id] || {}, e);
@@ -431,6 +478,7 @@
         break;
       case "Game Status": $("#ticker").textContent = e.value || ""; break;
       case "Last Play": $("#play").textContent = e.value ? "Last play: " + e.value : ""; break;
+      case "Firmware": renderUpdate(ents[e.id]); break;
       case "IP": $("#ip").textContent = e.value || ""; break;
       case "RSSI": $("#rssi").textContent = e.value ? e.value + " dBm" : ""; break;
       case "Free Heap (PSRAM)": $("#psram").textContent = e.value ? Math.round(e.value) + " KiB" : ""; break;
@@ -451,7 +499,10 @@
     es.addEventListener("state", (ev) => {
       try { onState(JSON.parse(ev.data)); } catch (_) {}
     });
-    es.onopen = () => setConn(true);
+    es.onopen = () => {
+      if (installing) location.reload();
+      setConn(true);
+    };
     es.onerror = () => setConn(false);
   };
   connect();

@@ -5,7 +5,7 @@
 substitutions:
   name: "gameday-scoreboard"
   friendly_name: "Game Day Scoreboard"
-  version: "0.2.1"
+  version: "0.2.2"
   variant: "64x64"
 
   display_panel_width: "64"
@@ -68,6 +68,8 @@ api:
 
 ota:
   - platform: esphome
+  - platform: http_request
+    id: gd_ota_http
 
 wifi:
   power_save_mode: none
@@ -92,6 +94,15 @@ http_request:
   # prebuilt binary working without a bundle refresh. Scores are public data.
   verify_ssl: false
   buffer_size_rx: 2048
+
+# Over-the-air updates from the release manifest this variant was built from.
+# Checked every 6 hours and on demand from the device page.
+update:
+  - platform: http_request
+    id: gd_firmware_update
+    name: "Firmware"
+    source: https://bharvey88.github.io/gameday-scoreboard/firmware/${variant}/manifest.json
+    update_interval: 6h
 
 time:
   - platform: sntp
@@ -319,6 +330,13 @@ number:
     entity_category: config
 
 button:
+  - platform: template
+    name: "Check for Updates"
+    id: gd_check_update
+    icon: "mdi:update"
+    entity_category: config
+    on_press:
+      - lambda: 'id(gd_firmware_update).update();'
   - platform: template
     name: "Refresh Now"
     id: gd_refresh

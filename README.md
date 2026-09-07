@@ -36,6 +36,7 @@ The M-1 serves its own page: a live board that mirrors the panel (logos, score, 
 | Ticker: Game Clock, Down and Distance, Last Play, Odds and TV | Choose what scrolls along the bottom |
 | Opponent Splashes | Turn the opponent's scoring splashes off if you only want yours |
 | Refresh Now | Re-fetch the schedule and game right away |
+| Firmware / Check for Updates | The device checks this project's releases every 6 hours; an Install button appears on the page when a newer version exists and updates over WiFi |
 | Brightness, Power, Scroll Speed | Panel brightness, panel on or off, ticker speed |
 | Select Page | Switch between the scoreboard and a clock page |
 
