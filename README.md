@@ -63,7 +63,7 @@ The parser and game logic have host tests: `make -C tests` (needs g++). To refre
 ## Notes
 
 - ESPN's API is unofficial and can change without notice. The device sends a curl-style User-Agent because ESPN's edge rejects unfamiliar ones.
-- TLS certificate verification is off for the ESPN requests so the prebuilt binary keeps working when their certificate chain rotates. Scores are public data.
+- All HTTPS requests (ESPN, logos, firmware updates) are certificate-verified against the ESP-IDF bundle. If ESPN ever moves to a certificate authority outside that bundle, fetches will fail until a rebuild.
 - Team logos are ESPN's and are fetched at runtime, not bundled.
 - Fetching runs on its own task, so the panel animation keeps going while a document downloads.
 

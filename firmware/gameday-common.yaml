@@ -90,9 +90,9 @@ http_request:
   id: http_client
   timeout: 20s
   watchdog_timeout: 30s
-  # ESPN's CDN certificate chain changes; skipping verification keeps the
-  # prebuilt binary working without a bundle refresh. Scores are public data.
-  verify_ssl: false
+  # ESPN, its logo CDN and GitHub Pages all use Let's Encrypt, which is in the
+  # ESP-IDF certificate bundle, so every fetch (including firmware) is verified.
+  verify_ssl: true
   buffer_size_rx: 2048
 
 # Over-the-air updates from the release manifest this variant was built from.
