@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.4.2
+
+- Switching teams is fast now. The panel shows the new team's name and logo immediately and fills in the game a second later, and the old opponent's logo clears instead of lingering.
+- Logos come from ESPN already shrunk to 64 pixels (about 3KB instead of up to 95KB), so they load in well under a second and no longer stall the display while decoding.
+
 ## v0.4.1
 
 - After an update from the device page, the page reloads within a few seconds of the panel coming back instead of up to 45 seconds later. It now watches the running version number rather than waiting to see the connection drop.

@@ -5,7 +5,7 @@
 substitutions:
   name: "gameday-scoreboard"
   friendly_name: "Game Day Scoreboard"
-  version: "0.4.1"
+  version: "0.4.2"
   variant: "64x64"
 
   display_panel_width: "64"
@@ -191,6 +191,11 @@ gameday:
               id: gd_team_logo
               url: !lambda 'return x.team_logo;'
               update: true
+    - if:
+        condition:
+          lambda: 'return x.opponent_logo.empty();'
+        then:
+          - lambda: 'id(gd_last_opp_logo) = "";'
     - if:
         condition:
           lambda: 'return !x.opponent_logo.empty() && x.opponent_logo != id(gd_last_opp_logo);'

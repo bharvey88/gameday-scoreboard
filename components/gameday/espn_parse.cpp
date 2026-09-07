@@ -61,12 +61,29 @@ std::string scan_url(League league, int64_t now_epoch) {
   return url;
 }
 
+// Dark-background variant, shrunk to 64px by ESPN's image resizer. A 500px
+// logo PNG is up to 95KB and takes the ESP32 almost two seconds to decode;
+// the 64px one is about 3KB and decodes in a few milliseconds.
 std::string dark_logo(const std::string &url) {
+  if (url.empty())
+    return url;
   std::string out = url;
   size_t pos = out.find("/500/");
   if (pos != std::string::npos)
     out.replace(pos, 5, "/500-dark/");
-  return out;
+  size_t path = out.find("/i/teamlogos/");
+  if (path == std::string::npos)
+    return out;
+  return "https://a.espncdn.com/combiner/i?img=" + out.substr(path) + "&w=64&h=64";
+}
+
+std::string team_logo_url(League league, uint32_t espn_id, const char *abbr) {
+  std::string a = abbr ? abbr : "";
+  for (auto &c : a)
+    c = (char) tolower((unsigned char) c);
+  if (league == League::NFL)
+    return dark_logo("https://a.espncdn.com/i/teamlogos/nfl/500/" + a + ".png");
+  return dark_logo("https://a.espncdn.com/i/teamlogos/ncaa/500/" + std::to_string(espn_id) + ".png");
 }
 
 bool parse_team_str(const std::string &json, Schedule &out) { return parse_team(json, out); }

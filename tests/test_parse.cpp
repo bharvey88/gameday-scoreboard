@@ -56,8 +56,10 @@ static void test_urls() {
            std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=1&dates=20260905"));
   CHECK_EQ(scoreboard_url(League::NCAA, 9, parse_iso8601_z("2026-09-06T02:00Z")),
            std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=9&dates=20260905"));
-  CHECK_EQ(dark_logo("https://a.espncdn.com/i/teamlogos/ncaa/500/68.png"), std::string("https://a.espncdn.com/i/teamlogos/ncaa/500-dark/68.png"));
-  CHECK_EQ(dark_logo("https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/sea.png"), std::string("https://a.espncdn.com/i/teamlogos/nfl/500-dark/scoreboard/sea.png"));
+  CHECK_EQ(dark_logo("https://a.espncdn.com/i/teamlogos/ncaa/500/68.png"), std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500-dark/68.png&w=64&h=64"));
+  CHECK_EQ(dark_logo("https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/sea.png"), std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500-dark/scoreboard/sea.png&w=64&h=64"));
+  CHECK_EQ(team_logo_url(League::NFL, 6, "DAL"), std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500-dark/dal.png&w=64&h=64"));
+  CHECK_EQ(team_logo_url(League::NCAA, 228, "CLEM"), std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500-dark/228.png&w=64&h=64"));
   CHECK_EQ(dark_logo(""), std::string(""));
 }
 
@@ -111,8 +113,8 @@ static void test_scoreboard_live() {
   CHECK_EQ(s.period, 4);
   CHECK_EQ(s.team_color, std::string("0033a0"));
   CHECK_EQ(s.opp_color, std::string("00934b"));
-  CHECK_EQ(s.team_logo, std::string("https://a.espncdn.com/i/teamlogos/ncaa/500-dark/68.png"));
-  CHECK_EQ(s.opp_logo, std::string("https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2483.png"));
+  CHECK_EQ(s.team_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500-dark/68.png&w=64&h=64"));
+  CHECK_EQ(s.opp_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500-dark/2483.png&w=64&h=64"));
   CHECK(s.last_play.rfind("End of 3rd quarter", 0) == 0);
   CHECK(!s.completed);
 
@@ -158,7 +160,7 @@ static void test_scoreboard_pre_nfl() {
   CHECK_EQ(s.tv, std::string("NBC"));
   CHECK_EQ(s.venue, std::string("Lumen Field"));
   CHECK_EQ(s.kickoff_epoch, parse_iso8601_z("2026-09-10T00:20Z"));
-  CHECK_EQ(s.team_logo, std::string("https://a.espncdn.com/i/teamlogos/nfl/500-dark/scoreboard/ne.png"));
+  CHECK_EQ(s.team_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500-dark/scoreboard/ne.png&w=64&h=64"));
   CHECK_EQ(s.possession, 0);
 }
 

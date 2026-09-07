@@ -300,6 +300,16 @@ void GamedayComponent::select_team(const std::string &option) {
     ESP_LOGI(TAG, "Team changed to %s", t.name);
     this->reset_game_();
     this->generation_++;  // a fetch already in flight belongs to the old team
+    // Show the new team right away; the game data follows in a second or two.
+    GameSnapshot g;
+    g.valid = true;
+    g.state = GameState::PRE;
+    g.team_abbr = t.abbr;
+    g.team_id = t.espn_id;
+    g.team_logo = ::espn::team_logo_url(t.league, t.espn_id, t.abbr);
+    g.short_detail = "Loading";
+    this->game_ = g;
+    this->emit_({});
     this->schedule_next_(0);
     return;
   }

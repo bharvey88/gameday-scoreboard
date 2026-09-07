@@ -74,6 +74,7 @@ std::string team_url(League league, uint32_t espn_id);
 std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch);
 std::string scan_url(League league, int64_t now_epoch);  // every game of the day for one league
 std::string dark_logo(const std::string &url);
+std::string team_logo_url(League league, uint32_t espn_id, const char *abbr);  // for a team with no game loaded yet
 
 bool parse_team_str(const std::string &json, Schedule &out);
 bool parse_scoreboard_str(const std::string &json, const std::string &event_id, uint32_t our_team_id,

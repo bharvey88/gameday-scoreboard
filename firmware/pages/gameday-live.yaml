@@ -145,6 +145,12 @@ script:
       splash_text: string
       splash_color: int
     then:
+      - lambda: |-
+          // A side with no team yet (just after a team change) shows no logo
+          if (team_abbr.empty()) lv_obj_add_flag(id(gd_team_logo_img), LV_OBJ_FLAG_HIDDEN);
+          else lv_obj_clear_flag(id(gd_team_logo_img), LV_OBJ_FLAG_HIDDEN);
+          if (opponent_abbr.empty()) lv_obj_add_flag(id(gd_opp_logo_img), LV_OBJ_FLAG_HIDDEN);
+          else lv_obj_clear_flag(id(gd_opp_logo_img), LV_OBJ_FLAG_HIDDEN);
       - lvgl.label.update:
           id: tt_away_team_lbl
           text: !lambda 'return team_abbr;'
