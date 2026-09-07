@@ -5,7 +5,7 @@
 substitutions:
   name: "gameday-scoreboard"
   friendly_name: "Game Day Scoreboard"
-  version: "0.4.2"
+  version: "0.4.3"
   variant: "64x64"
 
   display_panel_width: "64"

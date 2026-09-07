@@ -87,6 +87,10 @@ std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std
 std::string kickoff_label(const struct tm &kick_local, const struct tm &now_local);
 int64_t parse_iso8601_z(const std::string &s);
 const char *state_name(GameState s);
+// "0:42 2nd" from the raw clock and period. ESPN's pre-formatted shortDetail
+// lags those fields by a poll or two, so it is only used for the states that
+// have no clock (Halftime, End of 3rd, Delayed).
+std::string clock_text(const GameSnapshot &s);
 
 }  // namespace espn
 

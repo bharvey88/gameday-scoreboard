@@ -250,6 +250,36 @@ int64_t parse_iso8601_z(const std::string &s) {
   return days * 86400 + h * 3600 + mi * 60 + sec;
 }
 
+static std::string period_name(int period) {
+  switch (period) {
+    case 1:
+      return "1st";
+    case 2:
+      return "2nd";
+    case 3:
+      return "3rd";
+    case 4:
+      return "4th";
+    case 5:
+      return "OT";
+    default:
+      return period > 5 ? std::to_string(period - 4) + "OT" : "";
+  }
+}
+
+std::string clock_text(const GameSnapshot &s) {
+  bool has_clock = s.display_clock.find(':') != std::string::npos && s.period > 0;
+  bool special = s.short_detail.find(':') == std::string::npos;  // Halftime, End of 3rd, Delayed, Final
+  if (!has_clock || special) {
+    std::string t = s.short_detail;
+    size_t dash = t.find(" - ");
+    if (dash != std::string::npos)
+      t.replace(dash, 3, " ");
+    return t;
+  }
+  return s.display_clock + " " + period_name(s.period);
+}
+
 const char *state_name(GameState s) {
   switch (s) {
     case GameState::PRE:

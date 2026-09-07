@@ -642,11 +642,7 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   f.opponent_record = g.opp_record;
   f.last_play = g.last_play;
   if (g.valid && g.state == GameState::IN) {
-    // "12:34 - 2nd" is too wide for the middle column; "12:34 2nd" fits.
-    f.clock_text = g.short_detail;
-    size_t dash = f.clock_text.find(" - ");
-    if (dash != std::string::npos)
-      f.clock_text.replace(dash, 3, " ");
+    f.clock_text = ::espn::clock_text(g);
     f.down_distance = g.short_down_distance;
     f.is_red_zone = g.is_red_zone;
   }

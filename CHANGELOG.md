@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.4.3
+
+- The clock on the panel now comes from ESPN's raw clock and period instead of their pre-formatted text, which lagged a poll or two behind the down and distance. Everything on the board updates together.
+
 ## v0.4.2
 
 - Switching teams is fast now. The panel shows the new team's name and logo immediately and fills in the game a second later, and the old opponent's logo clears instead of lingering.

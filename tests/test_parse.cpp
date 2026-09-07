@@ -303,6 +303,27 @@ static void test_live_games() {
   CHECK_EQ(decide_splash(live(20, 21), live(20, 21, GameState::POST), true, true).text, std::string("PHI WINS!"));
 }
 
+static void test_clock_text() {
+  GameSnapshot s = live(0, 0);
+  s.display_clock = "0:42";
+  s.period = 2;
+  s.short_detail = "1:10 - 2nd";  // stale formatted text
+  CHECK_EQ(clock_text(s), std::string("0:42 2nd"));
+  s.period = 5;
+  CHECK_EQ(clock_text(s), std::string("0:42 OT"));
+  s.period = 6;
+  CHECK_EQ(clock_text(s), std::string("0:42 2OT"));
+  s.period = 2;
+  s.display_clock = "0:00";
+  s.short_detail = "Halftime";
+  CHECK_EQ(clock_text(s), std::string("Halftime"));
+  s.short_detail = "End of 3rd";
+  CHECK_EQ(clock_text(s), std::string("End of 3rd"));
+  s.display_clock = "";
+  s.short_detail = "12:34 - 4th";
+  CHECK_EQ(clock_text(s), std::string("12:34 4th"));
+}
+
 static void test_color() {
   CHECK_EQ(parse_color("002a5c"), (uint32_t) 0x002a5c);
   CHECK_EQ(parse_color(""), (uint32_t) 0xFFFFFF);
@@ -320,6 +341,7 @@ int main() {
   test_status_text();
   test_kickoff_label();
   test_live_games();
+  test_clock_text();
   test_color();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
