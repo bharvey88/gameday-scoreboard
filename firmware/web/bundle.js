@@ -74,8 +74,8 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
         <p class="hint">Full-screen splashes for scores. Yours always show.</p>
         <div id="celebCtls"></div>
         <h2 style="margin-top:14px">Time</h2>
-        <div id="timeCtls"></div>
-        <p class="hint" id="tzNote" style="margin:8px 0 0"></p>
+        <div class="tzline" id="tzline">Timezone not known yet</div>
+        <div class="ctl" id="tzpick" hidden><label>Timezone</label><select id="tzsel"></select></div>
       </div>
       <div class="card">
         <h2>Panel</h2>
@@ -207,8 +207,6 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     { name: "Ticker: Last Play", into: "#tickerCtls", label: "Last play" },
     { name: "Ticker: Odds and TV", into: "#tickerCtls", label: "Pre-game odds and TV" },
     { name: "Opponent Splashes", into: "#celebCtls", label: "Opponent scores too" },
-    { name: "Timezone", into: "#timeCtls", label: "Timezone" },
-    { name: "Auto Timezone", into: "#timeCtls", label: "Set from this browser" },
     { name: "Power", into: "#panelCtls", label: "Panel on" },
     { name: "Brightness", into: "#panelCtls", label: "Brightness" },
     { name: "Scroll Speed", into: "#panelCtls", label: "Ticker speed" },
@@ -263,10 +261,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     if (domain === "select") {
       const s = el("select");
       (e.option || []).forEach((o) => s.appendChild(el("option", null, o)));
-      s.onchange = () => {
-        if (def.name === "Timezone" && byName["Auto Timezone"]) post(byName["Auto Timezone"], "turn_off");
-        post(e.id, "set", { option: s.value });
-      };
+      s.onchange = () => post(e.id, "set", { option: s.value });
       row.appendChild(s);
       host.appendChild(row);
       return { update(ev) { if (ev.option) { s.innerHTML = ""; ev.option.forEach((o) => s.appendChild(el("option", null, o))); } s.value = ev.value; } };
@@ -459,25 +454,50 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     const hit = TZS.find((z) => z[1] === target);
     return hit ? hit[0] : null;
   };
-  // With "Set from this browser" on, the panel simply follows the browser's
-  // zone. Picking a zone by hand turns that off so the choice sticks.
+  // The panel follows the browser's zone unless someone picked one by hand.
+  // The Time card is a single line; the dropdown only appears on request.
   let tzApplied = false;
-  const syncTimezone = () => {
+  const renderTime = () => {
     const id = byName["Timezone"];
     const autoId = byName["Auto Timezone"];
-    const note = $("#tzNote");
     if (!id || !autoId) return;
-    const cur = ents[id].value;
+    const cur = ents[id].value || "";
     const auto = ents[autoId].value === true || ents[autoId].state === "ON";
     const mine = browserZoneName();
-    if (!auto) { note.textContent = "Set by hand. Turn on \"Set from this browser\" to follow this device's zone."; return; }
-    if (!mine) { note.textContent = "This browser's timezone is not in the panel's list."; return; }
-    note.textContent = "Following this browser: " + mine + ".";
-    if (mine !== cur && !tzApplied) {
-      tzApplied = true;
-      post(id, "set", { option: mine });
-      toast("Timezone set to " + mine);
+    const line = $("#tzline");
+    const pick = $("#tzpick");
+    const sel = $("#tzsel");
+    if (ents[id].option && sel.options.length !== ents[id].option.length) {
+      sel.innerHTML = "";
+      ents[id].option.forEach((o) => sel.appendChild(el("option", null, o)));
     }
+    sel.value = cur;
+    sel.onchange = () => {
+      post(autoId, "turn_off");
+      post(id, "set", { option: sel.value });
+      pick.hidden = true;
+    };
+    line.innerHTML = "";
+    line.appendChild(el("b", null, cur || "Not set"));
+    const link = el("a", "lnk");
+    if (auto) {
+      line.appendChild(el("span", "muted", mine ? " · set from this browser" : " · this browser's zone is not in the list"));
+      link.textContent = "choose manually";
+      link.onclick = () => { pick.hidden = !pick.hidden; };
+      if (mine && mine !== cur && !tzApplied) {
+        tzApplied = true;
+        post(id, "set", { option: mine });
+        toast("Timezone set to " + mine + " from this browser");
+      }
+    } else {
+      line.appendChild(el("span", "muted", " · chosen by hand"));
+      link.textContent = mine ? "follow this browser (" + mine + ")" : "change";
+      link.onclick = () => {
+        if (mine) { tzApplied = false; post(autoId, "turn_on"); pick.hidden = true; }
+        else pick.hidden = !pick.hidden;
+      };
+    }
+    line.appendChild(link);
   };
 
   // After an install the device reboots. The event stream only retries every
@@ -562,7 +582,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       case "Last Play": $("#play").textContent = e.value ? "Last play: " + e.value : ""; break;
       case "Firmware": renderUpdate(ents[e.id]); break;
       case "Timezone":
-      case "Auto Timezone": syncTimezone(); break;
+      case "Auto Timezone": renderTime(); break;
       case "IP": $("#ip").textContent = e.value || ""; break;
       case "RSSI": $("#rssi").textContent = e.value ? e.value + " dBm" : ""; break;
       case "Free Heap (PSRAM)": $("#psram").textContent = e.value ? Math.round(e.value) + " KiB" : ""; break;

@@ -193,3 +193,8 @@ button { font: inherit; color: inherit; }
 
 /* Timezone suggestion */
 .tzhint { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; color: #c9d1dc; }
+
+/* Time card */
+.tzline { padding: 6px 0 2px; font-size: 14px; }
+.tzline .muted { color: var(--muted); }
+.tzline .lnk { margin-left: 10px; font-size: 12px; cursor: pointer; }

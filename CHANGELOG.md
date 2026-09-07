@@ -11,6 +11,7 @@ owns the panel, not for the code.
 ## v0.2.5
 
 - After installing an update from the device page, the page now reloads itself as soon as the panel is back, instead of waiting on the slow reconnect.
+- The Time card is one line: the zone the panel is using and where it came from. The dropdown only appears if you ask to choose manually.
 
 ## v0.2.4
 
