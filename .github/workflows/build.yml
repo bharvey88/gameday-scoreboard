@@ -17,8 +17,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  notes:
+    # Release notes come from CHANGELOG.md. On a tag the section must exist.
+    name: Release notes
+    runs-on: ubuntu-latest
+    outputs:
+      summary: ${{ steps.notes.outputs.summary }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: notes
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            python scripts/release_notes.py "${GITHUB_REF_NAME}" > notes.md
+            echo "summary=$(python scripts/release_notes.py "${GITHUB_REF_NAME}" --summary)" >> "$GITHUB_OUTPUT"
+          else
+            echo "Development build" > notes.md
+            echo "summary=Development build" >> "$GITHUB_OUTPUT"
+          fi
+          cat notes.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: notes.md
+
   build:
     name: Build ${{ matrix.variant }}
+    needs: notes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -33,7 +57,7 @@ jobs:
           yaml-file: firmware/gameday-${{ matrix.variant }}.yaml
           version: "2026.8.1"
           complete-manifest: true
-          release-summary: ${{ github.ref_name }}
+          release-summary: ${{ needs.notes.outputs.summary }}
           release-url: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
       - name: Stage output under a stable folder name
         run: |
@@ -54,7 +78,7 @@ jobs:
 
   publish:
     name: Publish flasher and release
-    needs: [build, host-tests]
+    needs: [build, host-tests, notes]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment:
@@ -67,6 +91,10 @@ jobs:
           pattern: firmware-*
           path: artifacts
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: notes
       - name: Assemble site
         run: |
           mkdir -p site/firmware
@@ -79,7 +107,7 @@ jobs:
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
-      - name: Attach binaries to the release
+      - name: Create the release with notes and binaries
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -88,5 +116,15 @@ jobs:
             f=$(ls artifacts/$v/*.factory.bin | head -1)
             cp "$f" "release/gameday-scoreboard-$v-${GITHUB_REF_NAME}.factory.bin"
           done
-          gh release create "$GITHUB_REF_NAME" release/* --title "$GITHUB_REF_NAME" --generate-notes || \
-          gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          PREV=$(gh release list --exclude-drafts --limit 20 --json tagName --jq "[.[].tagName | select(. != \"${GITHUB_REF_NAME}\")][0]")
+          {
+            cat notes/notes.md
+            echo
+            echo "Install or update from the [flasher page](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/), or let a panel already running v0.2.2 or later update itself from its device page."
+            if [ -n "$PREV" ]; then
+              echo
+              echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${GITHUB_REF_NAME}"
+            fi
+          } > release/body.md
+          gh release create "$GITHUB_REF_NAME" release/*.bin --title "$GITHUB_REF_NAME" --notes-file release/body.md || \
+          { gh release upload "$GITHUB_REF_NAME" release/*.bin --clobber; gh release edit "$GITHUB_REF_NAME" --notes-file release/body.md; }
