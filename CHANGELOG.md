@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.4.1
+
+- After an update from the device page, the page reloads within a few seconds of the panel coming back instead of up to 45 seconds later. It now watches the running version number rather than waiting to see the connection drop.
+
 ## v0.4.0
 
 - WizMote remote support. Turn on discovery in the Remote card, press any button on the remote, and it's paired. ON and OFF control the panel, the brightness buttons work, NIGHT dims it.

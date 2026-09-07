@@ -552,20 +552,25 @@
   // After an install the device reboots. The event stream only retries every
   // 30 seconds, so poll the root page instead and reload as soon as it answers.
   let es = null;
-  const waitForReboot = () => {
+  const waitForReboot = (fromVersion) => {
     const started = Date.now();
-    let sawDown = false;
+    if (es) { es.close(); es = null; }
+    // Ask the device which version it runs; reload as soon as that changes.
+    // A connection to a rebooting device can hang, so each probe gets 1.5s.
     const tick = async () => {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1500);
       try {
-        const r = await fetch("/?" + Date.now(), { cache: "no-store" });
-        if (r.ok && (sawDown || Date.now() - started > 45000)) { location.reload(); return; }
-      } catch (_) {
-        sawDown = true;
-        if (es) { es.close(); es = null; }
-      }
+        const r = await fetch("/update/Firmware?" + Date.now(), { cache: "no-store", signal: ctl.signal });
+        if (r.ok) {
+          const j = await r.json();
+          if (j.current_version && j.current_version !== fromVersion) { location.reload(); return; }
+        }
+      } catch (_) { /* still rebooting */ }
+      clearTimeout(timer);
       if (Date.now() - started < 5 * 60 * 1000) setTimeout(tick, 2000);
     };
-    setTimeout(tick, 4000);
+    setTimeout(tick, 3000);
   };
 
   // ---- firmware update -----------------------------------------------------
@@ -592,7 +597,7 @@
         renderUpdate(u);
         post(u.id, "install");
         toast("Installing " + latest);
-        waitForReboot();
+        waitForReboot(u.current_version);
       };
     } else if (st.includes("NO UPDATE")) {
       $("#fwText").textContent = "Firmware " + cur + " is up to date";
