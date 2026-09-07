@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.2.3
+
+- The Team and Timezone dropdowns show their real values after a reboot. A code-generation slip had wired the stored team into the Timezone dropdown and left Team blank, so the page said "No team chosen" even though the panel was following the right team.
+
 ## v0.2.2
 
 - Fixed every control on the device page. ESPHome 2026.8 changed how its web server names entities, so team changes and toggles were silently failing with a 404. They work now.

@@ -19,7 +19,7 @@ CONFIG_SCHEMA = (
     .extend(
         {
             cv.GenerateID(CONF_GAMEDAY_ID): cv.use_id(GamedayComponent),
-            cv.Required(CONF_TYPE): cv.enum(SELECT_TYPES, lower=True),
+            cv.Required(CONF_TYPE): cv.one_of(*SELECT_TYPES, lower=True),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -30,12 +30,15 @@ async def to_code(config):
     parent = await cg.get_variable(config[CONF_GAMEDAY_ID])
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
+    # Compare the plain string: codegen enum members are MockObj placeholders
+    # and comparing them with == is always truthy.
     kind = config[CONF_TYPE]
-    options = team_options() if kind == SelectType.TEAM else timezone_options()
+    is_team = kind == "team"
+    options = team_options() if is_team else timezone_options()
     await select.register_select(var, config, options=options)
-    cg.add(var.set_type(kind))
+    cg.add(var.set_type(SELECT_TYPES[kind]))
     cg.add(var.set_parent(parent))
-    if kind == SelectType.TEAM:
+    if is_team:
         cg.add(parent.set_team_select(var))
     else:
         cg.add(parent.set_timezone_select(var))
