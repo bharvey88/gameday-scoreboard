@@ -28,7 +28,7 @@ UpdateTrigger = gameday_ns.class_(
 COMPONENT_DIR = Path(__file__).resolve().parent
 
 _TEAM_RE = re.compile(r'\{League::(NFL|NCAA),\s*(\d+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\}')
-_TZ_RE = re.compile(r'\{"([^"]+)",\s*"([^"]+)"\}')
+_TZ_RE = re.compile(r'\{"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\}')
 
 
 def team_options():
@@ -45,7 +45,7 @@ def team_options():
 
 def timezone_options():
     text = (COMPONENT_DIR / "timezones.h").read_text(encoding="utf-8")
-    opts = [name for name, _posix in _TZ_RE.findall(text)]
+    opts = [name for name, _posix, _iana in _TZ_RE.findall(text)]
     if not opts:
         raise cv.Invalid("timezones.h has no entries")
     return opts

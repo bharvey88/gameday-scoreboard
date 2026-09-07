@@ -190,3 +190,6 @@ button { font: inherit; color: inherit; }
 .fw { margin-top: 12px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
 .fwline { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 600; }
 .fwsub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+/* Timezone suggestion */
+.tzhint { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; color: #c9d1dc; }

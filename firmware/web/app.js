@@ -72,6 +72,7 @@
         <div id="celebCtls"></div>
         <h2 style="margin-top:14px">Time</h2>
         <div id="timeCtls"></div>
+        <div class="tzhint" id="tzhint" hidden><span id="tzhintText"></span><button class="btn" id="tzUse">Use it</button></div>
       </div>
       <div class="card">
         <h2>Panel</h2>
@@ -423,6 +424,46 @@
     $("#curLg").textContent = t[0] === "nfl" ? "NFL" : "College football";
   };
 
+  // ---- timezone suggestion from the browser --------------------------------
+  // Browsers report an IANA zone; the device's list carries one IANA name per
+  // entry plus a few common aliases here. Same-zone cities all map to the
+  // same POSIX rule, so a near match is still the right choice.
+  const TZ_ALIASES = {
+    "America/Detroit": "America/New_York", "America/Toronto": "America/New_York", "America/Indiana/Indianapolis": "America/New_York",
+    "America/Kentucky/Louisville": "America/New_York", "America/Montreal": "America/New_York", "America/Nassau": "America/New_York",
+    "America/Winnipeg": "America/Chicago", "America/Indiana/Knox": "America/Chicago", "America/Menominee": "America/Chicago",
+    "America/North_Dakota/Center": "America/Chicago", "America/Matamoros": "America/Chicago",
+    "America/Edmonton": "America/Denver", "America/Boise": "America/Denver", "America/Ojinaga": "America/Denver",
+    "America/Vancouver": "America/Los_Angeles", "America/Tijuana": "America/Los_Angeles",
+    "America/Juneau": "America/Anchorage", "America/Sitka": "America/Anchorage", "America/Nome": "America/Anchorage",
+    "Europe/Dublin": "Europe/London", "Europe/Paris": "Europe/Berlin", "Europe/Madrid": "Europe/Berlin", "Europe/Rome": "Europe/Berlin",
+    "Europe/Amsterdam": "Europe/Berlin", "Europe/Brussels": "Europe/Berlin", "Europe/Vienna": "Europe/Berlin", "Europe/Zurich": "Europe/Berlin",
+    "Europe/Stockholm": "Europe/Berlin", "Europe/Oslo": "Europe/Berlin", "Europe/Copenhagen": "Europe/Berlin", "Europe/Warsaw": "Europe/Berlin",
+    "Europe/Prague": "Europe/Berlin", "Europe/Budapest": "Europe/Berlin", "Europe/Helsinki": "Europe/Athens", "Europe/Kiev": "Europe/Athens",
+    "Europe/Kyiv": "Europe/Athens", "Europe/Bucharest": "Europe/Athens", "Europe/Sofia": "Europe/Athens",
+    "Asia/Hong_Kong": "Asia/Shanghai", "Asia/Taipei": "Asia/Shanghai", "Asia/Manila": "Asia/Singapore", "Asia/Kuala_Lumpur": "Asia/Singapore",
+    "Australia/Melbourne": "Australia/Sydney", "Australia/Hobart": "Australia/Sydney", "Australia/Canberra": "Australia/Sydney",
+    "Australia/Darwin": "Australia/Adelaide",
+  };
+  const browserZoneName = () => {
+    let iana = "";
+    try { iana = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) {}
+    if (!iana) return null;
+    const target = TZ_ALIASES[iana] || iana;
+    const hit = TZS.find((z) => z[1] === target);
+    return hit ? hit[0] : null;
+  };
+  const renderTzHint = () => {
+    const box = $("#tzhint");
+    const id = byName["Timezone"];
+    const cur = id ? ents[id].value : null;
+    const mine = browserZoneName();
+    if (!id || !mine || mine === cur) { box.hidden = true; return; }
+    $("#tzhintText").textContent = "This browser is in " + mine + ".";
+    $("#tzUse").onclick = () => { post(id, "set", { option: mine }); toast("Timezone set to " + mine); box.hidden = true; };
+    box.hidden = false;
+  };
+
   // ---- firmware update -----------------------------------------------------
   let installing = false;
   const renderUpdate = (u) => {
@@ -484,6 +525,7 @@
       case "Game Status": $("#ticker").textContent = e.value || ""; break;
       case "Last Play": $("#play").textContent = e.value ? "Last play: " + e.value : ""; break;
       case "Firmware": renderUpdate(ents[e.id]); break;
+      case "Timezone": renderTzHint(); break;
       case "IP": $("#ip").textContent = e.value || ""; break;
       case "RSSI": $("#rssi").textContent = e.value ? e.value + " dBm" : ""; break;
       case "Free Heap (PSRAM)": $("#psram").textContent = e.value ? Math.round(e.value) + " KiB" : ""; break;

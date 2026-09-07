@@ -10,6 +10,9 @@ owns the panel, not for the code.
 
 ## v0.2.3
 
+- A proper timezone list: all of North America plus the common zones worldwide.
+- The device page notices the timezone your browser is in and offers it with one tap when the panel is set to something else.
+
 - The Team and Timezone dropdowns show their real values after a reboot. A code-generation slip had wired the stored team into the Timezone dropdown and left Team blank, so the page said "No team chosen" even though the panel was following the right team.
 
 ## v0.2.2
