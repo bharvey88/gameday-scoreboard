@@ -7,6 +7,10 @@
 #   hotspot up     On your phone, join WiFi / Game Day Scoreboard / a setup page will open
 #   connecting     Connecting to / <network name>
 #   connected      On your phone, open / gameday.local / or 10.10.10.97 / then pick your team
+#
+# A fresh panel keeps the address up for 45 seconds, or until a team is
+# picked. A panel that already has a team flashes it for 3 seconds (or skips
+# it when "Show address at boot" is off on the device page).
 
 globals:
   - id: boot_ip_shown_ms
@@ -97,7 +101,12 @@ script:
               id(boot_set_lines).execute("Open", id(gameday_ctl).hostname() + ".local", ip, "pick a team", false);
             if (id(boot_ip_shown_ms) == 0) {
               id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
-              id(boot_hide_later).execute();
+              if (!id(gameday_ctl).setup_done())
+                id(boot_hide_later).execute(45000);
+              else if (id(gameday_ctl).show_boot_address())
+                id(boot_hide_later).execute(3000);
+              else
+                id(boot_hide).execute();
             }
           } else if (!w->has_sta() || w->is_ap_active()) {
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
@@ -110,11 +119,13 @@ script:
             id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", w->wifi_ssid(), "", "", true);
           }
 
-  # Keep the address up for 45 seconds after connecting, then clear the overlay
+  # Keep the address up for a while after connecting, then clear the overlay
   - id: boot_hide_later
     mode: restart
+    parameters:
+      ms: int
     then:
-      - delay: 45s
+      - delay: !lambda 'return ms;'
       - script.execute: boot_hide
 
   - id: boot_hide

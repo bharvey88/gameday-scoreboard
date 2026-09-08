@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.7.1
+
+- A panel that already has a team no longer sits on the setup screen for 45 seconds after every boot. It shows its address for 3 seconds and goes straight to the scoreboard. A new panel keeps the long setup screen, and it disappears the moment a team is picked.
+- New "Show address at boot" toggle on the Device card, for skipping even the 3 seconds.
+
 ## v0.7.0
 
 - The device page talks to the scoreboard directly instead of going through Home Assistant style entities, so it is faster to react and no longer limited by the 255-character cap those entities had. Nothing looks different; team changes, favorites, timezone and toggles all land the same way.

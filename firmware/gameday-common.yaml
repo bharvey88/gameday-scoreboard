@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "0.7.0"
+  version: "0.7.1"
   variant: "m1"
 
   display_panel_width: "64"
@@ -173,6 +173,11 @@ gameday:
           lambda: 'return x == "preview";'
         then:
           - script.execute: boot_preview
+    - if:
+        condition:
+          lambda: 'return x == "team_picked";'
+        then:
+          - script.execute: boot_hide
   on_update:
     - text_sensor.template.publish:
         id: gd_status_sensor

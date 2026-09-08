@@ -134,6 +134,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       <div class="card">
         <h2>Device</h2>
         <div class="actions" id="actions"><button class="btn" id="previewBtn">Preview setup screen</button></div>
+        <div class="ctl" style="margin-top:8px"><label>Show address at boot</label><button class="sw" data-set="bootaddr" aria-label="Show address at boot"></button></div>
         <div class="fw" id="fw" hidden>
           <div class="fwline"><span id="fwText">Firmware</span><button class="btn primary" id="fwInstall" hidden>Install</button></div>
           <div class="fwsub" id="fwSub"></div>

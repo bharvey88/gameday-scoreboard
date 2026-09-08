@@ -117,6 +117,10 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   bool ticker_last_play() const { return this->flag_(FLAG_PLAY); }
   bool ticker_odds() const { return this->flag_(FLAG_ODDS); }
   bool opponent_splashes() const { return this->flag_(FLAG_OPP); }
+  bool setup_done() const { return this->flag_(FLAG_SETUP); }
+  // Stored inverted so panels from before this setting keep showing it.
+  bool show_boot_address() const { return !this->flag_(FLAG_NOBOOTADDR); }
+  void set_show_boot_address(bool on) { this->set_flag_(FLAG_NOBOOTADDR, !on); }
   // Stored inverted (a "manual" bit) so panels flashed before this existed
   // come up with auto on without touching their saved preferences.
   bool tz_auto() const { return !this->flag_(FLAG_TZMANUAL); }
@@ -157,6 +161,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   static constexpr uint8_t FLAG_OPP = 16;
   static constexpr uint8_t FLAG_TZMANUAL = 32;  // timezone was picked by hand; page must not override
   static constexpr uint8_t FLAG_SETUP = 64;     // a team has been picked at least once
+  static constexpr uint8_t FLAG_NOBOOTADDR = 128;  // skip the address flash on a configured panel's boot
   static constexpr uint8_t FLAGS_DEFAULT = FLAG_DOWN | FLAG_PLAY | FLAG_ODDS | FLAG_OPP;
 
   struct Prefs {

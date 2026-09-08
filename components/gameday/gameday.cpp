@@ -335,12 +335,16 @@ void GamedayComponent::apply_team_(const ::espn::Team &t) {
   this->prefs_.team_id = t.espn_id;
   this->save_prefs_();
   ESP_LOGI(TAG, "Team changed to %s", t.name);
-  if (!this->flag_(FLAG_SETUP)) {
+  bool first_pick = !this->flag_(FLAG_SETUP);
+  if (first_pick) {
     this->prefs_.flags |= FLAG_SETUP;
     this->save_prefs_();
   }
   if (this->team_select_ != nullptr)
     this->team_select_->publish_state(this->team_option_());
+  if (first_pick)
+    for (auto &cb : this->action_callbacks_)
+      cb("team_picked");  // the setup screen listens for this
   this->reset_game_();
   this->generation_++;  // a fetch already in flight belongs to the old team
   // Show the new team right away; the game data follows in a second or two.
@@ -781,6 +785,7 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   doc["play"] = this->ticker_last_play();
   doc["odds"] = this->ticker_odds();
   doc["opp"] = this->opponent_splashes();
+  doc["bootaddr"] = this->show_boot_address();
   doc["misses"] = this->misses_;
 
   JsonObject game = doc["game"].to<JsonObject>();
@@ -865,8 +870,8 @@ void GamedayComponent::handleRequest(AsyncWebServerRequest *request) {
   request->send(404, "application/json", "{\"error\":\"unknown route\"}");
 }
 
-static const char *const SET_KEYS[] = {"team", "mode", "rotate", "fav1", "fav2", "fav3", "fav4", "tz",
-                                       "tzauto", "down", "play", "odds", "opp", "panels"};
+static const char *const SET_KEYS[] = {"team",   "mode", "rotate", "fav1", "fav2", "fav3",   "fav4",    "tz",
+                                       "tzauto", "down", "play",   "odds", "opp",  "panels", "bootaddr"};
 
 void GamedayComponent::handle_set_(AsyncWebServerRequest *request) {
   std::vector<std::pair<std::string, std::string>> kv;
@@ -937,6 +942,8 @@ void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::
       this->set_ticker_odds(v == "1");
     } else if (k == "opp") {
       this->set_opponent_splashes(v == "1");
+    } else if (k == "bootaddr") {
+      this->set_show_boot_address(v == "1");
     } else if (k == "panels") {
       if (this->panels_ != nullptr)
         this->panels_->set_cols((uint8_t) atoi(v.c_str()));
