@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.7.2
+
+- The Power switch and Brightness now take effect at boot. A panel that was switched off before a power cycle came back lit at a default brightness with the page showing it off, and turning it on jumped to your brightness setting. Both are applied as soon as the display starts.
+
 ## v0.7.1
 
 - A panel that already has a team no longer sits on the setup screen for 45 seconds after every boot. It shows its address for 3 seconds and goes straight to the scoreboard. A new panel keeps the long setup screen, and it disappears the moment a team is picked.

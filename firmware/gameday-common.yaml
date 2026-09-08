@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "0.7.1"
+  version: "0.7.2"
   variant: "m1"
 
   display_panel_width: "64"
@@ -30,6 +30,17 @@ esphome:
   project:
     name: bharvey88.gameday-scoreboard
     version: "${version}"
+  on_boot:
+    # The Power switch and Brightness number restore their saved state before
+    # the HUB75 driver exists (template entities set up at priority ~800, the
+    # display at 400), and the driver starts at its config default. Apply the
+    # restored values once the display is up, or a panel saved as off boots
+    # lit and the page shows it off.
+    - priority: 300.0
+      then:
+        - hub75.set_brightness:
+            id: matrix
+            brightness: !lambda 'return id(power).state ? (uint8_t) id(brightness).state : 0;'
 
 external_components:
   - source:
