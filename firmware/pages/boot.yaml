@@ -89,15 +89,25 @@ script:
                 break;
               }
             }
-            id(boot_set_lines).execute("On your phone, open", "${name}.local", "or " + ip, "then pick your team", false);
+            // A single panel is 12 characters wide: terse lines, only the hostname scrolls.
+            const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+            if (wide)
+              id(boot_set_lines).execute("On your phone, open", "${name}.local", "or " + ip, "then pick your team", false);
+            else
+              id(boot_set_lines).execute("Open", "${name}.local", ip, "pick a team", false);
             if (id(boot_ip_shown_ms) == 0) {
               id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
               id(boot_hide_later).execute();
             }
           } else if (!w->has_sta() || w->is_ap_active()) {
-            id(boot_set_lines).execute("On your phone, join WiFi", "Game Day Scoreboard", "a setup page will open", "", true);
+            const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+            if (wide)
+              id(boot_set_lines).execute("On your phone, join WiFi", "Game Day Scoreboard", "a setup page will open", "", true);
+            else
+              id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
           } else {
-            id(boot_set_lines).execute("Connecting to", w->wifi_ssid(), "", "", true);
+            const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+            id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", w->wifi_ssid(), "", "", true);
           }
 
   # Keep the address up for 45 seconds after connecting, then clear the overlay
@@ -124,21 +134,16 @@ script:
       - lvgl.obj.update:
           id: boot_overlay
           hidden: false
-      - script.execute:
-          id: boot_set_lines
-          la: "On your phone, join WiFi"
-          lb: "Game Day Scoreboard"
-          lc: "a setup page will open"
-          ld: ""
-          busy: true
+      - lambda: |-
+          const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+          if (wide)
+            id(boot_set_lines).execute("On your phone, join WiFi", "Game Day Scoreboard", "a setup page will open", "", true);
+          else
+            id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
       - delay: 7s
-      - script.execute:
-          id: boot_set_lines
-          la: "Connecting to"
-          lb: !lambda 'return wifi::global_wifi_component->wifi_ssid();'
-          lc: ""
-          ld: ""
-          busy: true
+      - lambda: |-
+          const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+          id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", wifi::global_wifi_component->wifi_ssid(), "", "", true);
       - delay: 5s
       - script.execute: boot_refresh
       - delay: 10s
