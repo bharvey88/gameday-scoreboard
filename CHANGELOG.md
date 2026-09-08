@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.5.1
+
+- The setup screen shows the address itself in the larger font ("http://10.10.10.97", or just the address on a single panel) with "pick your team here" under it, so nothing important scrolls.
+
 ## v0.5.0
 
 - Check for updates now answers. The button reads "Checking" for a few seconds and then the page says "You're up to date" or "Update available", instead of quietly doing nothing when there's no newer version.
