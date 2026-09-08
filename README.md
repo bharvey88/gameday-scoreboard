@@ -15,7 +15,7 @@ It is the standalone cousin of [gameday-matrix](https://github.com/bharvey88/gam
 ## Hardware
 
 - Apollo M-1 (rev 6) controller
-- One 64x64 HUB75 panel, or two side by side for a 128x64 display
+- One 64x64 HUB75 panel, or two side by side for a 128x64 display (one firmware; pick the count on the device page)
 
 ## Install
 
@@ -41,6 +41,7 @@ The M-1 serves its own page: a live board that mirrors the panel (logos, score, 
 | Refresh Now | Re-fetch the schedule and game right away |
 | Firmware / Check for Updates | The device checks this project's releases every 6 hours; an Install button appears on the page when a newer version exists and updates over WiFi |
 | Brightness, Power, Scroll Speed | Panel brightness, panel on or off, ticker speed |
+| Panels | One 64x64 panel or two side by side. Changing it restarts the device |
 | Select Page | Switch between the scoreboard and a clock page |
 
 ## Home Assistant is optional
@@ -52,10 +53,10 @@ The device runs on its own, but it is a normal ESPHome device. If Home Assistant
 ```
 git clone https://github.com/bharvey88/gameday-scoreboard
 cd gameday-scoreboard/firmware
-esphome run gameday-128x64.yaml
+esphome run gameday.yaml
 ```
 
-The two variant files only differ in panel count. Everything else lives in `gameday-common.yaml`, the scoreboard page in `pages/gameday-live.yaml`, the ESPN logic in `components/gameday`, and the device web page in `firmware/web` (edit `app.js` or `app.css`, then run `python scripts/build_web.py` to refresh the embedded bundle). The controller, theme and clock packages come from [hub75-studio](https://github.com/pavlov-net/hub75-studio), pinned to a commit.
+`gameday.yaml` only names the build; everything lives in `gameday-common.yaml`. The panel count is a saved preference applied at boot by `components/panel_layout`, so one binary serves both layouts. The scoreboard page is in `pages/gameday-live.yaml`, the ESPN logic in `components/gameday`, and the device web page in `firmware/web` (edit `app.js` or `app.css`, then run `python scripts/build_web.py` to refresh the embedded bundle). The controller, theme and clock packages come from [hub75-studio](https://github.com/pavlov-net/hub75-studio), pinned to a commit.
 
 ## How it works
 

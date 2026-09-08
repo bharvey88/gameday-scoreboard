@@ -41,32 +41,30 @@ jobs:
           path: notes.md
 
   build:
-    name: Build ${{ matrix.variant }}
+    # One firmware for every panel count since v0.6.0; the "m1" name is the
+    # manifest folder on the flasher site.
+    name: Build m1
     needs: notes
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [64x64, 128x64]
     steps:
       - uses: actions/checkout@v4
       - name: Build firmware
         id: esphome
         uses: esphome/build-action@v7
         with:
-          yaml-file: firmware/gameday-${{ matrix.variant }}.yaml
-          version: "2026.8.1"
+          yaml-file: firmware/gameday.yaml
+          version: "2026.8.2"
           complete-manifest: true
           release-summary: ${{ needs.notes.outputs.summary }}
           release-url: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
       - name: Stage output under a stable folder name
         run: |
           mkdir -p out
-          cp -r "${{ steps.esphome.outputs.name }}" "out/${{ matrix.variant }}"
+          cp -r "${{ steps.esphome.outputs.name }}" out/m1
           ls -R out
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-${{ matrix.variant }}
+          name: firmware-m1
           path: out
 
   host-tests:
@@ -100,6 +98,9 @@ jobs:
           mkdir -p site/firmware
           cp -r docs/site/* site/
           cp -r artifacts/* site/firmware/
+          # Panels flashed before v0.6.0 poll these two manifests for updates.
+          cp -r site/firmware/m1 site/firmware/64x64
+          cp -r site/firmware/m1 site/firmware/128x64
           sed -i "s/__VERSION__/${GITHUB_REF_NAME}/g" site/index.html
           ls -R site
       - uses: actions/upload-pages-artifact@v3
@@ -112,10 +113,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p release
-          for v in 64x64 128x64; do
-            f=$(ls artifacts/$v/*.factory.bin | head -1)
-            cp "$f" "release/gameday-scoreboard-$v-${GITHUB_REF_NAME}.factory.bin"
-          done
+          f=$(ls artifacts/m1/*.factory.bin | head -1)
+          cp "$f" "release/gameday-scoreboard-${GITHUB_REF_NAME}.factory.bin"
           PREV=$(gh release list --exclude-drafts --limit 20 --json tagName --jq "[.[].tagName | select(. != \"${GITHUB_REF_NAME}\")][0]")
           {
             cat notes/notes.md

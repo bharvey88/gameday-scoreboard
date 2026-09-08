@@ -1,0 +1,8 @@
+# Game Day Scoreboard for an Apollo M-1. One firmware for one 64x64 panel or
+# two side by side: the panel count is picked on the device page and applied
+# at boot (components/panel_layout).
+substitutions:
+  variant: "m1"
+
+packages:
+  common: !include gameday-common.yaml

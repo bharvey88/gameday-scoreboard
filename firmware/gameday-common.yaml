@@ -1,19 +1,20 @@
-﻿# Game Day Scoreboard, shared configuration.
-# Do not build this file directly: use gameday-64x64.yaml or gameday-128x64.yaml,
-# which set the panel layout and include this file.
+# Game Day Scoreboard, shared configuration.
+# Do not build this file directly: build gameday.yaml, which includes it.
 
 substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "0.5.3"
-  variant: "64x64"
+  version: "0.6.0"
+  variant: "m1"
 
   display_panel_width: "64"
   display_panel_height: "64"
   display_layout: HORIZONTAL
   display_layout_rows: "1"
-  display_layout_cols: "1"
+  # The widest chain this firmware supports. The count actually driven comes
+  # from the saved "Panels" choice (default 1), applied by panel_layout at boot.
+  display_layout_cols: "2"
   display_scan_wiring: STANDARD_TWO_SCAN
 
   # hub75-studio packages (controller, theme, clock page). Pinned to a commit
@@ -34,7 +35,7 @@ external_components:
   - source:
       type: local
       path: ../components
-    components: [gameday]
+    components: [gameday, panel_layout]
   - source: github://pavlov-net/lvgl-page-manager@v0.3.0
     components: [lvgl_page_manager]
 
@@ -60,6 +61,13 @@ packages:
   boot: !include pages/boot.yaml
   scoreboard: !include pages/gameday-live.yaml
   wizmote: !include pages/wizmote.yaml
+
+# Panel count from the saved preference, applied before the display starts.
+panel_layout:
+  id: gd_panels
+  display_id: matrix
+  default_cols: 1
+  max_cols: 2
 
 logger:
   baud_rate: 115200
@@ -97,8 +105,9 @@ http_request:
   verify_ssl: true
   buffer_size_rx: 2048
 
-# Over-the-air updates from the release manifest this variant was built from.
-# Checked every 6 hours and on demand from the device page.
+# Over-the-air updates from the release manifest. Checked every 6 hours and
+# on demand from the device page. (Releases before v0.6.0 polled 64x64/ and
+# 128x64/ manifests; the workflow still publishes copies there.)
 update:
   - platform: http_request
     id: gd_firmware_update
@@ -111,8 +120,9 @@ time:
     id: ha_time  # the clock page extends this id
 
 # Team logos, decoded on the device from ESPN's dark-background PNGs.
-online_image:
-  - id: gd_team_logo
+image:
+  - platform: online_image
+    id: gd_team_logo
     url: https://a.espncdn.com/i/teamlogos/nfl/500-dark/dal.png
     type: RGB565
     format: PNG
@@ -125,7 +135,8 @@ online_image:
           src: gd_team_logo
     on_error:
       - logger.log: "Team logo download failed"
-  - id: gd_opp_logo
+  - platform: online_image
+    id: gd_opp_logo
     url: https://a.espncdn.com/i/teamlogos/nfl/500-dark/phi.png
     type: RGB565
     format: PNG
@@ -221,6 +232,15 @@ lvgl_page_manager:
     icon: "mdi:page-previous"
 
 select:
+  - platform: template
+    name: "Panels"
+    id: gd_panels_select
+    icon: "mdi:view-column"
+    entity_category: config
+    options: ["1 panel", "2 panels"]
+    lambda: 'return std::string(id(gd_panels).cols() == 2 ? "2 panels" : "1 panel");'
+    set_action:
+      - lambda: 'id(gd_panels).set_cols(x == "2 panels" ? 2 : 1);'
   - platform: gameday
     gameday_id: gameday_ctl
     type: team

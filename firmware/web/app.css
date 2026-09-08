@@ -126,6 +126,18 @@ button { font: inherit; color: inherit; }
 .sw.on::after { left: 21px; background: #fff; }
 .sw:disabled { opacity: .4; cursor: default; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+/* panel picker */
+.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.panelpick {
+  background: #0a0d12; border: 1px solid var(--line); border-radius: 12px; padding: 10px 8px 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; color: #d6dde7; font-size: 12px;
+}
+.panelpick:hover { border-color: #3a4556; background: #0e131b; }
+.panelpick.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; cursor: default; }
+.panelpick:disabled { opacity: .5; cursor: default; }
+.panelpick svg { width: 100%; max-width: 150px; height: auto; }
+.panelpick svg rect { fill: #1d2532; stroke: #5a6678; stroke-width: 2; }
+.panelpick.on svg rect { fill: #3a3210; stroke: var(--gold); }
 
 .foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 22px; }
 .foot span { margin: 0 6px; }

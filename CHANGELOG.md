@@ -8,6 +8,12 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.6.0
+
+- One firmware for both layouts. The installer has a single Install button, and a Panels card on the device page shows two pictures: click the one that matches your matrix (one 64x64 panel, or two side by side) and the panel restarts using it. A fresh install starts on one panel, so the setup screen is readable on any matrix.
+- If you were on the two-panel build before this update, the panel comes up on the left panel only until you click the two-panel picture once. It remembers after that.
+- Team logos use ESPHome's current image platform (no change on the panel, just quieter builds).
+
 ## v0.5.3
 
 - The network name is gameday-xxxxxx.local again, with the panel's own six-character suffix, so two panels on one network never collide. The setup screen and the ticker hint show the exact name.

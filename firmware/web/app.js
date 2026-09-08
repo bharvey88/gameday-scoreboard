@@ -96,6 +96,20 @@
         <div class="actions" id="remoteActions" style="margin-top:8px"></div>
       </div>
       <div class="card">
+        <h2>Panels</h2>
+        <p class="hint">Click the picture that matches your matrix. The panel restarts with the new layout.</p>
+        <div class="panels" id="panels">
+          <button class="panelpick" data-cols="1" aria-label="One panel">
+            <svg viewBox="0 0 96 48" aria-hidden="true"><rect x="30" y="6" width="36" height="36" rx="3"/></svg>
+            <span>One 64x64 panel</span>
+          </button>
+          <button class="panelpick" data-cols="2" aria-label="Two panels side by side">
+            <svg viewBox="0 0 96 48" aria-hidden="true"><rect x="10" y="6" width="36" height="36" rx="3"/><rect x="50" y="6" width="36" height="36" rx="3"/></svg>
+            <span>Two panels wide</span>
+          </button>
+        </div>
+      </div>
+      <div class="card">
         <h2>Device</h2>
         <div class="actions" id="actions"></div>
         <div class="fw" id="fw" hidden>
@@ -243,6 +257,25 @@
       r.oninput = () => ($("#rotateVal").textContent = r.value + " min");
       r.onchange = () => post(rid, "set", { value: r.value });
     }
+  };
+
+  // ---- panel picker ------------------------------------------------------------
+  // The "Panels" select restarts the device on change; the page waits it out.
+  const renderPanels = () => {
+    const pid = byName["Panels"];
+    if (!pid) return;
+    const cur = String(ents[pid].value || "").startsWith("2") ? "2" : "1";
+    document.querySelectorAll("#panels .panelpick").forEach((b) => {
+      b.classList.toggle("on", b.dataset.cols === cur);
+      b.onclick = () => {
+        if (b.dataset.cols === cur) return;
+        const opt = b.dataset.cols === "2" ? "2 panels" : "1 panel";
+        document.querySelectorAll("#panels .panelpick").forEach((x) => (x.disabled = true));
+        post(pid, "set", { option: opt });
+        toast("Restarting with " + (b.dataset.cols === "2" ? "two panels" : "one panel"));
+        waitForReboot("");
+      };
+    });
   };
 
   // ---- controls --------------------------------------------------------
@@ -669,6 +702,7 @@
       case "Team": renderCurrentTeam(); break;
       case "Mode":
       case "Rotate Minutes": renderMode(); break;
+      case "Panels": renderPanels(); break;
       case "Game":
         try { game = JSON.parse(e.value); } catch (_) { game = null; }
         renderBoard();

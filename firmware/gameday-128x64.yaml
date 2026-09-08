@@ -1,7 +1,0 @@
-# Game Day Scoreboard for an Apollo M-1 driving two 64x64 panels side by side.
-substitutions:
-  variant: "128x64"
-  display_layout_cols: "2"
-
-packages:
-  common: !include gameday-common.yaml
