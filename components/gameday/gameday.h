@@ -2,12 +2,15 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include "esphome/components/http_request/http_request.h"
+#include "esphome/components/panel_layout/panel_layout.h"
 #include "esphome/components/select/select.h"
 #include "esphome/components/time/real_time_clock.h"
+#include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/preferences.h"
@@ -21,6 +24,7 @@ using ::espn::GameSnapshot;
 using ::espn::GameState;
 using ::espn::League;
 using ::espn::Schedule;
+using ::espn::Splash;
 using ::espn::TickerOptions;
 
 // Exactly the fields the Home Assistant blueprint used to push to the page.
@@ -46,7 +50,7 @@ struct UpdateFields {
   bool is_red_zone{false};
   uint32_t team_color{0xFFFFFF};
   uint32_t opponent_color{0xFFFFFF};
-  std::string json;  // compact snapshot for the device web page
+  std::string kickoff;  // "Sun 3:25 PM" style label while PRE, else empty
 };
 
 enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE, FAVORITE };
@@ -68,10 +72,22 @@ class GamedaySelect : public select::Select, public Component {
   GamedayComponent *parent_{nullptr};
 };
 
-class GamedayComponent : public Component {
+// The component is also the web handler for /gameday/*: the device page reads
+// one JSON document and posts settings there instead of driving entities.
+//   GET  /gameday/state              full snapshot + settings
+//   POST /gameday/set?key=value...   team=nfl:6 mode=0-3 rotate=2-30 fav1..fav4=nfl:6|none
+//                                    tz=<index> tzauto=0/1 down/play/odds/opp=0/1 panels=1/2
+//   POST /gameday/action?do=preview|refresh
+// Requests arrive on the HTTP task; settings are applied on the main loop.
+class GamedayComponent : public Component, public AsyncWebHandler {
  public:
   void set_http(http_request::HttpRequestComponent *http) { this->http_ = http; }
   void set_time(time::RealTimeClock *time) { this->time_ = time; }
+  void set_web_server_base(web_server_base::WebServerBase *base) { this->base_ = base; }
+  void set_panel_layout(panel_layout::PanelLayout *p) { this->panels_ = p; }
+  void add_on_action_callback(std::function<void(std::string)> &&cb) {
+    this->action_callbacks_.push_back(std::move(cb));
+  }
   void set_team_select(select::Select *s) { this->team_select_ = s; }
   void set_timezone_select(select::Select *s) { this->timezone_select_ = s; }
   void set_mode_select(select::Select *s) { this->mode_select_ = s; }
@@ -85,6 +101,7 @@ class GamedayComponent : public Component {
 
   // Called by the selects and by template entities in YAML.
   void select_team(const std::string &option);
+  void select_team_id(League league, uint32_t id);
   void select_timezone(const std::string &option);
   void select_mode(const std::string &option);
   std::string hostname() const;  // the device name, with its MAC suffix
@@ -115,7 +132,24 @@ class GamedayComponent : public Component {
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::LATE; }
 
+  // AsyncWebHandler (HTTP task)
+  bool canHandle(AsyncWebServerRequest *request) const override;
+  void handleRequest(AsyncWebServerRequest *request) override;
+
  protected:
+  void apply_team_(const ::espn::Team &t);
+  void set_favorite_(uint8_t slot, uint8_t league, uint32_t id);
+  void handle_set_(AsyncWebServerRequest *request);
+  void apply_set_(const std::vector<std::pair<std::string, std::string>> &kv);
+  void rebuild_state_(const UpdateFields *f);  // main loop only
+  std::string current_state_json_();
+  std::mutex state_mutex_;
+  std::string state_json_{"{}"};
+  UpdateFields last_fields_;
+  web_server_base::WebServerBase *base_{nullptr};
+  panel_layout::PanelLayout *panels_{nullptr};
+  std::vector<std::function<void(std::string)>> action_callbacks_;
+  Splash last_splash_;  // for the page: the splash goes out once per emit
   static constexpr uint8_t FLAG_CLOCK = 1;
   static constexpr uint8_t FLAG_DOWN = 2;
   static constexpr uint8_t FLAG_PLAY = 4;
@@ -218,6 +252,14 @@ class UpdateTrigger : public Trigger<const UpdateFields &> {
  public:
   explicit UpdateTrigger(GamedayComponent *parent) {
     parent->add_on_update_callback([this](const UpdateFields &f) { this->trigger(f); });
+  }
+};
+
+// Fires on the main loop for POST /gameday/action?do=<name>.
+class ActionTrigger : public Trigger<std::string> {
+ public:
+  explicit ActionTrigger(GamedayComponent *parent) {
+    parent->add_on_action_callback([this](std::string name) { this->trigger(std::move(name)); });
   }
 };
 

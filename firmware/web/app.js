@@ -1,7 +1,13 @@
 // Game Day Scoreboard device page.
-// Talks to the ESPHome web server: /events (server-sent state) and the
-// per-entity POST endpoints. Bundled with the team table by scripts/build_web.py,
-// which defines TEAMS = [[league, espnId, abbr, name], ...] above this file.
+// Scores and settings come from the gameday component's own routes:
+//   GET  /gameday/state           one JSON document with the game and every setting
+//   POST /gameday/set?key=value   change settings (team=nfl:6, mode=1, fav2=ncaa:333, tz=3 ...)
+//   POST /gameday/action?do=name  preview | refresh
+// The ESPHome event stream (/events) still carries the entities that stay
+// for Home Assistant (Power, Brightness, Firmware, WizMote...) and its
+// "Game Status" event is the cue to re-read the state document.
+// Bundled with the team table by scripts/build_web.py, which defines
+// TEAMS = [[league, espnId, abbr, name], ...] and TZS = [[name, iana], ...].
 
 (() => {
   "use strict";
@@ -18,13 +24,15 @@
     league === "nfl"
       ? `https://a.espncdn.com/i/teamlogos/nfl/500-dark/${String(abbr).toLowerCase()}.png`
       : `https://a.espncdn.com/i/teamlogos/ncaa/500-dark/${id}.png`;
-  const optionFor = (t) => `${t[0] === "nfl" ? "NFL" : "NCAAF"}: ${t[3]}`;
-  const teamByOption = (opt) => TEAMS.find((t) => optionFor(t) === opt);
+  const keyOf = (t) => t[0] + ":" + t[1];
+  const teamByKey = (key) => TEAMS.find((t) => keyOf(t) === key);
+  const refKey = (r) => (r && r.id ? r.l + ":" + r.id : "");
 
   // ---- state -----------------------------------------------------------
   const ents = {};       // id -> last event payload ({id, name, state, value, option...})
   const byName = {};     // name -> id
-  let game = null;       // parsed Game JSON
+  let S = null;          // /gameday/state document
+  let game = null;       // S.game
   let connected = false;
 
   // ---- DOM -------------------------------------------------------------
@@ -69,12 +77,18 @@
       <div class="card">
         <h2>Ticker</h2>
         <p class="hint">What scrolls along the bottom of the panel during a game.</p>
-        <div id="tickerCtls"></div>
+        <div id="tickerCtls">
+          <div class="ctl"><label>Down and distance</label><button class="sw" data-set="down" aria-label="Down and distance"></button></div>
+          <div class="ctl"><label>Last play</label><button class="sw" data-set="play" aria-label="Last play"></button></div>
+          <div class="ctl"><label>Pre-game odds and TV</label><button class="sw" data-set="odds" aria-label="Pre-game odds and TV"></button></div>
+        </div>
       </div>
       <div class="card">
         <h2>Celebrations</h2>
         <p class="hint">Full-screen splashes for scores. Yours always show.</p>
-        <div id="celebCtls"></div>
+        <div id="celebCtls">
+          <div class="ctl"><label>Opponent scores too</label><button class="sw" data-set="opp" aria-label="Opponent scores too"></button></div>
+        </div>
         <h2 style="margin-top:14px">Time</h2>
         <div class="tzline" id="tzline">Timezone not known yet</div>
         <div class="ctl" id="tzpick" hidden><label>Timezone</label><select id="tzsel"></select></div>
@@ -86,7 +100,12 @@
       <div class="card">
         <h2>Favorites</h2>
         <p class="hint">Buttons 1 to 4 on a WizMote remote jump straight to these teams.</p>
-        <div id="favCtls"></div>
+        <div id="favCtls">
+          <div class="ctl"><label>Button 1</label><select data-fav="1"></select></div>
+          <div class="ctl"><label>Button 2</label><select data-fav="2"></select></div>
+          <div class="ctl"><label>Button 3</label><select data-fav="3"></select></div>
+          <div class="ctl"><label>Button 4</label><select data-fav="4"></select></div>
+        </div>
       </div>
       <div class="card">
         <h2>Remote</h2>
@@ -111,7 +130,7 @@
       </div>
       <div class="card">
         <h2>Device</h2>
-        <div class="actions" id="actions"></div>
+        <div class="actions" id="actions"><button class="btn" id="previewBtn">Preview setup screen</button></div>
         <div class="fw" id="fw" hidden>
           <div class="fwline"><span id="fwText">Firmware</span><button class="btn primary" id="fwInstall" hidden>Install</button></div>
           <div class="fwsub" id="fwSub"></div>
@@ -176,6 +195,45 @@
     }
   };
 
+  // ---- gameday routes ----------------------------------------------------
+  const qs = (params) => Object.entries(params).map(([k, v]) => k + "=" + encodeURIComponent(v)).join("&");
+  let stateTimer = null;
+  let stateInflight = false;
+  const fetchState = async () => {
+    if (stateInflight) return;
+    stateInflight = true;
+    try {
+      const r = await fetch("/gameday/state?_=" + Date.now(), { cache: "no-store" });
+      if (r.ok) { S = await r.json(); game = S.game || null; renderAll(); }
+    } catch (_) { /* the poll comes back around */ }
+    stateInflight = false;
+  };
+  const scheduleState = (ms) => { clearTimeout(stateTimer); stateTimer = setTimeout(fetchState, ms); };
+  // Settings post; the device applies them on its main loop, so re-read shortly after.
+  const setGD = async (params, attempt = 0) => {
+    try {
+      const r = await fetch("/gameday/set?" + qs(params), { method: "POST" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      scheduleState(400);
+      return true;
+    } catch (e) {
+      if (attempt < 1) {
+        await new Promise((res) => setTimeout(res, 500));
+        return setGD(params, attempt + 1);
+      }
+      toast("Device did not respond (" + (e.message || "network") + "). Try again.");
+      return false;
+    }
+  };
+  const doAction = async (name) => {
+    try {
+      const r = await fetch("/gameday/action?do=" + encodeURIComponent(name), { method: "POST" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+    } catch (e) {
+      toast("Device did not respond (" + (e.message || "network") + ")");
+    }
+  };
+
   const setConn = (on) => {
     connected = on;
     const c = $("#conn");
@@ -207,7 +265,7 @@
       st.textContent = g ? "NO GAME" : "WAITING";
       st.classList.remove("live");
       msg.hidden = false;
-      const liveMode = g && g.md && g.md !== 0;
+      const liveMode = S && S.mode;
       msg.textContent = !g ? "Waiting for the first fetch" : liveMode ? "No live games right now" : "No upcoming game for this team";
       $("#clock").innerHTML = "&nbsp;";
       $("#down").textContent = "";
@@ -232,46 +290,68 @@
   };
 
   // ---- mode bar --------------------------------------------------------------
+  const MODES = ["My team", "Live NFL", "Live college", "Live anything"];  // index = device mode
+  const sel = $("#modeSel");
+  MODES.forEach((o, i) => { const opt = el("option", null, o); opt.value = String(i); sel.appendChild(opt); });
+  sel.onchange = () => { setGD({ mode: sel.value }); toast(MODES[Number(sel.value)]); };
+  const rotateInput = $("#rotate");
+  rotateInput.oninput = () => ($("#rotateVal").textContent = rotateInput.value + " min");
+  rotateInput.onchange = () => setGD({ rotate: rotateInput.value });
   const renderMode = () => {
-    const mid = byName["Mode"];
-    const rid = byName["Rotate Minutes"];
-    if (!mid) return;
-    const sel = $("#modeSel");
-    const m = ents[mid];
-    if (m.option && sel.options.length !== m.option.length) {
-      sel.innerHTML = "";
-      m.option.forEach((o) => sel.appendChild(el("option", null, o)));
-    }
-    if (document.activeElement !== sel) sel.value = m.value;
-    sel.onchange = () => { post(mid, "set", { option: sel.value }); toast(sel.value); };
-    const live = m.value && m.value !== "My team";
+    if (!S) return;
+    if (document.activeElement !== sel) sel.value = String(S.mode || 0);
+    const live = (S.mode || 0) !== 0;
     $("#rotateRow").hidden = !live;
     $("#pick").hidden = live;
     $("#modeNote").textContent = live
       ? "Picks a game in progress at random and follows it, then moves on when it ends or the timer runs out."
       : "";
-    if (rid) {
-      const r = $("#rotate");
-      const v = ents[rid].value;
-      if (document.activeElement !== r) { r.value = v; $("#rotateVal").textContent = v + " min"; }
-      r.oninput = () => ($("#rotateVal").textContent = r.value + " min");
-      r.onchange = () => post(rid, "set", { value: r.value });
+    if (document.activeElement !== rotateInput) { rotateInput.value = S.rotate; $("#rotateVal").textContent = S.rotate + " min"; }
+  };
+
+  // ---- toggles, favorites, preview (static controls on the state document) ---
+  document.querySelectorAll(".sw[data-set]").forEach((sw) => {
+    sw.onclick = () => {
+      const on = !sw.classList.contains("on");
+      sw.classList.toggle("on", on);
+      setGD({ [sw.dataset.set]: on ? 1 : 0 });
+    };
+  });
+  const favSelects = Array.from(document.querySelectorAll("select[data-fav]"));
+  favSelects.forEach((fs) => {
+    const none = el("option", null, "None");
+    none.value = "none";
+    fs.appendChild(none);
+    for (const t of TEAMS) {
+      const o = el("option", null, (t[0] === "nfl" ? "NFL: " : "NCAAF: ") + t[3]);
+      o.value = keyOf(t);
+      fs.appendChild(o);
     }
+    fs.onchange = () => setGD({ ["fav" + fs.dataset.fav]: fs.value });
+  });
+  $("#previewBtn").onclick = () => { doAction("preview"); toast("Preview setup screen"); };
+  const renderSettings = () => {
+    if (!S) return;
+    document.querySelectorAll(".sw[data-set]").forEach((sw) => sw.classList.toggle("on", !!S[sw.dataset.set]));
+    favSelects.forEach((fs, i) => {
+      if (document.activeElement === fs) return;
+      fs.value = refKey((S.favs || [])[i]) || "none";
+    });
+    $("#ticker").textContent = S.status || "";
+    $("#play").textContent = game && game.lp ? "Last play: " + game.lp : "";
   };
 
   // ---- panel picker ------------------------------------------------------------
   // The "Panels" select restarts the device on change; the page waits it out.
   const renderPanels = () => {
-    const pid = byName["Panels"];
-    if (!pid) return;
-    const cur = String(ents[pid].value || "").startsWith("2") ? "2" : "1";
+    if (!S || !S.panels) return;
+    const cur = String(S.panels);
     document.querySelectorAll("#panels .panelpick").forEach((b) => {
       b.classList.toggle("on", b.dataset.cols === cur);
       b.onclick = () => {
         if (b.dataset.cols === cur) return;
-        const opt = b.dataset.cols === "2" ? "2 panels" : "1 panel";
         document.querySelectorAll("#panels .panelpick").forEach((x) => (x.disabled = true));
-        post(pid, "set", { option: opt });
+        setGD({ panels: b.dataset.cols });
         toast("Restarting with " + (b.dataset.cols === "2" ? "two panels" : "one panel"));
         waitForReboot("");
       };
@@ -280,23 +360,14 @@
 
   // ---- controls --------------------------------------------------------
   const controlDefs = [
-    { name: "Ticker: Down and Distance", into: "#tickerCtls", label: "Down and distance" },
-    { name: "Ticker: Last Play", into: "#tickerCtls", label: "Last play" },
-    { name: "Ticker: Odds and TV", into: "#tickerCtls", label: "Pre-game odds and TV" },
-    { name: "Opponent Splashes", into: "#celebCtls", label: "Opponent scores too" },
     { name: "Power", into: "#panelCtls", label: "Panel on" },
     { name: "Brightness", into: "#panelCtls", label: "Brightness" },
     { name: "Scroll Speed", into: "#panelCtls", label: "Ticker speed" },
     { name: "Select Page", into: "#panelCtls", label: "Showing" },
-    { name: "Favorite 1", into: "#favCtls", label: "Button 1" },
-    { name: "Favorite 2", into: "#favCtls", label: "Button 2" },
-    { name: "Favorite 3", into: "#favCtls", label: "Button 3" },
-    { name: "Favorite 4", into: "#favCtls", label: "Button 4" },
     { name: "WizMote Auto-Discovery", into: "#remoteCtls", label: "Discovery" },
     { name: "Clear WizMote Pairing", into: "#remoteActions", label: "Unpair remote", danger: true },
     { name: "Refresh Now", into: "#actions", label: "Refresh scores" },
     { name: "Check for Updates", into: "#actions", label: "Check for updates" },
-    { name: "Preview Setup Screen", into: "#actions", label: "Preview setup screen" },
     { name: "Reboot", into: "#actions", label: "Reboot", danger: true },
   ];
   const built = {};
@@ -405,7 +476,7 @@
       tiles.appendChild(el("div", "none", list.length ? "No game matches" : "No NFL or FBS games today"));
       return;
     }
-    const cur = ents[byName["Team"]]?.value;
+    const cur = S ? refKey(S.team) : "";
     let lastState = null;
     for (const g of shown) {
       if (g.state !== lastState) {
@@ -415,7 +486,7 @@
       const card = el("div", "game" + (g.state === "in" ? " live" : ""));
       const mkSide = (s) => {
         const t = teamById(g.league, s.id);
-        const b = el("button", "side" + (t && optionFor(t) === cur ? " on" : ""));
+        const b = el("button", "side" + (t && keyOf(t) === cur ? " on" : ""));
         b.disabled = !t;
         b.title = t ? "Follow the " + t[3] : "Not in the team list";
         const img = el("img");
@@ -429,9 +500,8 @@
         b.appendChild(txt);
         b.appendChild(el("div", "sc", g.state === "pre" ? "" : String(s.score)));
         b.onclick = () => {
-          const id = byName["Team"];
-          if (!t || !id) return;
-          post(id, "set", { option: optionFor(t) });
+          if (!t) return;
+          setGD({ team: keyOf(t) });
           toast("Now following the " + t[3]);
           $("#modal").classList.remove("open");
         };
@@ -453,7 +523,7 @@
     if (league === "now") return renderGames();
     $("#tiles").className = "tiles";
     const q = $("#q").value.trim().toLowerCase();
-    const cur = ents[byName["Team"]]?.value;
+    const cur = S ? refKey(S.team) : "";
     const tiles = $("#tiles");
     tiles.innerHTML = "";
     const list = TEAMS.filter((t) => (q ? (t[3] + " " + t[2]).toLowerCase().includes(q) : t[0] === league));
@@ -462,7 +532,7 @@
       return;
     }
     for (const t of list) {
-      const tile = el("button", "tile" + (optionFor(t) === cur ? " on" : ""));
+      const tile = el("button", "tile" + (keyOf(t) === cur ? " on" : ""));
       const img = el("img");
       img.loading = "lazy";
       img.src = logoUrl(t[0], t[1], t[2]);
@@ -471,9 +541,7 @@
       tile.appendChild(el("div", "n", t[3]));
       tile.appendChild(el("div", "a", (t[0] === "nfl" ? "NFL · " : "NCAAF · ") + t[2]));
       tile.onclick = () => {
-        const id = byName["Team"];
-        if (!id) return toast("Team control not ready yet");
-        post(id, "set", { option: optionFor(t) });
+        setGD({ team: keyOf(t) });
         toast("Now following the " + t[3]);
         $("#modal").classList.remove("open");
       };
@@ -481,7 +549,7 @@
     }
   };
   $("#pick").onclick = async () => {
-    const cur = teamByOption(ents[byName["Team"]]?.value);
+    const cur = S ? teamByKey(refKey(S.team)) : null;
     league = cur ? cur[0] : "nfl";
     try {
       const list = await loadGames(false);
@@ -501,7 +569,7 @@
   document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") $("#modal").classList.remove("open"); });
 
   const renderCurrentTeam = () => {
-    const t = teamByOption(ents[byName["Team"]]?.value);
+    const t = S ? teamByKey(refKey(S.team)) : null;
     const img = $("#curLogo");
     if (!t) { img.style.visibility = "hidden"; $("#curName").textContent = "No team chosen"; return; }
     img.style.visibility = "visible";
@@ -542,26 +610,18 @@
   // The panel follows the browser's zone unless someone picked one by hand.
   // The Time card is a single line; the dropdown only appears on request.
   let tzApplied = false;
+  const tzsel = $("#tzsel");
+  TZS.forEach((z, i) => { const o = el("option", null, z[0]); o.value = String(i); tzsel.appendChild(o); });
+  tzsel.onchange = () => { setGD({ tzauto: 0, tz: tzsel.value }); $("#tzpick").hidden = true; };
   const renderTime = () => {
-    const id = byName["Timezone"];
-    const autoId = byName["Auto Timezone"];
-    if (!id || !autoId) return;
-    const cur = ents[id].value || "";
-    const auto = ents[autoId].value === true || ents[autoId].state === "ON";
+    if (!S) return;
+    const cur = S.tz_name || "";
+    const auto = !!S.tz_auto;
     const mine = browserZoneName();
+    const mineIdx = mine ? TZS.findIndex((z) => z[0] === mine) : -1;
     const line = $("#tzline");
     const pick = $("#tzpick");
-    const sel = $("#tzsel");
-    if (ents[id].option && sel.options.length !== ents[id].option.length) {
-      sel.innerHTML = "";
-      ents[id].option.forEach((o) => sel.appendChild(el("option", null, o)));
-    }
-    sel.value = cur;
-    sel.onchange = () => {
-      post(autoId, "turn_off");
-      post(id, "set", { option: sel.value });
-      pick.hidden = true;
-    };
+    if (document.activeElement !== tzsel) tzsel.value = String(S.tz);
     line.innerHTML = "";
     line.appendChild(el("b", null, cur || "Not set"));
     const link = el("a", "lnk");
@@ -569,20 +629,30 @@
       line.appendChild(el("span", "muted", mine ? " · set from this browser" : " · this browser's zone is not in the list"));
       link.textContent = "choose manually";
       link.onclick = () => { pick.hidden = !pick.hidden; };
-      if (mine && mine !== cur && !tzApplied) {
+      if (mine && mine !== cur && mineIdx >= 0 && !tzApplied) {
         tzApplied = true;
-        post(id, "set", { option: mine });
+        setGD({ tz: mineIdx });
         toast("Timezone set to " + mine + " from this browser");
       }
     } else {
       line.appendChild(el("span", "muted", " · chosen by hand"));
       link.textContent = mine ? "follow this browser (" + mine + ")" : "change";
       link.onclick = () => {
-        if (mine) { tzApplied = false; post(autoId, "turn_on"); pick.hidden = true; }
+        if (mine) { tzApplied = false; setGD({ tzauto: 1 }); pick.hidden = true; }
         else pick.hidden = !pick.hidden;
       };
     }
     line.appendChild(link);
+  };
+
+  const renderAll = () => {
+    renderBoard();
+    renderCurrentTeam();
+    renderMode();
+    renderSettings();
+    renderPanels();
+    renderTime();
+    if (S && S.name) $("#hostname").textContent = S.name + ".local";
   };
 
   // After an install the device reboots. The event stream only retries every
@@ -699,19 +769,10 @@
       built[e.id].update(ents[e.id]);
     }
     switch (name) {
-      case "Team": renderCurrentTeam(); break;
-      case "Mode":
-      case "Rotate Minutes": renderMode(); break;
-      case "Panels": renderPanels(); break;
-      case "Game":
-        try { game = JSON.parse(e.value); } catch (_) { game = null; }
-        renderBoard();
-        break;
-      case "Game Status": $("#ticker").textContent = e.value || ""; break;
+      // A new ticker line means the device finished a poll: re-read the state document.
+      case "Game Status": $("#ticker").textContent = e.value || ""; scheduleState(150); break;
       case "Last Play": $("#play").textContent = e.value ? "Last play: " + e.value : ""; break;
       case "Firmware": renderUpdate(ents[e.id]); break;
-      case "Timezone":
-      case "Auto Timezone": renderTime(); break;
       case "WizMote Status": $("#wizStatus").textContent = e.value || ""; break;
       case "IP": $("#ip").textContent = e.value || ""; break;
       case "RSSI": $("#rssi").textContent = e.value ? e.value + " dBm" : ""; break;
@@ -726,15 +787,18 @@
       if (!ev.data) return;
       try {
         const p = JSON.parse(ev.data);
-        if (p.title) { $("#devname").textContent = p.title; $("#hostname").textContent = p.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".local"; }
+        if (p.title) $("#devname").textContent = p.title;
         if (p.comment) $("#ver").textContent = p.comment;
       } catch (_) {}
     });
     es.addEventListener("state", (ev) => {
       try { onState(JSON.parse(ev.data)); } catch (_) {}
     });
-    es.onopen = () => setConn(true);
+    es.onopen = () => { setConn(true); fetchState(); };
     es.onerror = () => setConn(false);
   };
   connect();
+  fetchState();
+  // Fallback poll in case an event is missed; the ticker event is the fast path.
+  setInterval(fetchState, 15000);
 })();

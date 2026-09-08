@@ -160,15 +160,6 @@ script:
       - delay: 20s
       - script.execute: boot_hide
 
-button:
-  - platform: template
-    name: "Preview Setup Screen"
-    id: boot_preview_button
-    icon: "mdi:monitor-eye"
-    entity_category: config
-    on_press:
-      - script.execute: boot_preview
-
 interval:
   - interval: 500ms
     startup_delay: 500ms

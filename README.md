@@ -27,26 +27,25 @@ Team changes take effect immediately and survive reboots. Nothing needs reflashi
 
 ## The device page
 
-The M-1 serves its own page: a live board that mirrors the panel (logos, score, clock, down and distance, timeout pips, last play), a team chooser with logos and search plus an "On now" tab listing today's NFL and FBS games straight from ESPN (tap the side you want to follow), and the settings grouped in plain language. It is plain HTML and JavaScript embedded in the firmware, so it works with no internet beyond the logos. Home Assistant users get the same controls as entities.
+The M-1 serves its own page: a live board that mirrors the panel (logos, score, clock, down and distance, timeout pips, last play), a team chooser with logos and search plus an "On now" tab listing today's NFL and FBS games straight from ESPN (tap the side you want to follow), and the settings grouped in plain language. It is plain HTML and JavaScript embedded in the firmware, so it works with no internet beyond the logos. The page reads one JSON document from the device (`GET /gameday/state`) and writes settings back to `POST /gameday/set`, so it is not limited to what an ESPHome entity can carry.
 
-| Control | What it does |
+| Setting | What it does |
 | --- | --- |
 | Show | My team, or a live game picked at random from the NFL, college, or both, switching every few minutes |
-| Team | One list of all 32 NFL teams and every FBS college team |
-| Timezone | US zones plus UTC, UK and Central Europe; used for kickoff times |
-| Ticker: Down and Distance, Last Play, Odds and TV | Choose what scrolls along the bottom |
-| Opponent Splashes | Turn the opponent's scoring splashes off if you only want yours |
-| Favorite 1 to 4 | Teams for the numbered buttons on a WizMote remote |
-| WizMote Auto-Discovery, Clear WizMote Pairing | Pair a WizMote: turn discovery on, press any button on the remote. ON/OFF, brightness and NIGHT buttons control the panel |
-| Refresh Now | Re-fetch the schedule and game right away |
-| Firmware / Check for Updates | The device checks this project's releases every 6 hours; an Install button appears on the page when a newer version exists and updates over WiFi |
-| Brightness, Power, Scroll Speed | Panel brightness, panel on or off, ticker speed |
+| Team | One list of all 32 NFL teams and every FBS college team, plus an "On now" tab |
+| Timezone | Follows the browser's zone unless you pick one by hand; used for kickoff times |
+| Ticker: down and distance, last play, odds and TV | Choose what scrolls along the bottom |
+| Opponent scores too | Turn the opponent's scoring splashes off if you only want yours |
+| Favorites 1 to 4 | Teams for the numbered buttons on a WizMote remote |
+| Remote | Pair a WizMote: turn discovery on, press any button on the remote. ON/OFF, brightness and NIGHT buttons control the panel |
 | Panels | One 64x64 panel or two side by side. Changing it restarts the device |
-| Select Page | Switch between the scoreboard and a clock page |
+| Firmware / Check for updates | The device checks this project's releases every 6 hours; an Install button appears on the page when a newer version exists and updates over WiFi |
+| Brightness, Panel on, Ticker speed, Showing | Panel brightness, panel on or off, ticker speed, scoreboard or clock page |
+| Refresh scores, Preview setup screen, Reboot | Re-fetch right away, play the setup screens on the panel, restart |
 
 ## Home Assistant is optional
 
-The device runs on its own, but it is a normal ESPHome device. If Home Assistant is on the same network it will discover it, and every control above appears as an entity. The API has no encryption key in the prebuilt binary; build from YAML if you want one.
+The device runs on its own, but it is a normal ESPHome device. If Home Assistant is on the same network it will discover it with the controls worth automating: Team, Mode, Power, Brightness, Scroll Speed, Select Page, Game Status, Last Play, Firmware, Refresh Now, Reboot and the WizMote pairing switches. Favorites, timezone, ticker options, splashes and the panel count are set from the device page only. The API has no encryption key in the prebuilt binary; build from YAML if you want one.
 
 ## Build it yourself
 

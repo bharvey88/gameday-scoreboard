@@ -1,5 +1,6 @@
 #include "gameday.h"
 
+#include "esphome/components/json/json_util.h"
 #include "esphome/components/network/util.h"
 #include "esphome/core/application.h"
 #include "esphome/core/hal.h"
@@ -128,6 +129,9 @@ void GamedayComponent::setup() {
     this->prefs3_ = Prefs3{};
   this->apply_timezone_();
   this->publish_selects_();
+  this->rebuild_state_(nullptr);
+  if (this->base_ != nullptr)
+    this->base_->add_handler(this);
   this->schedule_next_(3000);
 }
 
@@ -163,10 +167,19 @@ void GamedayComponent::select_favorite(uint8_t slot, const std::string &option) 
       return;
     }
   }
+  this->set_favorite_(slot, league, id);
+}
+
+void GamedayComponent::set_favorite_(uint8_t slot, uint8_t league, uint32_t id) {
+  if (slot < 1 || slot > 4)
+    return;
   this->prefs3_.fav_league[slot - 1] = league;
   this->prefs3_.fav_id[slot - 1] = id;
   this->pref3_.save(&this->prefs3_);
-  ESP_LOGI(TAG, "Favorite %u: %s", (unsigned) slot, option.c_str());
+  ESP_LOGI(TAG, "Favorite %u: %s", (unsigned) slot, this->favorite_option_(slot).c_str());
+  if (this->favorite_selects_[slot - 1] != nullptr)
+    this->favorite_selects_[slot - 1]->publish_state(this->favorite_option_(slot));
+  this->rebuild_state_(&this->last_fields_);
 }
 
 void GamedayComponent::press_favorite(uint8_t slot) {
@@ -216,8 +229,11 @@ void GamedayComponent::select_mode(const std::string &option) {
     this->prefs2_.mode = i;
     this->pref2_.save(&this->prefs2_);
     ESP_LOGI(TAG, "Mode: %s", option.c_str());
+    if (this->mode_select_ != nullptr)
+      this->mode_select_->publish_state(option);
     this->reset_game_();
     this->generation_++;
+    this->emit_({});  // clear the board while the next fetch runs
     this->schedule_next_(0);
     return;
   }
@@ -233,6 +249,7 @@ void GamedayComponent::set_rotate_minutes(int minutes) {
     return;
   this->prefs2_.rotate_minutes = (uint8_t) minutes;
   this->pref2_.save(&this->prefs2_);
+  this->rebuild_state_(&this->last_fields_);
 }
 
 uint32_t GamedayComponent::our_id_() const {
@@ -292,34 +309,51 @@ void GamedayComponent::select_team(const std::string &option) {
   for (size_t i = 0; i < ::espn::kTeamCount; i++) {
     const auto &t = ::espn::kTeams[i];
     std::string name = std::string(t.league == League::NFL ? "NFL: " : "NCAAF: ") + t.name;
-    if (name != option)
-      continue;
-    if ((uint8_t) t.league == this->prefs_.league && t.espn_id == this->prefs_.team_id)
+    if (name == option) {
+      this->apply_team_(t);
       return;
-    this->prefs_.league = (uint8_t) t.league;
-    this->prefs_.team_id = t.espn_id;
-    this->save_prefs_();
-    ESP_LOGI(TAG, "Team changed to %s", t.name);
-    if (!this->flag_(FLAG_SETUP)) {
-      this->prefs_.flags |= FLAG_SETUP;
-      this->save_prefs_();
     }
-    this->reset_game_();
-    this->generation_++;  // a fetch already in flight belongs to the old team
-    // Show the new team right away; the game data follows in a second or two.
-    GameSnapshot g;
-    g.valid = true;
-    g.state = GameState::PRE;
-    g.team_abbr = t.abbr;
-    g.team_id = t.espn_id;
-    g.team_logo = ::espn::team_logo_url(t.league, t.espn_id, t.abbr);
-    g.short_detail = "Loading";
-    this->game_ = g;
-    this->emit_({});
-    this->schedule_next_(0);
-    return;
   }
   ESP_LOGW(TAG, "Unknown team option '%s'", option.c_str());
+}
+
+void GamedayComponent::select_team_id(League league, uint32_t id) {
+  for (size_t i = 0; i < ::espn::kTeamCount; i++) {
+    const auto &t = ::espn::kTeams[i];
+    if (t.league == league && t.espn_id == id) {
+      this->apply_team_(t);
+      return;
+    }
+  }
+  ESP_LOGW(TAG, "Unknown team %s %u", league == League::NFL ? "nfl" : "ncaa", (unsigned) id);
+}
+
+void GamedayComponent::apply_team_(const ::espn::Team &t) {
+  if ((uint8_t) t.league == this->prefs_.league && t.espn_id == this->prefs_.team_id)
+    return;
+  this->prefs_.league = (uint8_t) t.league;
+  this->prefs_.team_id = t.espn_id;
+  this->save_prefs_();
+  ESP_LOGI(TAG, "Team changed to %s", t.name);
+  if (!this->flag_(FLAG_SETUP)) {
+    this->prefs_.flags |= FLAG_SETUP;
+    this->save_prefs_();
+  }
+  if (this->team_select_ != nullptr)
+    this->team_select_->publish_state(this->team_option_());
+  this->reset_game_();
+  this->generation_++;  // a fetch already in flight belongs to the old team
+  // Show the new team right away; the game data follows in a second or two.
+  GameSnapshot g;
+  g.valid = true;
+  g.state = GameState::PRE;
+  g.team_abbr = t.abbr;
+  g.team_id = t.espn_id;
+  g.team_logo = ::espn::team_logo_url(t.league, t.espn_id, t.abbr);
+  g.short_detail = "Loading";
+  this->game_ = g;
+  this->emit_({});
+  this->schedule_next_(0);
 }
 
 void GamedayComponent::select_timezone(const std::string &option) {
@@ -329,9 +363,13 @@ void GamedayComponent::select_timezone(const std::string &option) {
     this->prefs_.tz_index = (uint8_t) i;
     this->save_prefs_();
     this->apply_timezone_();
+    if (this->timezone_select_ != nullptr)
+      this->timezone_select_->publish_state(::espn::kTimezones[i].name);
     // Re-render so a PRE ticker picks up the new kickoff time.
     if (this->game_.valid)
       this->emit_({});
+    else
+      this->rebuild_state_(&this->last_fields_);
     return;
   }
   ESP_LOGW(TAG, "Unknown timezone option '%s'", option.c_str());
@@ -350,6 +388,8 @@ void GamedayComponent::set_flag_(uint8_t f, bool on) {
   this->save_prefs_();
   if (this->game_.valid)
     this->emit_({});
+  else
+    this->rebuild_state_(&this->last_fields_);
 }
 
 void GamedayComponent::save_prefs_() { this->pref_.save(&this->prefs_); }
@@ -669,6 +709,7 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
     struct tm now = this->time_->now().to_c_tm();
     kickoff = ::espn::kickoff_label(kick, now);
   }
+  f.kickoff = kickoff;
   f.status_text = ::espn::status_text(g, opts, kickoff);
   if (this->live_mode_() && (!g.valid || g.state == GameState::NOT_FOUND))
     f.status_text = this->live_none_ ? "No live games right now" : "Looking for a live game";
@@ -689,32 +730,220 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
       f.status_text = "Setup: open " + this->hostname() + ".local or " + ip + " on your phone | " + f.status_text;
   }
 
-  // Compact JSON for the web page. Kept under 255 bytes so Home Assistant
-  // accepts it as a text sensor state too.
-  {
-    const ::espn::Team *team = this->current_team_();
-    char buf[320];
-    snprintf(buf, sizeof(buf),
-             "{\"s\":\"%s\",\"l\":\"%s\",\"ta\":\"%s\",\"ti\":%u,\"ts\":%d,\"oa\":\"%s\",\"oi\":%u,\"os\":%d,"
-             "\"tr\":\"%s\",\"or\":\"%s\",\"c\":\"%s\",\"d\":\"%s\",\"p\":%d,\"tt\":%d,\"ot\":%d,"
-             "\"tc\":\"%06X\",\"oc\":\"%06X\",\"rz\":%d,\"tv\":\"%s\",\"k\":\"%s\",\"m\":%d}",
-             f.game_state.c_str(), team && team->league == League::NFL ? "nfl" : "ncaa", g.team_abbr.c_str(),
-             (unsigned) g.team_id, g.team_score, g.opp_abbr.c_str(), (unsigned) g.opp_id, g.opp_score,
-             g.team_record.c_str(), g.opp_record.c_str(), f.clock_text.c_str(), f.down_distance.c_str(), g.possession,
-             g.team_timeouts, g.opp_timeouts, (unsigned) f.team_color, (unsigned) f.opponent_color, f.is_red_zone ? 1 : 0,
-             g.tv.c_str(), kickoff.c_str(), (int) this->misses_);
-    // mode and rotation, appended for the page
-    size_t n = strlen(buf);
-    if (n > 1 && n < sizeof(buf) - 24)
-      snprintf(buf + n - 1, sizeof(buf) - n + 1, ",\"md\":%u,\"rm\":%u}", (unsigned) this->prefs2_.mode,
-               (unsigned) this->prefs2_.rotate_minutes);
-    f.json = buf;
-  }
-
   if (!f.splash_text.empty())
     ESP_LOGI(TAG, "Splash: %s", f.splash_text.c_str());
+  this->last_fields_ = f;
+  this->rebuild_state_(&f);
   for (auto &cb : this->callbacks_)
     cb(f);
+}
+
+// ---- device page routes -----------------------------------------------------
+
+static const char *const LEAGUE_KEY[] = {"nfl", "ncaa"};
+
+static void put_team(JsonObject o, uint8_t league, uint32_t id) {
+  for (size_t i = 0; i < ::espn::kTeamCount; i++) {
+    const auto &t = ::espn::kTeams[i];
+    if ((uint8_t) t.league == league && t.espn_id == id) {
+      o["l"] = LEAGUE_KEY[league == (uint8_t) League::NFL ? 0 : 1];
+      o["id"] = id;
+      o["abbr"] = t.abbr;
+      o["name"] = t.name;
+      return;
+    }
+  }
+}
+
+// Serialises everything the page shows into state_json_. Main loop only; the
+// HTTP task copies the finished string under the mutex.
+void GamedayComponent::rebuild_state_(const UpdateFields *f) {
+  JsonDocument doc;
+  const GameSnapshot &g = this->game_;
+  doc["name"] = this->hostname();
+  doc["version"] = App.get_comment();
+  doc["setup"] = this->flag_(FLAG_SETUP);
+  doc["panels"] = this->panels_ != nullptr ? this->panels_->cols() : 0;
+  JsonObject team = doc["team"].to<JsonObject>();
+  put_team(team, this->prefs_.league, this->prefs_.team_id);
+  doc["mode"] = this->prefs2_.mode;
+  doc["rotate"] = this->prefs2_.rotate_minutes;
+  JsonArray favs = doc["favs"].to<JsonArray>();
+  for (uint8_t i = 0; i < 4; i++) {
+    JsonObject o = favs.add<JsonObject>();
+    if (this->prefs3_.fav_id[i] != 0)
+      put_team(o, this->prefs3_.fav_league[i], this->prefs3_.fav_id[i]);
+  }
+  doc["tz"] = this->prefs_.tz_index;
+  doc["tz_name"] = ::espn::kTimezones[this->prefs_.tz_index].name;
+  doc["tz_auto"] = this->tz_auto();
+  doc["down"] = this->ticker_down_distance();
+  doc["play"] = this->ticker_last_play();
+  doc["odds"] = this->ticker_odds();
+  doc["opp"] = this->opponent_splashes();
+  doc["misses"] = this->misses_;
+
+  JsonObject game = doc["game"].to<JsonObject>();
+  game["s"] = g.valid ? ::espn::state_name(g.state) : "NOT_FOUND";
+  uint8_t league = this->live_mode_() && this->schedule_.valid ? this->schedule_.league : this->prefs_.league;
+  game["l"] = LEAGUE_KEY[league == (uint8_t) League::NFL ? 0 : 1];
+  game["ta"] = g.team_abbr;
+  game["ti"] = g.team_id;
+  game["ts"] = g.team_score;
+  game["oa"] = g.opp_abbr;
+  game["oi"] = g.opp_id;
+  game["os"] = g.opp_score;
+  game["tr"] = g.team_record;
+  game["or"] = g.opp_record;
+  game["p"] = g.possession;
+  game["tt"] = g.team_timeouts;
+  game["ot"] = g.opp_timeouts;
+  game["rz"] = g.is_red_zone;
+  game["tv"] = g.tv;
+  game["venue"] = g.venue;
+  game["odds"] = g.odds;
+  game["ou"] = g.over_under;
+  game["detail"] = g.short_detail;
+  game["kick"] = g.kickoff_epoch;
+  game["lp"] = g.last_play;
+  game["dd"] = g.down_distance;
+  if (f != nullptr) {
+    game["c"] = f->clock_text;
+    game["d"] = f->down_distance;
+    game["k"] = f->kickoff;
+    char color[8];
+    snprintf(color, sizeof(color), "%06X", (unsigned) f->team_color);
+    game["tc"] = color;
+    snprintf(color, sizeof(color), "%06X", (unsigned) f->opponent_color);
+    game["oc"] = color;
+    doc["status"] = f->status_text;
+    doc["splash"] = f->splash_text;
+  }
+  std::string out;
+  serializeJson(doc, out);
+  std::lock_guard<std::mutex> lock(this->state_mutex_);
+  this->state_json_ = std::move(out);
+}
+
+std::string GamedayComponent::current_state_json_() {
+  std::lock_guard<std::mutex> lock(this->state_mutex_);
+  return this->state_json_;
+}
+
+bool GamedayComponent::canHandle(AsyncWebServerRequest *request) const {
+  char buf[AsyncWebServerRequest::URL_BUF_SIZE];
+  return request->url_to(buf).starts_with("/gameday/");
+}
+
+void GamedayComponent::handleRequest(AsyncWebServerRequest *request) {
+  char buf[AsyncWebServerRequest::URL_BUF_SIZE];
+  StringRef url = request->url_to(buf);
+  if (url == StringRef("/gameday/state") && request->method() == HTTP_GET) {
+    std::string body = this->current_state_json_();
+    request->send(200, "application/json", body.c_str());
+    return;
+  }
+  if (url == StringRef("/gameday/set") && request->method() == HTTP_POST) {
+    this->handle_set_(request);
+    return;
+  }
+  if (url == StringRef("/gameday/action") && request->method() == HTTP_POST) {
+    std::string name = request->arg("do");
+    if (name.empty()) {
+      request->send(400, "application/json", "{\"error\":\"do is required\"}");
+      return;
+    }
+    this->defer([this, name]() {
+      if (name == "refresh")
+        this->refresh_now();
+      for (auto &cb : this->action_callbacks_)
+        cb(name);
+    });
+    request->send(200, "application/json", "{\"ok\":true}");
+    return;
+  }
+  request->send(404, "application/json", "{\"error\":\"unknown route\"}");
+}
+
+static const char *const SET_KEYS[] = {"team", "mode", "rotate", "fav1", "fav2", "fav3", "fav4", "tz",
+                                       "tzauto", "down", "play", "odds", "opp", "panels"};
+
+void GamedayComponent::handle_set_(AsyncWebServerRequest *request) {
+  std::vector<std::pair<std::string, std::string>> kv;
+  for (const char *key : SET_KEYS)
+    if (request->hasParam(key))
+      kv.emplace_back(key, request->arg(key));
+  if (kv.empty()) {
+    request->send(400, "application/json", "{\"error\":\"nothing to set\"}");
+    return;
+  }
+  this->defer([this, kv]() { this->apply_set_(kv); });
+  request->send(200, "application/json", "{\"ok\":true}");
+}
+
+// "nfl:6" -> league + id. False for "none"/"" (id 0) or garbage.
+static bool parse_team_ref(const std::string &v, uint8_t &league, uint32_t &id) {
+  league = 0;
+  id = 0;
+  size_t colon = v.find(':');
+  if (colon == std::string::npos)
+    return false;
+  std::string lg = v.substr(0, colon);
+  id = (uint32_t) strtoul(v.c_str() + colon + 1, nullptr, 10);
+  if (lg == "nfl")
+    league = (uint8_t) League::NFL;
+  else if (lg == "ncaa")
+    league = (uint8_t) League::NCAA;
+  else
+    return false;
+  return id != 0;
+}
+
+void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::string>> &kv) {
+  bool dirty = false;
+  for (const auto &p : kv) {
+    const std::string &k = p.first;
+    const std::string &v = p.second;
+    uint8_t league;
+    uint32_t id;
+    if (k == "team") {
+      if (parse_team_ref(v, league, id))
+        this->select_team_id((League) league, id);
+    } else if (k == "mode") {
+      int m = atoi(v.c_str());
+      if (m >= 0 && m <= (int) Mode::LIVE_ANY)
+        this->select_mode(MODE_OPTIONS[m]);
+    } else if (k == "rotate") {
+      this->set_rotate_minutes(atoi(v.c_str()));
+    } else if (k.size() == 4 && k.compare(0, 3, "fav") == 0) {
+      uint8_t slot = (uint8_t) (k[3] - '0');
+      if (!parse_team_ref(v, league, id) && v != "none" && !v.empty()) {
+        ESP_LOGW(TAG, "Bad favorite '%s'", v.c_str());
+        continue;
+      }
+      this->set_favorite_(slot, league, id);
+    } else if (k == "tz") {
+      int i = atoi(v.c_str());
+      if (i >= 0 && i < (int) ::espn::kTimezoneCount)
+        this->select_timezone(::espn::kTimezones[i].name);
+    } else if (k == "tzauto") {
+      this->set_tz_auto(v == "1");
+      dirty = true;
+    } else if (k == "down") {
+      this->set_ticker_down_distance(v == "1");
+    } else if (k == "play") {
+      this->set_ticker_last_play(v == "1");
+    } else if (k == "odds") {
+      this->set_ticker_odds(v == "1");
+    } else if (k == "opp") {
+      this->set_opponent_splashes(v == "1");
+    } else if (k == "panels") {
+      if (this->panels_ != nullptr)
+        this->panels_->set_cols((uint8_t) atoi(v.c_str()));
+    }
+  }
+  if (dirty)
+    this->rebuild_state_(&this->last_fields_);
 }
 
 }  // namespace gameday

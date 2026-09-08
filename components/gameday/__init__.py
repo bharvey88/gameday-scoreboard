@@ -6,16 +6,20 @@ from pathlib import Path
 
 from esphome import automation
 import esphome.codegen as cg
-from esphome.components import http_request, time
+from esphome.components import http_request, time, web_server_base
+from esphome.components.panel_layout import PanelLayout
+from esphome.components.web_server_base import CONF_WEB_SERVER_BASE_ID
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_TIME_ID, CONF_TRIGGER_ID
 
 DEPENDENCIES = ["network", "http_request", "time"]
-AUTO_LOAD = ["json", "select"]
+AUTO_LOAD = ["json", "select", "web_server_base"]
 CODEOWNERS = ["@bharvey88"]
 
 CONF_HTTP_REQUEST_ID = "http_request_id"
+CONF_PANEL_LAYOUT_ID = "panel_layout_id"
 CONF_ON_UPDATE = "on_update"
+CONF_ON_ACTION = "on_action"
 
 gameday_ns = cg.esphome_ns.namespace("gameday")
 GamedayComponent = gameday_ns.class_("GamedayComponent", cg.Component)
@@ -23,6 +27,9 @@ UpdateFields = gameday_ns.struct("UpdateFields")
 UpdateFieldsConstRef = UpdateFields.operator("const").operator("ref")
 UpdateTrigger = gameday_ns.class_(
     "UpdateTrigger", automation.Trigger.template(UpdateFieldsConstRef)
+)
+ActionTrigger = gameday_ns.class_(
+    "ActionTrigger", automation.Trigger.template(cg.std_string)
 )
 
 COMPONENT_DIR = Path(__file__).resolve().parent
@@ -59,8 +66,15 @@ CONFIG_SCHEMA = cv.Schema(
             http_request.HttpRequestComponent
         ),
         cv.GenerateID(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
+        cv.GenerateID(CONF_WEB_SERVER_BASE_ID): cv.use_id(
+            web_server_base.WebServerBase
+        ),
+        cv.Optional(CONF_PANEL_LAYOUT_ID): cv.use_id(PanelLayout),
         cv.Optional(CONF_ON_UPDATE): automation.validate_automation(
             {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(UpdateTrigger)}
+        ),
+        cv.Optional(CONF_ON_ACTION): automation.validate_automation(
+            {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(ActionTrigger)}
         ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
@@ -71,8 +85,20 @@ async def to_code(config):
     await cg.register_component(var, config)
     cg.add(var.set_http(await cg.get_variable(config[CONF_HTTP_REQUEST_ID])))
     cg.add(var.set_time(await cg.get_variable(config[CONF_TIME_ID])))
+    cg.add(
+        var.set_web_server_base(
+            await cg.get_variable(config[CONF_WEB_SERVER_BASE_ID])
+        )
+    )
+    if CONF_PANEL_LAYOUT_ID in config:
+        cg.add(
+            var.set_panel_layout(await cg.get_variable(config[CONF_PANEL_LAYOUT_ID]))
+        )
     for conf in config.get(CONF_ON_UPDATE, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
         await automation.build_automation(
             trigger, [(UpdateFieldsConstRef, "x")], conf
         )
+    for conf in config.get(CONF_ON_ACTION, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [(cg.std_string, "x")], conf)

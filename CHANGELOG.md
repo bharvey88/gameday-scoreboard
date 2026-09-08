@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.7.0
+
+- The device page talks to the scoreboard directly instead of going through Home Assistant style entities, so it is faster to react and no longer limited by the 255-character cap those entities had. Nothing looks different; team changes, favorites, timezone and toggles all land the same way.
+- Slimmer in Home Assistant: the page-only settings (favorites, timezone, ticker toggles, opponent splashes, rotation, panel count, preview button, the raw Game sensor) no longer appear as entities. Team, Mode, Power, Brightness, Scroll Speed, Select Page, Game Status, Last Play, Firmware, Refresh Now, Reboot and the WizMote switches stay.
+
 ## v0.6.0
 
 - One firmware for both layouts. The installer has a single Install button, and a Panels card on the device page shows two pictures: click the one that matches your matrix (one 64x64 panel, or two side by side) and the panel restarts using it. A fresh install starts on one panel, so the setup screen is readable on any matrix.

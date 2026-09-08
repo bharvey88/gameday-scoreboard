@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "0.6.0"
+  version: "0.7.0"
   variant: "m1"
 
   display_panel_width: "64"
@@ -160,10 +160,19 @@ globals:
     restore_value: no
     initial_value: '""'
 
+# The device page talks to /gameday/state, /gameday/set and /gameday/action
+# (components/gameday). Only the entities worth having in Home Assistant stay.
 gameday:
   id: gameday_ctl
   http_request_id: http_client
   time_id: ha_time
+  panel_layout_id: gd_panels
+  on_action:
+    - if:
+        condition:
+          lambda: 'return x == "preview";'
+        then:
+          - script.execute: boot_preview
   on_update:
     - text_sensor.template.publish:
         id: gd_status_sensor
@@ -171,9 +180,6 @@ gameday:
     - text_sensor.template.publish:
         id: gd_last_play_sensor
         state: !lambda 'return x.last_play;'
-    - text_sensor.template.publish:
-        id: gd_game_sensor
-        state: !lambda 'return x.json;'
     - script.execute:
         id: gd_update
         game_state: !lambda 'return x.game_state;'
@@ -232,15 +238,6 @@ lvgl_page_manager:
     icon: "mdi:page-previous"
 
 select:
-  - platform: template
-    name: "Panels"
-    id: gd_panels_select
-    icon: "mdi:view-column"
-    entity_category: config
-    options: ["1 panel", "2 panels"]
-    lambda: 'return std::string(id(gd_panels).cols() == 2 ? "2 panels" : "1 panel");'
-    set_action:
-      - lambda: 'id(gd_panels).set_cols(x == "2 panels" ? 2 : 1);'
   - platform: gameday
     gameday_id: gameday_ctl
     type: team
@@ -251,40 +248,6 @@ select:
     type: mode
     name: "Mode"
     icon: "mdi:shuffle-variant"
-  - platform: gameday
-    gameday_id: gameday_ctl
-    type: favorite
-    slot: 1
-    name: "Favorite 1"
-    icon: "mdi:numeric-1-box"
-    entity_category: config
-  - platform: gameday
-    gameday_id: gameday_ctl
-    type: favorite
-    slot: 2
-    name: "Favorite 2"
-    icon: "mdi:numeric-2-box"
-    entity_category: config
-  - platform: gameday
-    gameday_id: gameday_ctl
-    type: favorite
-    slot: 3
-    name: "Favorite 3"
-    icon: "mdi:numeric-3-box"
-    entity_category: config
-  - platform: gameday
-    gameday_id: gameday_ctl
-    type: favorite
-    slot: 4
-    name: "Favorite 4"
-    icon: "mdi:numeric-4-box"
-    entity_category: config
-  - platform: gameday
-    gameday_id: gameday_ctl
-    type: timezone
-    name: "Timezone"
-    icon: "mdi:map-clock"
-    entity_category: config
 
 switch:
   - platform: template
@@ -301,62 +264,6 @@ switch:
       - hub75.set_brightness:
           id: matrix
           brightness: 0
-  - platform: template
-    name: "Ticker: Down and Distance"
-    id: gd_sw_down
-    icon: "mdi:ruler"
-    entity_category: config
-    restore_mode: DISABLED
-    lambda: 'return id(gameday_ctl).ticker_down_distance();'
-    turn_on_action:
-      - lambda: 'id(gameday_ctl).set_ticker_down_distance(true);'
-    turn_off_action:
-      - lambda: 'id(gameday_ctl).set_ticker_down_distance(false);'
-  - platform: template
-    name: "Ticker: Last Play"
-    id: gd_sw_play
-    icon: "mdi:text"
-    entity_category: config
-    restore_mode: DISABLED
-    lambda: 'return id(gameday_ctl).ticker_last_play();'
-    turn_on_action:
-      - lambda: 'id(gameday_ctl).set_ticker_last_play(true);'
-    turn_off_action:
-      - lambda: 'id(gameday_ctl).set_ticker_last_play(false);'
-  - platform: template
-    name: "Ticker: Odds and TV"
-    id: gd_sw_odds
-    icon: "mdi:television-classic"
-    entity_category: config
-    restore_mode: DISABLED
-    lambda: 'return id(gameday_ctl).ticker_odds();'
-    turn_on_action:
-      - lambda: 'id(gameday_ctl).set_ticker_odds(true);'
-    turn_off_action:
-      - lambda: 'id(gameday_ctl).set_ticker_odds(false);'
-  - platform: template
-    name: "Auto Timezone"
-    id: gd_sw_tzauto
-    icon: "mdi:map-clock"
-    entity_category: config
-    restore_mode: DISABLED
-    lambda: 'return id(gameday_ctl).tz_auto();'
-    turn_on_action:
-      - lambda: 'id(gameday_ctl).set_tz_auto(true);'
-    turn_off_action:
-      - lambda: 'id(gameday_ctl).set_tz_auto(false);'
-  - platform: template
-    name: "Opponent Splashes"
-    id: gd_sw_opp
-    icon: "mdi:party-popper"
-    entity_category: config
-    restore_mode: DISABLED
-    lambda: 'return id(gameday_ctl).opponent_splashes();'
-    turn_on_action:
-      - lambda: 'id(gameday_ctl).set_opponent_splashes(true);'
-    turn_off_action:
-      - lambda: 'id(gameday_ctl).set_opponent_splashes(false);'
-
 number:
   - platform: template
     name: "Brightness"
@@ -377,17 +284,6 @@ number:
               - hub75.set_brightness:
                   id: matrix
                   brightness: !lambda return x;
-  - platform: template
-    name: "Rotate Minutes"
-    id: gd_rotate
-    icon: "mdi:timer-outline"
-    min_value: 2
-    max_value: 30
-    step: 1
-    entity_category: config
-    lambda: 'return id(gameday_ctl).rotate_minutes();'
-    set_action:
-      - lambda: 'id(gameday_ctl).set_rotate_minutes((int) x);'
   - platform: template
     name: "Scroll Speed"
     id: shared_scroll_speed
@@ -428,11 +324,6 @@ text_sensor:
     name: "Last Play"
     id: gd_last_play_sensor
     icon: "mdi:football-helmet"
-  - platform: template
-    name: "Game"
-    id: gd_game_sensor
-    icon: "mdi:code-json"
-    entity_category: diagnostic
   - platform: wifi_info
     ip_address:
       name: "IP"
