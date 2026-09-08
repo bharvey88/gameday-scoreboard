@@ -11,6 +11,7 @@ owns the panel, not for the code.
 ## v0.5.1
 
 - The setup screen shows the address itself in the larger font ("http://10.10.10.97", or just the address on a single panel) with "pick your team here" under it, so nothing important scrolls.
+- A "Preview setup screen" button on the Device card plays the three setup screens on the panel (hotspot, connecting, address) without touching WiFi.
 
 ## v0.5.0
 

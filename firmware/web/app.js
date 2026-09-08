@@ -262,6 +262,7 @@
     { name: "Clear WizMote Pairing", into: "#remoteActions", label: "Unpair remote", danger: true },
     { name: "Refresh Now", into: "#actions", label: "Refresh scores" },
     { name: "Check for Updates", into: "#actions", label: "Check for updates" },
+    { name: "Preview Setup Screen", into: "#actions", label: "Preview setup screen" },
     { name: "Reboot", into: "#actions", label: "Reboot", danger: true },
   ];
   const built = {};

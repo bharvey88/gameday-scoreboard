@@ -102,6 +102,31 @@ script:
           id: boot_overlay
           hidden: true
 
+  # Preview: play the three setup states on the panel without touching WiFi
+  - id: boot_preview
+    mode: restart
+    then:
+      - component.suspend: boot_check
+      - component.resume: boot_anim
+      - lvgl.obj.update:
+          id: boot_overlay
+          hidden: false
+      - script.execute:
+          id: boot_set_lines
+          line1: "Join WiFi"
+          line2: "Game Day Scoreboard"
+          busy: true
+      - delay: 6s
+      - script.execute:
+          id: boot_set_lines
+          line1: "Connecting"
+          line2: !lambda 'return wifi::global_wifi_component->wifi_ssid();'
+          busy: true
+      - delay: 6s
+      - script.execute: boot_refresh
+      - delay: 8s
+      - script.execute: boot_hide
+
   # Boot button: bring the address back for 15 seconds
   - id: boot_show_address
     mode: restart
@@ -111,9 +136,16 @@ script:
           id: boot_overlay
           hidden: false
       - delay: 15s
-      - lvgl.obj.update:
-          id: boot_overlay
-          hidden: true
+      - script.execute: boot_hide
+
+button:
+  - platform: template
+    name: "Preview Setup Screen"
+    id: boot_preview_button
+    icon: "mdi:monitor-eye"
+    entity_category: config
+    on_press:
+      - script.execute: boot_preview
 
 interval:
   - interval: 500ms
