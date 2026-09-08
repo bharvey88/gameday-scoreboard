@@ -610,14 +610,15 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     $("#fwInstall").hidden = true;
     await new Promise((r) => setTimeout(r, 4000));
     try {
-      const r = await fetch("/update/Firmware?" + Date.now(), { cache: "no-store" });
+      // detail=all carries current_version; the plain state does not
+      const r = await fetch("/update/Firmware?detail=all&_=" + Date.now(), { cache: "no-store" });
       if (r.ok && uid) {
         const j = await r.json();
         onState(Object.assign({ id: uid }, j));
         const st = String(j.state || "").toUpperCase();
+        // The firmware row shows the result; only shout when there is something to do
         if (st.includes("AVAILABLE")) toast("Update available: v" + j.value);
-        else if (st.includes("NO UPDATE")) toast("You're up to date, v" + (j.current_version || ""));
-        else toast("Could not reach the update server. Try again in a minute.");
+        else if (!st.includes("NO UPDATE")) toast("Could not reach the update server. Try again in a minute.");
       } else if (uid) {
         renderUpdate(ents[uid]);
         toast("Could not read the update status");
