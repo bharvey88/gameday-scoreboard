@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.5.2
+
+- The panel is now reachable at gameday.local (no more six-character suffix in the name).
+- The setup screen reads like instructions: "On your phone, open gameday.local, or 10.10.10.97, then pick your team", and the hotspot screen says a setup page will open after joining. The ticker hint says the same until a team is picked.
+
 ## v0.5.1
 
 - The setup screen shows the address itself in the larger font ("http://10.10.10.97", or just the address on a single panel) with "pick your team here" under it, so nothing important scrolls.

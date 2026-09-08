@@ -3,9 +3,10 @@
 # which set the panel layout and include this file.
 
 substitutions:
-  name: "gameday-scoreboard"
+  # Short on purpose: the panel is reachable at gameday.local
+  name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "0.5.1"
+  version: "0.5.2"
   variant: "64x64"
 
   display_panel_width: "64"
@@ -22,7 +23,6 @@ substitutions:
 esphome:
   name: "${name}"
   friendly_name: "${friendly_name}"
-  name_add_mac_suffix: true
   comment: "v${version}"
   build_path: build/gameday-${variant}
   project:

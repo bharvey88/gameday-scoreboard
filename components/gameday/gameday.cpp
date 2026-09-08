@@ -684,7 +684,7 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
       }
     }
     if (!ip.empty())
-      f.status_text = "Setup: http://" + ip + " | " + f.status_text;
+      f.status_text = "Setup: open gameday.local or " + ip + " on your phone | " + f.status_text;
   }
 
   // Compact JSON for the web page. Kept under 255 bytes so Home Assistant

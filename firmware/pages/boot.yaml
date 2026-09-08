@@ -1,10 +1,12 @@
 # Boot and setup screen. Shown over everything until the panel is on WiFi
 # and has displayed its address for a while; the boot button brings it back.
 #
-# Three states, driven by the real WiFi state every half second:
-#   no network saved (hotspot up)  "Join WiFi"    Game Day Scoreboard
-#   connecting                     "Connecting"   <network name>
-#   connected                      "Open"         http://<address> to pick your team
+# Three states, driven by the real WiFi state every half second. Each is a
+# title plus up to four lines: small, big, small, small.
+#
+#   hotspot up     On your phone, join WiFi / Game Day Scoreboard / a setup page will open
+#   connecting     Connecting to / <network name>
+#   connected      On your phone, open / gameday.local / or 10.10.10.97 / then pick your team
 
 globals:
   - id: boot_ip_shown_ms
@@ -21,40 +23,54 @@ script:
       - lambda: |-
           const int W = lv_disp_get_hor_res(lv_disp_get_default());
           const bool wide = W >= 128;
+          lv_obj_t *lines[4] = {id(boot_la), id(boot_lb), id(boot_lc), id(boot_ld)};
+          for (auto *l : lines) {
+            lv_obj_set_width(l, W - 4);
+            lv_obj_set_x(l, 2);
+          }
           lv_obj_set_width(id(boot_title), W);
-          lv_obj_set_width(id(boot_line1), W);
-          lv_obj_set_width(id(boot_line2), W - 4);
-          lv_obj_set_pos(id(boot_line2), 2, wide ? 42 : 34);
-          lv_obj_set_pos(id(boot_rule), 4, wide ? 21 : 15);
           lv_obj_set_width(id(boot_rule), W - 8);
-          lv_obj_set_pos(id(boot_bar), 8, 59);
           lv_obj_set_width(id(boot_bar), W - 16);
+          lv_obj_set_pos(id(boot_bar), 8, wide ? 60 : 59);
           if (wide) {
             lv_obj_set_style_text_font(id(boot_title), id(spleen_16), 0);
-            lv_obj_set_pos(id(boot_title), 0, 3);
-            lv_obj_set_style_text_font(id(boot_line1), id(spleen_12), 0);
-            lv_obj_set_pos(id(boot_line1), 0, 26);
+            lv_obj_set_pos(id(boot_title), 0, 2);
+            lv_obj_set_pos(id(boot_rule), 4, 19);
+            lv_obj_set_style_text_font(id(boot_lb), id(spleen_12), 0);
+            lv_obj_set_y(id(boot_la), 22);
+            lv_obj_set_y(id(boot_lb), 31);
+            lv_obj_set_y(id(boot_lc), 44);
+            lv_obj_set_y(id(boot_ld), 53);
           } else {
             lv_obj_set_style_text_font(id(boot_title), id(spleen_12), 0);
-            lv_obj_set_pos(id(boot_title), 0, 2);
-            lv_obj_set_style_text_font(id(boot_line1), id(spleen_8), 0);
-            lv_obj_set_pos(id(boot_line1), 0, 21);
+            lv_obj_set_pos(id(boot_title), 0, 1);
+            lv_obj_set_pos(id(boot_rule), 4, 14);
+            lv_obj_set_style_text_font(id(boot_lb), id(spleen_8), 0);
+            lv_obj_set_y(id(boot_la), 16);
+            lv_obj_set_y(id(boot_lb), 26);
+            lv_obj_set_y(id(boot_lc), 36);
+            lv_obj_set_y(id(boot_ld), 46);
           }
 
-  # Write the two lines. line2 scrolls when it is wider than the panel.
+  # Write the four lines. A line wider than the panel scrolls.
   - id: boot_set_lines
     parameters:
-      line1: string
-      line2: string
+      la: string
+      lb: string
+      lc: string
+      ld: string
       busy: bool
     then:
       - lambda: |-
-          const char *cur1 = lv_label_get_text(id(boot_line1));
-          if (cur1 == nullptr || line1 != cur1)
-            lv_label_set_text(id(boot_line1), line1.c_str());
-          const char *cur2 = lv_label_get_text(id(boot_line2));
-          if (cur2 == nullptr || line2 != cur2)
-            lv_label_set_text(id(boot_line2), line2.c_str());
+          auto put = [](lv_obj_t *l, const std::string &t) {
+            const char *cur = lv_label_get_text(l);
+            if (cur == nullptr || t != cur)
+              lv_label_set_text(l, t.c_str());
+          };
+          put(id(boot_la), la);
+          put(id(boot_lb), lb);
+          put(id(boot_lc), lc);
+          put(id(boot_ld), ld);
           if (busy) lv_obj_clear_flag(id(boot_bar), LV_OBJ_FLAG_HIDDEN);
           else lv_obj_add_flag(id(boot_bar), LV_OBJ_FLAG_HIDDEN);
 
@@ -73,25 +89,22 @@ script:
                 break;
               }
             }
-            // The address is the thing to read, so it gets the bigger line.
-            // A single panel drops the scheme so the address fits without scrolling.
-            const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
-            id(boot_set_lines).execute(wide ? "http://" + ip : ip, "pick your team here", false);
+            id(boot_set_lines).execute("On your phone, open", "${name}.local", "or " + ip, "then pick your team", false);
             if (id(boot_ip_shown_ms) == 0) {
               id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
               id(boot_hide_later).execute();
             }
           } else if (!w->has_sta() || w->is_ap_active()) {
-            id(boot_set_lines).execute("Join WiFi", "Game Day Scoreboard", true);
+            id(boot_set_lines).execute("On your phone, join WiFi", "Game Day Scoreboard", "a setup page will open", "", true);
           } else {
-            id(boot_set_lines).execute("Connecting", w->wifi_ssid(), true);
+            id(boot_set_lines).execute("Connecting to", w->wifi_ssid(), "", "", true);
           }
 
-  # Keep the address up for 30 seconds after connecting, then clear the overlay
+  # Keep the address up for 45 seconds after connecting, then clear the overlay
   - id: boot_hide_later
     mode: restart
     then:
-      - delay: 30s
+      - delay: 45s
       - script.execute: boot_hide
 
   - id: boot_hide
@@ -113,21 +126,25 @@ script:
           hidden: false
       - script.execute:
           id: boot_set_lines
-          line1: "Join WiFi"
-          line2: "Game Day Scoreboard"
+          la: "On your phone, join WiFi"
+          lb: "Game Day Scoreboard"
+          lc: "a setup page will open"
+          ld: ""
           busy: true
-      - delay: 6s
+      - delay: 7s
       - script.execute:
           id: boot_set_lines
-          line1: "Connecting"
-          line2: !lambda 'return wifi::global_wifi_component->wifi_ssid();'
+          la: "Connecting to"
+          lb: !lambda 'return wifi::global_wifi_component->wifi_ssid();'
+          lc: ""
+          ld: ""
           busy: true
-      - delay: 6s
+      - delay: 5s
       - script.execute: boot_refresh
-      - delay: 8s
+      - delay: 10s
       - script.execute: boot_hide
 
-  # Boot button: bring the address back for 15 seconds
+  # Boot button: bring the address back for 20 seconds
   - id: boot_show_address
     mode: restart
     then:
@@ -135,7 +152,7 @@ script:
       - lvgl.obj.update:
           id: boot_overlay
           hidden: false
-      - delay: 15s
+      - delay: 20s
       - script.execute: boot_hide
 
 button:
@@ -174,9 +191,9 @@ lvgl:
     - id: boot_st_title
       text_font: spleen_16
       text_color: 0xFFD000
-    - id: boot_st_line
+    - id: boot_st_big
       text_color: 0xFFFFFF
-    - id: boot_st_detail
+    - id: boot_st_small
       text_color: 0xB0B8C4
   top_layer:
     widgets:
@@ -196,7 +213,7 @@ lvgl:
             - label:
                 id: boot_title
                 x: 0
-                y: 3
+                y: 2
                 width: 128
                 text_align: CENTER
                 text: "GAME DAY"
@@ -204,32 +221,51 @@ lvgl:
             - obj:
                 id: boot_rule
                 x: 4
-                y: 21
+                y: 19
                 width: 120
                 height: 1
                 bg_opa: COVER
                 bg_color: 0xFFD000
             - label:
-                id: boot_line1
-                x: 0
-                y: 26
-                width: 128
-                text_align: CENTER
-                text: "Starting"
-                styles: [boot_st_line]
-            - label:
-                id: boot_line2
+                id: boot_la
                 x: 2
-                y: 42
+                y: 22
+                width: 124
+                text_align: CENTER
+                long_mode: SCROLL_CIRCULAR
+                text: "Starting"
+                styles: [boot_st_small]
+            - label:
+                id: boot_lb
+                x: 2
+                y: 31
                 width: 124
                 text_align: CENTER
                 long_mode: SCROLL_CIRCULAR
                 text: ""
-                styles: [boot_st_detail]
+                styles: [boot_st_big]
+            - label:
+                id: boot_lc
+                x: 2
+                y: 44
+                width: 124
+                text_align: CENTER
+                long_mode: SCROLL_CIRCULAR
+                text: ""
+                styles: [boot_st_small]
+            - label:
+                id: boot_ld
+                x: 2
+                y: 53
+                width: 124
+                text_align: CENTER
+                long_mode: SCROLL_CIRCULAR
+                text: ""
+                styles: [boot_st_small]
             - bar:
                 id: boot_bar
                 x: 8
-                y: 59
+                y: 60
                 width: 112
                 height: 3
                 min_value: 0
