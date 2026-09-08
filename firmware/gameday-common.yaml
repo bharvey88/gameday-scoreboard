@@ -6,7 +6,7 @@ substitutions:
   # Short on purpose: the panel is reachable at gameday.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "0.5.2"
+  version: "0.5.3"
   variant: "64x64"
 
   display_panel_width: "64"
@@ -397,6 +397,18 @@ button:
     icon: mdi:power-cycle
     name: "Reboot"
     entity_category: "diagnostic"
+
+text:
+  - platform: template
+    name: "Hostname"
+    id: gd_hostname
+    icon: "mdi:web"
+    entity_category: config
+    mode: text
+    max_length: 24
+    lambda: 'return id(gameday_ctl).hostname();'
+    set_action:
+      - lambda: 'id(gameday_ctl).set_hostname(x);'
 
 text_sensor:
   - platform: template

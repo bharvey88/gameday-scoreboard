@@ -215,3 +215,8 @@ button { font: inherit; color: inherit; }
   .ticker, .play { font-size: 15px; }
   .grid { grid-template-columns: 1fr 1fr; gap: 18px; }
 }
+
+/* Hostname field */
+.hostwrap { display: flex; align-items: center; gap: 6px; }
+.hostwrap input { width: 130px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+.hostwrap .muted { color: var(--muted); font-size: 13px; }

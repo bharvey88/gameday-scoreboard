@@ -13,6 +13,8 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_netif.h>
+#include <mdns.h>
 
 namespace esphome {
 namespace gameday {
@@ -126,9 +128,63 @@ void GamedayComponent::setup() {
   this->pref3_ = global_preferences->make_preference<Prefs3>(fnv1_hash("gameday_prefs3_v1"));
   if (!this->pref3_.load(&this->prefs3_))
     this->prefs3_ = Prefs3{};
+  this->pref4_ = global_preferences->make_preference<Prefs4>(fnv1_hash("gameday_host_v1"));
+  if (!this->pref4_.load(&this->prefs4_))
+    this->prefs4_ = Prefs4{};
+  this->prefs4_.host[sizeof(this->prefs4_.host) - 1] = '\0';
+  this->apply_hostname_();
   this->apply_timezone_();
   this->publish_selects_();
   this->schedule_next_(3000);
+}
+
+std::string GamedayComponent::hostname() const {
+  if (this->prefs4_.host[0] != '\0')
+    return this->prefs4_.host;
+  return std::string(App.get_name().c_str());
+}
+
+static bool valid_hostname(const std::string &h) {
+  if (h.empty() || h.size() > 24 || h.front() == '-' || h.back() == '-')
+    return false;
+  for (char c : h)
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'))
+      return false;
+  return true;
+}
+
+void GamedayComponent::set_hostname(const std::string &raw) {
+  std::string h = raw;
+  for (auto &c : h)
+    c = (char) tolower((unsigned char) c);
+  if (h == std::string(App.get_name().c_str()))
+    h.clear();  // back to the default
+  if (!h.empty() && !valid_hostname(h)) {
+    ESP_LOGW(TAG, "Hostname '%s' rejected: letters, digits and hyphens only, up to 24", raw.c_str());
+    return;
+  }
+  if (h == this->prefs4_.host)
+    return;
+  strncpy(this->prefs4_.host, h.c_str(), sizeof(this->prefs4_.host) - 1);
+  this->prefs4_.host[sizeof(this->prefs4_.host) - 1] = '\0';
+  this->pref4_.save(&this->prefs4_);
+  ESP_LOGI(TAG, "Hostname set to %s, rebooting", this->hostname().c_str());
+  // Give the web request a moment to finish, then restart so DHCP and mDNS pick it up.
+  this->set_timeout("gameday_reboot", 1500, []() { App.safe_reboot(); });
+}
+
+// Runs at setup, after WiFi and mDNS have set up but before the connection
+// exists, so the DHCP client and the mDNS responder both use the stored name.
+void GamedayComponent::apply_hostname_() {
+  if (this->prefs4_.host[0] == '\0')
+    return;
+  const char *host = this->prefs4_.host;
+  esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (sta != nullptr)
+    esp_netif_set_hostname(sta, host);
+  mdns_hostname_set(host);
+  mdns_instance_name_set(host);
+  ESP_LOGI(TAG, "Hostname: %s", host);
 }
 
 std::string GamedayComponent::favorite_option_(uint8_t slot) const {
@@ -684,7 +740,7 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
       }
     }
     if (!ip.empty())
-      f.status_text = "Setup: open gameday.local or " + ip + " on your phone | " + f.status_text;
+      f.status_text = "Setup: open " + this->hostname() + ".local or " + ip + " on your phone | " + f.status_text;
   }
 
   // Compact JSON for the web page. Kept under 255 bytes so Home Assistant

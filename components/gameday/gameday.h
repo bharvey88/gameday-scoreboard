@@ -87,6 +87,9 @@ class GamedayComponent : public Component {
   void select_team(const std::string &option);
   void select_timezone(const std::string &option);
   void select_mode(const std::string &option);
+  // Hostname on the network (DHCP name and <host>.local). Empty = the build's name.
+  std::string hostname() const;
+  void set_hostname(const std::string &host);  // validates, saves, reboots
   // Favorites: four team slots for the remote's numbered buttons.
   void select_favorite(uint8_t slot, const std::string &option);
   void press_favorite(uint8_t slot);
@@ -138,6 +141,9 @@ class GamedayComponent : public Component {
   struct Prefs3 {
     uint8_t fav_league[4];
     uint32_t fav_id[4];  // 0 = slot empty
+  } __attribute__((packed));
+  struct Prefs4 {
+    char host[32];  // NUL-terminated; empty means use the compiled-in name
   } __attribute__((packed));
 
   bool flag_(uint8_t f) const { return (this->prefs_.flags & f) != 0; }
@@ -194,6 +200,9 @@ class GamedayComponent : public Component {
   select::Select *favorite_selects_[4]{nullptr, nullptr, nullptr, nullptr};
   ESPPreferenceObject pref3_;
   Prefs3 prefs3_{};
+  ESPPreferenceObject pref4_;
+  Prefs4 prefs4_{};
+  void apply_hostname_();
   std::string favorite_option_(uint8_t slot) const;
   uint32_t live_away_id_{0};      // the followed live game's away team
   uint32_t live_started_ms_{0};   // when the current live game was picked

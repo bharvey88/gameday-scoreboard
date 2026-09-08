@@ -92,9 +92,9 @@ script:
             // A single panel is 12 characters wide: terse lines, only the hostname scrolls.
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
             if (wide)
-              id(boot_set_lines).execute("On your phone, open", "${name}.local", "or " + ip, "then pick your team", false);
+              id(boot_set_lines).execute("On your phone, open", id(gameday_ctl).hostname() + ".local", "or " + ip, "then pick your team", false);
             else
-              id(boot_set_lines).execute("Open", "${name}.local", ip, "pick a team", false);
+              id(boot_set_lines).execute("Open", id(gameday_ctl).hostname() + ".local", ip, "pick a team", false);
             if (id(boot_ip_shown_ms) == 0) {
               id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
               id(boot_hide_later).execute();
