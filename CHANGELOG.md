@@ -10,7 +10,8 @@ owns the panel, not for the code.
 
 ## v0.5.3
 
-- The panel's name on the network can be changed from the Device card ("Name on the network"), for anyone running more than one. It reboots as the new name, so two panels can be den.local and garage.local instead of fighting over gameday.local.
+- The network name is gameday-xxxxxx.local again, with the panel's own six-character suffix, so two panels on one network never collide. The setup screen and the ticker hint show the exact name.
+- Check for updates no longer pops a message when there's nothing new; the firmware row says so.
 
 ## v0.5.2
 

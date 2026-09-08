@@ -21,7 +21,7 @@ It is the standalone cousin of [gameday-matrix](https://github.com/bharvey88/gam
 
 1. Open the [installer page](https://bharvey88.github.io/gameday-scoreboard/) in Chrome or Edge, plug the M-1 in over USB, and pick the button for your panel layout.
 2. Enter your WiFi details in the dialog that follows the install.
-3. Once it's on WiFi the panel says where to go: open [gameday.local](http://gameday.local) on your phone, or the address it shows underneath if your phone can't resolve `.local` names. Pick your team on that page. The ticker repeats the address until you've chosen a team, and holding the M-1's boot button for 1.5 seconds shows it again any time.
+3. Once it's on WiFi the panel says where to go: open the `gameday-xxxxxx.local` name it shows on your phone, or the address underneath if your phone can't resolve `.local` names. Pick your team on that page. The ticker repeats the address until you've chosen a team, and holding the M-1's boot button for 1.5 seconds shows it again any time.
 
 Team changes take effect immediately and survive reboots. Nothing needs reflashing to change teams.
 
@@ -38,7 +38,6 @@ The M-1 serves its own page: a live board that mirrors the panel (logos, score, 
 | Opponent Splashes | Turn the opponent's scoring splashes off if you only want yours |
 | Favorite 1 to 4 | Teams for the numbered buttons on a WizMote remote |
 | WizMote Auto-Discovery, Clear WizMote Pairing | Pair a WizMote: turn discovery on, press any button on the remote. ON/OFF, brightness and NIGHT buttons control the panel |
-| Name on the network | The hostname, default `gameday`. Change it if you run more than one panel so each has its own `.local` name; the panel reboots to apply it |
 | Refresh Now | Re-fetch the schedule and game right away |
 | Firmware / Check for Updates | The device checks this project's releases every 6 hours; an Install button appears on the page when a newer version exists and updates over WiFi |
 | Brightness, Power, Scroll Speed | Panel brightness, panel on or off, ticker speed |

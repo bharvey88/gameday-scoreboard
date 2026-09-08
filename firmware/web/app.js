@@ -103,8 +103,7 @@
           <div class="fwsub" id="fwSub"></div>
         </div>
         <div class="ctl" style="margin-top:8px"><label>Address</label><span class="val" id="ip"></span></div>
-        <div class="ctl"><label>Name on the network</label><span class="hostwrap"><input id="host" maxlength="24" spellcheck="false" placeholder="gameday"><span class="muted">.local</span><button class="btn" id="hostSave">Save</button></span></div>
-        <p class="hint" id="hostNote">Change this if you have more than one panel. The panel reboots with the new name.</p>
+        <div class="ctl"><label>Name</label><span class="val" id="hostname"></span></div>
         <div class="ctl"><label>Signal</label><span class="val" id="rssi"></span></div>
         <div class="ctl"><label>Free PSRAM</label><span class="val" id="psram"></span></div>
       </div>
@@ -578,21 +577,6 @@
     setTimeout(tick, 3000);
   };
 
-  // ---- hostname ----------------------------------------------------------------
-  const renderHostname = (h) => {
-    const inp = $("#host");
-    if (document.activeElement !== inp) inp.value = h.value || "";
-    $("#hostSave").onclick = () => {
-      const v = inp.value.trim().toLowerCase();
-      if (!/^[a-z0-9]([a-z0-9-]{0,22}[a-z0-9])?$/.test(v)) { toast("Letters, digits and hyphens only, up to 24"); return; }
-      if (v === (h.value || "")) { toast("That's already the name"); return; }
-      post(h.id, "set", { value: v });
-      toast("Rebooting as " + v + ".local");
-      $("#hostNote").textContent = "Rebooting. This page reconnects at the same address; " + v + ".local works once it's back.";
-      waitForReboot("");
-    };
-  };
-
   // ---- check for updates -----------------------------------------------------
   // The device only sends a state event when the result changes, so "no update"
   // after a check would look like nothing happened. Ask for the result directly.
@@ -695,7 +679,6 @@
       case "Timezone":
       case "Auto Timezone": renderTime(); break;
       case "WizMote Status": $("#wizStatus").textContent = e.value || ""; break;
-      case "Hostname": renderHostname(ents[e.id]); break;
       case "IP": $("#ip").textContent = e.value || ""; break;
       case "RSSI": $("#rssi").textContent = e.value ? e.value + " dBm" : ""; break;
       case "Free Heap (PSRAM)": $("#psram").textContent = e.value ? Math.round(e.value) + " KiB" : ""; break;
@@ -709,7 +692,7 @@
       if (!ev.data) return;
       try {
         const p = JSON.parse(ev.data);
-        if (p.title) $("#devname").textContent = p.title;
+        if (p.title) { $("#devname").textContent = p.title; $("#hostname").textContent = p.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".local"; }
         if (p.comment) $("#ver").textContent = p.comment;
       } catch (_) {}
     });

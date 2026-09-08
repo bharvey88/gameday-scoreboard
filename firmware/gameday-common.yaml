@@ -3,7 +3,7 @@
 # which set the panel layout and include this file.
 
 substitutions:
-  # Short on purpose: the panel is reachable at gameday.local
+  # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
   version: "0.5.3"
@@ -23,6 +23,7 @@ substitutions:
 esphome:
   name: "${name}"
   friendly_name: "${friendly_name}"
+  name_add_mac_suffix: true
   comment: "v${version}"
   build_path: build/gameday-${variant}
   project:
@@ -397,18 +398,6 @@ button:
     icon: mdi:power-cycle
     name: "Reboot"
     entity_category: "diagnostic"
-
-text:
-  - platform: template
-    name: "Hostname"
-    id: gd_hostname
-    icon: "mdi:web"
-    entity_category: config
-    mode: text
-    max_length: 24
-    lambda: 'return id(gameday_ctl).hostname();'
-    set_action:
-      - lambda: 'id(gameday_ctl).set_hostname(x);'
 
 text_sensor:
   - platform: template
