@@ -675,8 +675,14 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   // Until a team has been picked once, the ticker says where the setup page is.
   if (!this->flag_(FLAG_SETUP) && network::is_connected()) {
     std::string ip;
-    for (auto &a : network::get_ip_addresses())
-      if (a.is_set() && a.is_ip4()) { ip = a.str(); break; }
+    for (auto &a : network::get_ip_addresses()) {
+      if (a.is_set() && a.is_ip4()) {
+        char buf[48];
+        a.str_to(buf);
+        ip = buf;
+        break;
+      }
+    }
     if (!ip.empty())
       f.status_text = "Setup: http://" + ip + " | " + f.status_text;
   }

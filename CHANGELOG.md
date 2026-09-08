@@ -10,6 +10,7 @@ owns the panel, not for the code.
 
 ## v0.5.0
 
+- Check for updates now answers. The button reads "Checking" for a few seconds and then the page says "You're up to date" or "Update available", instead of quietly doing nothing when there's no newer version.
 - A real setup screen at boot. It says "Join WiFi: Game Day Scoreboard" while the hotspot is up, "Connecting" with the network name once credentials are saved, and "Open http://<address> to pick your team" for 30 seconds once it's on WiFi, with a progress bar while it works.
 - Until a team has been picked once, the ticker starts with "Setup: http://<address>" so a new panel tells you where its page is.
 - Hold the M-1's boot button for 1.5 seconds and the address screen comes back for 15 seconds.

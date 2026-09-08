@@ -274,6 +274,7 @@
       b.onclick = () => {
         if (def.danger && !confirm(def.label + "?")) return;
         post(e.id, "press");
+        if (def.name === "Check for Updates") { checkForUpdates(b); return; }
         toast(def.label);
       };
       host.appendChild(b);
@@ -573,6 +574,40 @@
     setTimeout(tick, 3000);
   };
 
+  // ---- check for updates -----------------------------------------------------
+  // The device only sends a state event when the result changes, so "no update"
+  // after a check would look like nothing happened. Ask for the result directly.
+  const checkForUpdates = async (btn) => {
+    const uid = byName["Firmware"];
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Checking";
+    $("#fw").hidden = false;
+    $("#fwText").textContent = "Checking for updates";
+    $("#fwSub").textContent = "";
+    $("#fwInstall").hidden = true;
+    await new Promise((r) => setTimeout(r, 4000));
+    try {
+      const r = await fetch("/update/Firmware?" + Date.now(), { cache: "no-store" });
+      if (r.ok && uid) {
+        const j = await r.json();
+        onState(Object.assign({ id: uid }, j));
+        const st = String(j.state || "").toUpperCase();
+        if (st.includes("AVAILABLE")) toast("Update available: v" + j.value);
+        else if (st.includes("NO UPDATE")) toast("You're up to date, v" + (j.current_version || ""));
+        else toast("Could not reach the update server. Try again in a minute.");
+      } else if (uid) {
+        renderUpdate(ents[uid]);
+        toast("Could not read the update status");
+      }
+    } catch (_) {
+      if (uid) renderUpdate(ents[uid]);
+      toast("Device did not respond");
+    }
+    btn.textContent = label;
+    btn.disabled = false;
+  };
+
   // ---- firmware update -----------------------------------------------------
   let installing = false;
   const renderUpdate = (u) => {
@@ -600,7 +635,7 @@
         waitForReboot(u.current_version);
       };
     } else if (st.includes("NO UPDATE")) {
-      $("#fwText").textContent = "Firmware " + cur + " is up to date";
+      $("#fwText").textContent = "You're up to date, " + cur;
       sub.textContent = "";
     } else {
       $("#fwText").textContent = "Firmware " + cur;

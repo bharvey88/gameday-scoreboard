@@ -65,8 +65,14 @@ script:
           if (w == nullptr) return;
           if (w->is_connected()) {
             std::string ip;
-            for (auto &a : w->wifi_sta_ip_addresses())
-              if (a.is_set() && a.is_ip4()) { ip = a.str(); break; }
+            for (auto &a : w->wifi_sta_ip_addresses()) {
+              if (a.is_set() && a.is_ip4()) {
+                char buf[48];
+                a.str_to(buf);
+                ip = buf;
+                break;
+              }
+            }
             id(boot_set_lines).execute("Open", "http://" + ip + "  to pick your team", false);
             if (id(boot_ip_shown_ms) == 0) {
               id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
