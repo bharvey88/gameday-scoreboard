@@ -8,6 +8,12 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.5.0
+
+- A real setup screen at boot. It says "Join WiFi: Game Day Scoreboard" while the hotspot is up, "Connecting" with the network name once credentials are saved, and "Open http://<address> to pick your team" for 30 seconds once it's on WiFi, with a progress bar while it works.
+- Until a team has been picked once, the ticker starts with "Setup: http://<address>" so a new panel tells you where its page is.
+- Hold the M-1's boot button for 1.5 seconds and the address screen comes back for 15 seconds.
+
 ## v0.4.3
 
 - The clock on the panel now comes from ESPN's raw clock and period instead of their pre-formatted text, which lagged a poll or two behind the down and distance. Everything on the board updates together.

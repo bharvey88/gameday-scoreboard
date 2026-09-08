@@ -121,6 +121,7 @@ class GamedayComponent : public Component {
   static constexpr uint8_t FLAG_ODDS = 8;
   static constexpr uint8_t FLAG_OPP = 16;
   static constexpr uint8_t FLAG_TZMANUAL = 32;  // timezone was picked by hand; page must not override
+  static constexpr uint8_t FLAG_SETUP = 64;     // a team has been picked at least once
   static constexpr uint8_t FLAGS_DEFAULT = FLAG_DOWN | FLAG_PLAY | FLAG_ODDS | FLAG_OPP;
 
   struct Prefs {

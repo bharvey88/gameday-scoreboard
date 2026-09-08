@@ -298,6 +298,10 @@ void GamedayComponent::select_team(const std::string &option) {
     this->prefs_.team_id = t.espn_id;
     this->save_prefs_();
     ESP_LOGI(TAG, "Team changed to %s", t.name);
+    if (!this->flag_(FLAG_SETUP)) {
+      this->prefs_.flags |= FLAG_SETUP;
+      this->save_prefs_();
+    }
     this->reset_game_();
     this->generation_++;  // a fetch already in flight belongs to the old team
     // Show the new team right away; the game data follows in a second or two.
@@ -668,6 +672,14 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
     f.status_text = this->live_none_ ? "No live games right now" : "Looking for a live game";
   if (this->misses_ >= 3)
     f.status_text += " *";
+  // Until a team has been picked once, the ticker says where the setup page is.
+  if (!this->flag_(FLAG_SETUP) && network::is_connected()) {
+    std::string ip;
+    for (auto &a : network::get_ip_addresses())
+      if (a.is_set() && a.is_ip4()) { ip = a.str(); break; }
+    if (!ip.empty())
+      f.status_text = "Setup: http://" + ip + " | " + f.status_text;
+  }
 
   // Compact JSON for the web page. Kept under 255 bytes so Home Assistant
   // accepts it as a text sensor state too.

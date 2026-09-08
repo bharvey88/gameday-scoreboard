@@ -1,45 +1,142 @@
-# Boot overlay for a standalone device. hub75-studio's bios page waits for a
-# Home Assistant API connection before it clears; this one clears once WiFi
-# is up and the clock has synced, which is all the scoreboard needs.
+# Boot and setup screen. Shown over everything until the panel is on WiFi
+# and has displayed its address for a while; the boot button brings it back.
+#
+# Three states, driven by the real WiFi state every half second:
+#   no network saved (hotspot up)  "Join WiFi"    Game Day Scoreboard
+#   connecting                     "Connecting"   <network name>
+#   connected                      "Open"         http://<address> to pick your team
 
-wifi:
-  on_connect:
+globals:
+  - id: boot_ip_shown_ms
+    type: uint32_t
+    initial_value: '0'
+  - id: boot_bar_value
+    type: int
+    initial_value: '0'
+
+script:
+  # Positions and fonts for the current panel width
+  - id: boot_layout
     then:
-      - lvgl.label.update:
-          id: boot_status
-          text: "WiFi OK"
+      - lambda: |-
+          const int W = lv_disp_get_hor_res(lv_disp_get_default());
+          const bool wide = W >= 128;
+          lv_obj_set_width(id(boot_title), W);
+          lv_obj_set_width(id(boot_line1), W);
+          lv_obj_set_width(id(boot_line2), W - 4);
+          lv_obj_set_pos(id(boot_line2), 2, wide ? 42 : 34);
+          lv_obj_set_pos(id(boot_rule), 4, wide ? 21 : 15);
+          lv_obj_set_width(id(boot_rule), W - 8);
+          lv_obj_set_pos(id(boot_bar), 8, 59);
+          lv_obj_set_width(id(boot_bar), W - 16);
+          if (wide) {
+            lv_obj_set_style_text_font(id(boot_title), id(spleen_16), 0);
+            lv_obj_set_pos(id(boot_title), 0, 3);
+            lv_obj_set_style_text_font(id(boot_line1), id(spleen_12), 0);
+            lv_obj_set_pos(id(boot_line1), 0, 26);
+          } else {
+            lv_obj_set_style_text_font(id(boot_title), id(spleen_12), 0);
+            lv_obj_set_pos(id(boot_title), 0, 2);
+            lv_obj_set_style_text_font(id(boot_line1), id(spleen_8), 0);
+            lv_obj_set_pos(id(boot_line1), 0, 21);
+          }
 
-time:
-  - id: !extend ha_time
-    on_time_sync:
-      then:
-        - component.suspend: boot_check
-        - lvgl.label.update:
-            id: boot_status
-            text: "*Ready*"
-        - delay: 1500ms
-        - lvgl.obj.update:
-            id: boot_overlay
-            hidden: true
+  # Write the two lines. line2 scrolls when it is wider than the panel.
+  - id: boot_set_lines
+    parameters:
+      line1: string
+      line2: string
+      busy: bool
+    then:
+      - lambda: |-
+          const char *cur1 = lv_label_get_text(id(boot_line1));
+          if (cur1 == nullptr || line1 != cur1)
+            lv_label_set_text(id(boot_line1), line1.c_str());
+          const char *cur2 = lv_label_get_text(id(boot_line2));
+          if (cur2 == nullptr || line2 != cur2)
+            lv_label_set_text(id(boot_line2), line2.c_str());
+          if (busy) lv_obj_clear_flag(id(boot_bar), LV_OBJ_FLAG_HIDDEN);
+          else lv_obj_add_flag(id(boot_bar), LV_OBJ_FLAG_HIDDEN);
+
+  - id: boot_refresh
+    then:
+      - lambda: |-
+          auto *w = wifi::global_wifi_component;
+          if (w == nullptr) return;
+          if (w->is_connected()) {
+            std::string ip;
+            for (auto &a : w->wifi_sta_ip_addresses())
+              if (a.is_set() && a.is_ip4()) { ip = a.str(); break; }
+            id(boot_set_lines).execute("Open", "http://" + ip + "  to pick your team", false);
+            if (id(boot_ip_shown_ms) == 0) {
+              id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
+              id(boot_hide_later).execute();
+            }
+          } else if (!w->has_sta() || w->is_ap_active()) {
+            id(boot_set_lines).execute("Join WiFi", "Game Day Scoreboard  then follow the setup page", true);
+          } else {
+            id(boot_set_lines).execute("Connecting", w->wifi_ssid(), true);
+          }
+
+  # Keep the address up for 30 seconds after connecting, then clear the overlay
+  - id: boot_hide_later
+    mode: restart
+    then:
+      - delay: 30s
+      - script.execute: boot_hide
+
+  - id: boot_hide
+    then:
+      - component.suspend: boot_check
+      - component.suspend: boot_anim
+      - lvgl.obj.update:
+          id: boot_overlay
+          hidden: true
+
+  # Boot button: bring the address back for 15 seconds
+  - id: boot_show_address
+    mode: restart
+    then:
+      - script.execute: boot_refresh
+      - lvgl.obj.update:
+          id: boot_overlay
+          hidden: false
+      - delay: 15s
+      - lvgl.obj.update:
+          id: boot_overlay
+          hidden: true
 
 interval:
   - interval: 500ms
-    startup_delay: 1s
+    startup_delay: 500ms
     id: boot_check
     then:
-      - if:
-          condition:
-            wifi.connected:
-          then:
-            - lvgl.label.update:
-                id: boot_status
-                text: "Clock."
-          else:
-            - lvgl.label.update:
-                id: boot_status
-                text: "WiFi."
+      - script.execute: boot_refresh
+  - interval: 60ms
+    id: boot_anim
+    then:
+      - lambda: |-
+          id(boot_bar_value) = (id(boot_bar_value) + 3) % 130;
+          int v = id(boot_bar_value) > 100 ? 100 : id(boot_bar_value);
+          lv_bar_set_value(id(boot_bar), v, LV_ANIM_OFF);
+
+binary_sensor:
+  - id: !extend power_button
+    on_multi_click:
+      - timing:
+          - ON for at least 1.5s
+        then:
+          - script.execute: boot_show_address
 
 lvgl:
+  style_definitions:
+    - id: boot_st_title
+      text_font: spleen_16
+      text_color: 0xFFD000
+    - id: boot_st_line
+      text_color: 0xFFFFFF
+    - id: boot_st_detail
+      text_color: 0xB0B8C4
   top_layer:
     widgets:
       - obj:
@@ -49,45 +146,62 @@ lvgl:
           width: 100%
           height: 100%
           bg_opa: COVER
+          bg_color: 0x000000
           radius: 0
           pad_all: 0
           border_width: 0
-          styles: [style_bg_black]
           hidden: false
           widgets:
             - label:
-                x: 2
-                y: 2
-                styles: [st_spleen8]
+                id: boot_title
+                x: 0
+                y: 3
+                width: 128
+                text_align: CENTER
                 text: "GAME DAY"
+                styles: [boot_st_title]
+            - obj:
+                id: boot_rule
+                x: 4
+                y: 21
+                width: 120
+                height: 1
+                bg_opa: COVER
+                bg_color: 0xFFD000
             - label:
-                x: 2
-                y: 12
-                styles: [st_spleen8]
-                text: "v${version}"
+                id: boot_line1
+                x: 0
+                y: 26
+                width: 128
+                text_align: CENTER
+                text: "Starting"
+                styles: [boot_st_line]
             - label:
-                x: 2
-                y: 22
-                styles: [st_spleen8]
-                text: !lambda |-
-                  uint8_t mac[6] = {0};
-                  get_mac_address_raw(mac);
-                  char buf[32];
-                  snprintf(buf, sizeof(buf), "ID:%02X%02X%02X", mac[3], mac[4], mac[5]);
-                  return std::string(buf);
-            - label:
-                x: 2
-                y: 32
-                styles: [st_spleen8]
-                text: "Setup: join WiFi"
-            - label:
+                id: boot_line2
                 x: 2
                 y: 42
-                styles: [st_spleen8]
-                text: "Game Day Scoreboard"
-            - label:
-                id: boot_status
-                align: TOP_MID
-                y: 54
-                styles: [st_spleen8]
-                text: "Starting"
+                width: 124
+                text_align: CENTER
+                long_mode: SCROLL_CIRCULAR
+                text: ""
+                styles: [boot_st_detail]
+            - bar:
+                id: boot_bar
+                x: 8
+                y: 59
+                width: 112
+                height: 3
+                min_value: 0
+                max_value: 100
+                value: 0
+                bg_opa: COVER
+                bg_color: 0x202020
+                indicator:
+                  bg_opa: COVER
+                  bg_color: 0xFFD000
+
+esphome:
+  on_boot:
+    - priority: -100.0
+      then:
+        - script.execute: boot_layout

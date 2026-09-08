@@ -21,7 +21,7 @@ It is the standalone cousin of [gameday-matrix](https://github.com/bharvey88/gam
 
 1. Open the [installer page](https://bharvey88.github.io/gameday-scoreboard/) in Chrome or Edge, plug the M-1 in over USB, and pick the button for your panel layout.
 2. Enter your WiFi details in the dialog that follows the install.
-3. Open the device's web page (the dialog offers a link, or browse to the address your router gave it) and choose your team in the Team dropdown. Set your timezone while you are there.
+3. The panel shows its address once it's on WiFi ("Open http://... to pick your team"), and keeps it in the ticker until you've chosen a team. Open that page and pick your team. Hold the M-1's boot button for 1.5 seconds any time to see the address again.
 
 Team changes take effect immediately and survive reboots. Nothing needs reflashing to change teams.
 
