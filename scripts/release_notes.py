@@ -25,9 +25,9 @@ def section(version: str) -> str:
 
 
 def summary(body: str, limit: int = 240) -> str:
-    """Bullets joined into one line, trimmed to fit an ESPHome text field."""
+    """Bullets joined into one line with " | " (the page splits on it), trimmed to fit an ESPHome text field."""
     bullets = [ln[2:].strip() for ln in body.splitlines() if ln.startswith("- ")]
-    out = " ".join(bullets) if bullets else body.strip().splitlines()[0]
+    out = " | ".join(bullets) if bullets else body.strip().splitlines()[0]
     return out if len(out) <= limit else out[: limit - 3].rstrip() + "..."
 
 

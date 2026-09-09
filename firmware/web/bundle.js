@@ -72,14 +72,19 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       <div class="ul" id="upnextList"></div>
     </section>
 
-    <div class="teambar">
+    <div class="modes" id="modes">
+      <button data-mode="0">My team</button>
+      <button data-mode="1">Live NFL</button>
+      <button data-mode="2">Live college</button>
+      <button data-mode="3">Any live game</button>
+    </div>
+    <div class="teambar" id="teambar">
       <div class="cur"><img id="curLogo" alt=""><div><div class="name" id="curName">No team chosen</div><div class="lg" id="curLg">Pick the team the panel should follow</div></div></div>
       <button class="btn primary" id="pick">Change team</button>
     </div>
-    <div class="modebar">
-      <div class="ctl"><label>Show</label><select id="modeSel"></select></div>
-      <div class="ctl" id="rotateRow"><label>Switch games every</label><input type="range" id="rotate" min="2" max="30" step="1"><span class="val" id="rotateVal"></span></div>
-      <p class="hint" id="modeNote"></p>
+    <div class="teambar livebar" id="livebar" hidden>
+      <div class="cur"><div><div class="name">Following a random game in progress</div><div class="lg">Moves on when it ends, or after the time below.</div></div></div>
+      <div class="stepper"><label for="rotate">Switch every</label><input type="number" id="rotate" min="2" max="30" step="1"><span>min</span></div>
     </div>
 
     <div class="grid">
@@ -299,24 +304,31 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     $("#stale").classList.toggle("on", (g.m || 0) >= 3);
   };
 
-  // ---- mode bar --------------------------------------------------------------
-  const MODES = ["My team", "Live NFL", "Live college", "Live anything"];  // index = device mode
-  const sel = $("#modeSel");
-  MODES.forEach((o, i) => { const opt = el("option", null, o); opt.value = String(i); sel.appendChild(opt); });
-  sel.onchange = () => { setGD({ mode: sel.value }); toast(MODES[Number(sel.value)]); };
+  // ---- mode pills ----------------------------------------------------------------
+  // Index = device mode: 0 my team, 1 live NFL, 2 live college, 3 any live game.
+  const modeButtons = Array.from(document.querySelectorAll("#modes button"));
+  modeButtons.forEach((b) => {
+    b.onclick = () => {
+      if (S && String(S.mode || 0) === b.dataset.mode) return;
+      modeButtons.forEach((x) => x.classList.toggle("on", x === b));
+      setGD({ mode: b.dataset.mode });
+      toast(b.textContent);
+    };
+  });
   const rotateInput = $("#rotate");
-  rotateInput.oninput = () => ($("#rotateVal").textContent = rotateInput.value + " min");
-  rotateInput.onchange = () => setGD({ rotate: rotateInput.value });
+  rotateInput.onchange = () => {
+    const v = Math.min(30, Math.max(2, Number(rotateInput.value) || 5));
+    rotateInput.value = v;
+    setGD({ rotate: v });
+  };
   const renderMode = () => {
     if (!S) return;
-    if (document.activeElement !== sel) sel.value = String(S.mode || 0);
-    const live = (S.mode || 0) !== 0;
-    $("#rotateRow").hidden = !live;
-    $("#pick").hidden = live;
-    $("#modeNote").textContent = live
-      ? "Picks a game in progress at random and follows it, then moves on when it ends or the timer runs out."
-      : "";
-    if (document.activeElement !== rotateInput) { rotateInput.value = S.rotate; $("#rotateVal").textContent = S.rotate + " min"; }
+    const mode = String(S.mode || 0);
+    modeButtons.forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+    const live = mode !== "0";
+    $("#teambar").hidden = live;
+    $("#livebar").hidden = !live;
+    if (document.activeElement !== rotateInput) rotateInput.value = S.rotate;
   };
 
   // ---- toggles and favorites (static controls on the state document) --------
@@ -776,6 +788,30 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
   };
 
   // ---- firmware update -----------------------------------------------------
+  // The manifest carries a one-line summary; the release on GitHub has the
+  // real bullet list. Fetch that from the browser and fall back to the summary.
+  const notesCache = {};
+  const bulletsFrom = (text) => String(text || "").split(/\r?\n/).filter((l) => l.startsWith("- ")).map((l) => l.slice(2).trim());
+  const renderNotes = (host, tag, summary) => {
+    const list = el("ul", "notes");
+    host.appendChild(list);
+    const fill = (items) => {
+      list.innerHTML = "";
+      items.forEach((t) => list.appendChild(el("li", null, t)));
+    };
+    // Summary first so something shows right away; the manifest joins the bullets with " | ".
+    const quick = String(summary || "").split(" | ").map((t) => t.trim()).filter(Boolean);
+    if (quick.length) fill(quick);
+    if (!tag) return;
+    if (notesCache[tag]) { fill(notesCache[tag]); return; }
+    fetch("https://api.github.com/repos/bharvey88/gameday-scoreboard/releases/tags/" + encodeURIComponent(tag), { headers: { Accept: "application/vnd.github+json" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const items = j ? bulletsFrom(j.body) : [];
+        if (items.length) { notesCache[tag] = items; fill(items); }
+      })
+      .catch(() => {});
+  };
   let installing = false;
   const renderUpdate = (u) => {
     const box = $("#fw");
@@ -791,7 +827,8 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       sub.textContent = "Keep the panel powered. It reboots when done and this page reconnects.";
     } else if (st.includes("AVAILABLE")) {
       $("#fwText").textContent = "Update available: " + latest;
-      sub.textContent = (cur ? "You have " + cur + ". " : "") + (u.summary || "");
+      sub.textContent = cur ? "You have " + cur + "." : "";
+      renderNotes(sub, latest, u.summary);
       btn.hidden = false;
       btn.onclick = () => {
         if (!confirm("Install " + latest + " now? The panel will reboot.")) return;

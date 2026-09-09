@@ -8,6 +8,12 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.8.3
+
+- The mode picker is a row of buttons above the team bar: My team, Live NFL, Live college, Any live game. In a live mode the team bar becomes a one-line explanation with a small "switch every N min" field instead of the big slider.
+- Hidden things on the page now stay hidden. A styling slip let some hidden rows show anyway, which is why the rotation slider was always there.
+- Release notes on the device page are a bullet list again instead of one run-on paragraph. The page fetches the full notes from GitHub when it can and falls back to the short summary in the manifest.
+
 ## v0.8.2
 
 - The board fills in right after boot again. Since v0.8.0 the season schedule for "Up next" was downloaded before the game, which held the board on "Loading" for up to half a minute. The game comes first now and the list follows a moment later.

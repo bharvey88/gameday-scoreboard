@@ -1,4 +1,6 @@
 /* Game Day Scoreboard device page. Embedded by web_server css_include. */
+/* Class rules set display on many elements; keep the hidden attribute authoritative. */
+[hidden] { display: none !important; }
 :root {
   --bg: #07090d;
   --panel: #0f131a;
@@ -221,6 +223,8 @@ button { font: inherit; color: inherit; }
 .fw { margin-top: 12px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
 .fwline { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 600; }
 .fwsub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.fwsub .notes { margin: 6px 0 4px; padding-left: 18px; color: #c3ccd6; }
+.fwsub .notes li { margin: 3px 0; line-height: 1.4; }
 
 /* Timezone suggestion */
 .tzhint { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; color: #c9d1dc; }
@@ -231,8 +235,14 @@ button { font: inherit; color: inherit; }
 .tzline .lnk { margin-left: 10px; font-size: 12px; cursor: pointer; }
 
 /* Mode bar */
-.modebar { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 14px 10px; margin-top: 10px; }
-.modebar .hint { margin: 6px 0 0; }
+/* mode pills */
+.modes { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.modes button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; font-size: 13px; color: var(--text); }
+.modes button:hover { border-color: #3a4556; }
+.modes button.on { background: var(--accent); border-color: var(--accent); color: #041022; font-weight: 700; }
+.modes + .teambar { margin-top: 8px; }
+.livebar .stepper { display: flex; align-items: center; gap: 8px; flex: none; font-size: 13px; color: var(--muted); }
+.livebar .stepper input { width: 58px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; text-align: center; }
 
 /* Wide screens: bigger board, controls side by side */
 @media (min-width: 900px) {
