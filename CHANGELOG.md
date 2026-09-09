@@ -8,6 +8,13 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.0.0
+
+- First full release. One firmware for one or two panels, installed from the browser, with the team, layout and every other setting on the panel's own page. No Home Assistant needed.
+- Next-game card with the line, TV and kickoff; live scoreboard with clock, down and distance, possession and timeouts; full-screen celebrations; a final that lingers, then the next game.
+- Device page: mirrors the panel and its celebrations, lists the next three games, holds favorites for a WizMote remote, live modes that follow any game in progress, and updates the firmware over WiFi.
+- Since v0.8.4: the installer pins its loader with an integrity hash and describes the current setup flow.
+
 ## v0.8.4
 
 - A Setup card gathers the things you set once: the matrix pictures, the timezone, and the startup line, now labelled "Show the page address when the panel starts" with a note on what it does. Device is back to firmware, refresh, reboot and diagnostics.

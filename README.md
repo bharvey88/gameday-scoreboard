@@ -1,8 +1,8 @@
 # Game Day Scoreboard
 
-Standalone football scoreboard firmware for the [Apollo Automation M-1](https://wiki.apolloautomation.com/) HUB75 matrix. Flash it from your browser, join it to WiFi, pick your NFL or college team on the device's own web page, and the panel follows the game from ESPN by itself. No Home Assistant, no blueprint, nothing else to run.
+A standalone football scoreboard for the [Apollo Automation M-1](https://wiki.apolloautomation.com/) HUB75 matrix. Install it from your browser, join it to WiFi, pick your NFL or college team on the panel's own web page, and it follows the game from ESPN by itself. Nothing else to run.
 
-It is the standalone cousin of [gameday-matrix](https://github.com/bharvey88/gameday-matrix), which does the same thing through a Home Assistant blueprint and adds room lighting celebrations.
+If you already use Home Assistant and want room lighting to celebrate too, [gameday-matrix](https://github.com/bharvey88/gameday-matrix) does the same thing through a blueprint.
 
 ## What it does
 
@@ -10,7 +10,11 @@ It is the standalone cousin of [gameday-matrix](https://github.com/bharvey88/gam
 - Live scoreboard at kickoff: scores, the game clock and quarter in large type under them, down and distance beneath that (red in the red zone), abbreviations in team colors with the team holding the ball in gold, records under the logos, timeout pips, and a scrolling ticker with the last play (clock and down and distance can be added to the ticker too)
 - Full-screen splashes in your team's color for touchdowns, field goals, extra points and two-point conversions, the opponent's scores acknowledged in theirs, and a victory splash on a win
 - Lingers on the final for half an hour, then looks up the next game
-- Adapts to one 64x64 panel (logos side by side, stacked scores) or two panels wide (logos at the edges, big scores, records and pips in the middle)
+- Live modes that follow a random game in progress (NFL, college, or either) and move on when it ends
+- A device page that mirrors the panel, celebrates with it, lists the next three games, and holds every setting
+- Four favorite teams on a WizMote remote's numbered buttons
+- Updates itself over WiFi from the device page when a new release is out
+- Adapts to one 64x64 panel (logos side by side, stacked scores) or two panels wide (logos at the edges, big scores, records and pips in the middle); one firmware, the count is a setting
 
 ## Hardware
 
@@ -19,11 +23,11 @@ It is the standalone cousin of [gameday-matrix](https://github.com/bharvey88/gam
 
 ## Install
 
-1. Open the [installer page](https://bharvey88.github.io/gameday-scoreboard/) in Chrome or Edge, plug the M-1 in over USB, and pick the button for your panel layout.
+1. Open the [installer page](https://bharvey88.github.io/gameday-scoreboard/) in Chrome or Edge, plug the M-1 in over USB, and click Install.
 2. Enter your WiFi details in the dialog that follows the install.
 3. Once it's on WiFi the panel says where to go: open the `gameday-xxxxxx.local` name it shows on your phone, or the address underneath if your phone can't resolve `.local` names. Pick your team on that page. The ticker repeats the address until you've chosen a team, and holding the M-1's boot button for 1.5 seconds shows it again any time.
 
-Team changes take effect immediately and survive reboots. Nothing needs reflashing to change teams.
+Team changes take effect immediately and survive reboots. Two panels side by side? Click the two-panel picture in the Setup card. Nothing needs reflashing to change teams or layouts.
 
 ## The device page
 

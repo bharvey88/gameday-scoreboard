@@ -20,7 +20,11 @@
     a { color: #7cc4ff; }
     footer { margin-top: 40px; font-size: 0.85rem; color: #6f7a86; }
   </style>
-  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <!-- Pinned with an integrity hash. To move versions: fetch the new file, compute
+       sha384 (openssl dgst -sha384 -binary | openssl base64 -A) and update both. -->
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"
+          integrity="sha384-f+fR3K1mnKB2tVps4hdEh+qJvLgH2bKw81Yn+eNE3+gE8YpqocjkxQON4k19I3e/"
+          crossorigin="anonymous"></script>
 </head>
 <body>
 <main>
@@ -49,12 +53,12 @@
     <h2>3. Pick your team</h2>
     <p>The panel itself tells you where to go once it's online: open the <code>gameday-xxxxxx.local</code> name it shows on your phone, or the address shown under it if your phone doesn't resolve <code>.local</code> names.</p>
     <ol>
-      <li>Choose your team in the <strong>Team</strong> dropdown (NFL and college).</li>
-      <li>Two panels side by side? Click the two-panel picture under <strong>Panels</strong>. The matrix restarts using both.</li>
-      <li>Set your <strong>Timezone</strong> so kickoff times read right.</li>
-      <li>Optional: turn ticker parts and opponent splashes on or off.</li>
+      <li>Tap <strong>Change team</strong> and pick from the logos, or use the <strong>On now</strong> tab to jump into a game that's already playing. NFL and every FBS college team are there.</li>
+      <li>Two panels side by side? In the <strong>Setup</strong> card, click the two-panel picture. The matrix restarts using both.</li>
+      <li>The timezone follows the phone or computer you opened the page on, so kickoff times read right without setting anything.</li>
+      <li>Optional: the ticker parts, opponent celebrations, favorite teams for a WizMote remote, or a live mode that follows a random game in progress.</li>
     </ol>
-    <p class="note">The panel shows the next game, switches to the live layout at kickoff, celebrates scores, and lingers on the final. Everything is fetched from ESPN by the device itself. No Home Assistant needed, though the device does show up there if you want it.</p>
+    <p class="note">The panel shows the next game with the line, TV network and kickoff, switches to the live layout at kickoff, celebrates scores, and lingers on the final. The page mirrors it, lists the next three games, and updates the firmware when a new version is out. Everything is fetched from ESPN by the device itself. No Home Assistant needed, though the device does show up there if you want it.</p>
   </div>
 
   <footer>
