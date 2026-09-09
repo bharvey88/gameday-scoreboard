@@ -10,7 +10,7 @@ from esphome.components import http_request, time, web_server_base
 from esphome.components.panel_layout import PanelLayout
 from esphome.components.web_server_base import CONF_WEB_SERVER_BASE_ID
 import esphome.config_validation as cv
-from esphome.const import CONF_ID, CONF_TIME_ID, CONF_TRIGGER_ID
+from esphome.const import CONF_ID, CONF_TIME_ID, CONF_TRIGGER_ID, __version__ as ESPHOME_VERSION
 
 DEPENDENCIES = ["network", "http_request", "time"]
 AUTO_LOAD = ["json", "select", "web_server_base"]
@@ -59,6 +59,16 @@ def timezone_options():
     return opts
 
 
+def _parsed_timezone_count():
+    text = (COMPONENT_DIR / "timezones_parsed.h").read_text(encoding="utf-8")
+    return len(re.findall(r"^\s*\{-?\d+, -?\d+, \{", text, re.M))
+
+
+def _esphome_at_least(year, month):
+    m = re.match(r"(\d+)\.(\d+)", ESPHOME_VERSION)
+    return bool(m) and (int(m.group(1)), int(m.group(2))) >= (year, month)
+
+
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(GamedayComponent),
@@ -83,6 +93,14 @@ CONFIG_SCHEMA = cv.Schema(
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
+    if _parsed_timezone_count() != len(timezone_options()):
+        raise cv.Invalid(
+            "timezones_parsed.h is out of date; run scripts/build_timezones.py"
+        )
+    if _esphome_at_least(2026, 9):
+        # 2026.9 removed RealTimeClock::set_timezone and the on-device POSIX
+        # parser; the clock takes a pre-parsed struct instead.
+        cg.add_define("GAMEDAY_TZ_PARSED")
     cg.add(var.set_http(await cg.get_variable(config[CONF_HTTP_REQUEST_ID])))
     cg.add(var.set_time(await cg.get_variable(config[CONF_TIME_ID])))
     cg.add(

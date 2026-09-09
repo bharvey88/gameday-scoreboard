@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.8.1
+
+- Ready for ESPHome 2026.9: the timezone picker and the "Connecting to" screen use the new APIs, and the firmware still builds on 2026.8. No visible change.
+
 ## v0.8.0
 
 - "Up next" on the device page: the three games after the one on the board, with the opponent's logo, home or away, kickoff in your timezone and the TV network when ESPN lists one. Refreshes with the schedule every 6 hours.

@@ -116,7 +116,8 @@ script:
               id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
           } else {
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
-            id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", w->wifi_ssid(), "", "", true);
+            char ssid[wifi::SSID_BUFFER_SIZE];
+            id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", w->wifi_ssid_to(ssid), "", "", true);
           }
 
   # Keep the address up for a while after connecting, then clear the overlay
@@ -154,7 +155,8 @@ script:
       - delay: 7s
       - lambda: |-
           const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
-          id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", wifi::global_wifi_component->wifi_ssid(), "", "", true);
+          char ssid[wifi::SSID_BUFFER_SIZE];
+          id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", wifi::global_wifi_component->wifi_ssid_to(ssid), "", "", true);
       - delay: 5s
       - script.execute: boot_refresh
       - delay: 10s

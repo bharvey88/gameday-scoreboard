@@ -67,6 +67,20 @@ jobs:
           name: firmware-m1
           path: out
 
+  build-beta:
+    # Early warning: the next ESPHome, allowed to fail. Nothing is published
+    # from this job.
+    name: Build m1 (ESPHome beta)
+    needs: notes
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: esphome/build-action@v7
+        with:
+          yaml-file: firmware/gameday.yaml
+          version: beta
+
   host-tests:
     name: Parser tests
     runs-on: ubuntu-latest

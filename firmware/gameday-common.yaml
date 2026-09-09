@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "0.8.0"
+  version: "0.8.1"
   variant: "m1"
 
   display_panel_width: "64"
@@ -129,6 +129,10 @@ update:
 time:
   - platform: sntp
     id: ha_time  # the clock page extends this id
+    # Overridden at boot by the saved Timezone choice. Present so ESPHome
+    # 2026.9+ compiles its timezone support at all (posix_tz.cpp is only
+    # built when a timezone is configured).
+    timezone: "CST6CDT,M3.2.0,M11.1.0"
 
 # Team logos, decoded on the device from ESPN's dark-background PNGs.
 image:

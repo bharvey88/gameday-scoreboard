@@ -11,6 +11,11 @@
 #include <vector>
 
 #include "timezones.h"
+#include "timezones_parsed.h"
+
+#ifdef GAMEDAY_TZ_PARSED
+#include "esphome/components/time/posix_tz.h"
+#endif
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -399,8 +404,30 @@ void GamedayComponent::set_flag_(uint8_t f, bool on) {
 void GamedayComponent::save_prefs_() { this->pref_.save(&this->prefs_); }
 
 void GamedayComponent::apply_timezone_() {
+#ifdef GAMEDAY_TZ_PARSED
+  // ESPHome 2026.9+: no POSIX parser on the device, hand the clock the
+  // pre-parsed rules (scripts/build_timezones.py keeps the table in step).
+  const ::espn::TzParsed &p = ::espn::kTimezonesParsed[this->prefs_.tz_index];
+  auto rule = [](const ::espn::TzRule &r) {
+    time::DSTRule d{};
+    d.time_seconds = r.time_seconds;
+    d.day = r.day;
+    d.type = (time::DSTRuleType) r.type;
+    d.month = r.month;
+    d.week = r.week;
+    d.day_of_week = r.day_of_week;
+    return d;
+  };
+  time::ParsedTimezone tz{};
+  tz.std_offset_seconds = p.std_offset_seconds;
+  tz.dst_offset_seconds = p.dst_offset_seconds;
+  tz.dst_start = rule(p.dst_start);
+  tz.dst_end = rule(p.dst_end);
+  time::set_global_tz(tz);
+#else
   if (this->time_ != nullptr)
     this->time_->set_timezone(::espn::kTimezones[this->prefs_.tz_index].posix);
+#endif
 }
 
 void GamedayComponent::reset_game_() {
