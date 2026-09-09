@@ -201,6 +201,10 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     bool need_schedule{false};
     Schedule schedule;
     bool schedule_ok{false};
+    // the "Up next" list rides along with the schedule refresh
+    bool need_upcoming{false};
+    std::vector<::espn::Upcoming> upcoming;
+    bool upcoming_ok{false};
     bool no_event{false};
     GameSnapshot game;
     bool game_ok{false};
@@ -210,6 +214,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void run_job_();
   void apply_job_();
   bool fetch_schedule_(const ::espn::Team *team, Schedule &out);
+  bool fetch_upcoming_(const ::espn::Team *team, std::vector<::espn::Upcoming> &out);
   bool fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out);
   bool fetch_live_games_(League league, std::vector<::espn::LiveGame> &out);
   bool live_mode_() const { return this->prefs2_.mode != (uint8_t) Mode::MY_TEAM; }
@@ -241,6 +246,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
 
   Schedule schedule_;
   uint32_t schedule_fetched_ms_{0};
+  std::vector<::espn::Upcoming> upcoming_;  // next games after the one on the board
   GameSnapshot game_;
   GameSnapshot prev_;
   uint32_t post_since_ms_{0};

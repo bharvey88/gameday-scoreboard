@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <ctime>
 #include <string>
+#include <vector>
 
 #include "teams.h"
 
@@ -48,6 +49,17 @@ struct GameSnapshot {
   std::string odds, over_under, tv, venue;
 };
 
+// One future game from the team's schedule endpoint, for the "Up next" list.
+struct Upcoming {
+  std::string event_id;
+  int64_t kickoff_epoch{0};
+  uint32_t opp_id{0};
+  std::string opp_abbr, opp_name;
+  bool home{false};     // we are the home side
+  bool neutral{false};  // neutral site
+  std::string tv;
+};
+
 // A game found by scanning a day's scoreboard (live-game modes).
 struct LiveGame {
   uint8_t league{0};
@@ -71,12 +83,15 @@ struct Splash {
 
 const char *league_path(League league);
 std::string team_url(League league, uint32_t espn_id);
+std::string schedule_url(League league, uint32_t espn_id);  // the season's games, ~200KB
 std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch);
 std::string scan_url(League league, int64_t now_epoch);  // every game of the day for one league
 std::string dark_logo(const std::string &url);
 std::string team_logo_url(League league, uint32_t espn_id, const char *abbr);  // for a team with no game loaded yet
 
 bool parse_team_str(const std::string &json, Schedule &out);
+// Up to `max` games not yet started, in date order, from the schedule endpoint.
+bool parse_upcoming_str(const std::string &json, uint32_t our_team_id, size_t max, std::vector<Upcoming> &out);
 bool parse_scoreboard_str(const std::string &json, const std::string &event_id, uint32_t our_team_id,
                           GameSnapshot &out);
 

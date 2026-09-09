@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.8.0
+
+- "Up next" on the device page: the three games after the one on the board, with the opponent's logo, home or away, kickoff in your timezone and the TV network when ESPN lists one. Refreshes with the schedule every 6 hours.
+- The page now celebrates too. When the panel splashes a score, the same text flashes over the board on the page in the team's color.
+
 ## v0.7.2
 
 - The Power switch and Brightness now take effect at boot. A panel that was switched off before a power cycle came back lit at a default brightness with the page showing it off, and turning it on jumped to your brightness setting. Both are applied as soon as the display starts.

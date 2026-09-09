@@ -275,6 +275,36 @@ static void test_kickoff_label() {
   CHECK_EQ(kickoff_label(mk(2026, 256, 1, 0, 5, 8, 14), now), std::string("Sep 14 12:05 AM"));
 }
 
+static void test_upcoming() {
+  std::vector<Upcoming> up;
+  CHECK(parse_upcoming_str(slurp("fixtures/schedule_nfl_dal.json"), 6, 3, up));
+  CHECK_EQ(up.size(), (size_t) 3);
+  if (up.size() == 3) {
+    CHECK_EQ(up[0].event_id, std::string("401872930"));
+    CHECK_EQ(up[0].opp_abbr, std::string("NYG"));
+    CHECK_EQ(up[0].opp_id, (uint32_t) 19);
+    CHECK(!up[0].home);
+    CHECK_EQ(up[0].tv, std::string("NBC"));
+    CHECK_EQ(up[0].kickoff_epoch, parse_iso8601_z("2026-09-14T00:20Z"));
+    CHECK_EQ(up[1].opp_abbr, std::string("WSH"));
+    CHECK(up[1].home);
+    CHECK_EQ(up[2].opp_abbr, std::string("BAL"));
+    CHECK(up[2].neutral);
+  }
+  // College: the first event is already final and must be skipped
+  up.clear();
+  CHECK(parse_upcoming_str(slurp("fixtures/schedule_ncaa_bc.json"), 103, 4, up));
+  CHECK_EQ(up.size(), (size_t) 4);
+  if (up.size() >= 3) {
+    CHECK_EQ(up[0].event_id, std::string("401858214"));
+    CHECK_EQ(up[0].opp_abbr, std::string("RUTG"));
+    CHECK(up[0].home);
+    CHECK_EQ(up[0].tv, std::string("ESPN2"));
+    CHECK_EQ(up[2].tv, std::string(""));  // no broadcast listed yet
+  }
+  CHECK_EQ(schedule_url(League::NFL, 6), std::string("https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/6/schedule"));
+}
+
 static void test_live_games() {
   std::string json = slurp("fixtures/scoreboard_ncaa_live.json");
   std::vector<LiveGame> games;
@@ -341,6 +371,7 @@ int main() {
   test_status_text();
   test_kickoff_label();
   test_live_games();
+  test_upcoming();
   test_clock_text();
   test_color();
   printf("%d checks, %d failures\n", checks, failures);

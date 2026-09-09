@@ -61,6 +61,12 @@
       <div class="msg" id="msg" hidden></div>
       <div class="ticker" id="ticker">Waiting for the device</div>
       <div class="play" id="play"></div>
+      <div class="splash" id="splash"></div>
+    </section>
+
+    <section class="upnext" id="upnext" hidden>
+      <div class="uh">Up next</div>
+      <div class="ul" id="upnextList"></div>
     </section>
 
     <div class="teambar">
@@ -646,8 +652,56 @@
     line.appendChild(link);
   };
 
+  // ---- up next + splash (from the state document) -------------------------------
+  const kickLabel = (epoch) => {
+    const d = new Date(epoch * 1000);
+    const day = d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return day + " " + time;
+  };
+  const renderUpNext = () => {
+    const box = $("#upnext");
+    if (!S || (S.mode || 0) !== 0) { box.hidden = true; return; }
+    const curId = game && game.s !== "NOT_FOUND" ? String(game.id || "") : "";
+    const list = (S.next || []).filter((u) => String(u.id) !== curId).slice(0, 3);
+    box.hidden = !list.length;
+    const host = $("#upnextList");
+    host.innerHTML = "";
+    const lg = S.team ? S.team.l : "nfl";
+    for (const u of list) {
+      const row = el("div", "un");
+      const img = el("img");
+      img.loading = "lazy";
+      img.alt = "";
+      img.src = logoUrl(lg, u.oi, u.oa);
+      row.appendChild(img);
+      const txt = el("div", "ut");
+      txt.appendChild(el("div", "n", (u.neutral ? "vs " : u.home ? "vs " : "@ ") + (u.on || u.oa)));
+      txt.appendChild(el("div", "w", kickLabel(u.kick) + (u.tv ? " · " + u.tv : "")));
+      row.appendChild(txt);
+      host.appendChild(row);
+    }
+  };
+  let lastSplashKey = "";
+  let splashTimer = null;
+  const renderSplash = () => {
+    if (!S || !S.splash) return;
+    // One splash per score change: the same text with the same score is a repeat.
+    const key = S.splash + "|" + (game ? game.ts + "-" + game.os : "");
+    if (key === lastSplashKey) return;
+    lastSplashKey = key;
+    const n = $("#splash");
+    n.textContent = S.splash;
+    n.style.background = "#" + (S.splash_color && S.splash_color !== "000000" ? S.splash_color : "1d4ed8");
+    n.classList.add("on");
+    clearTimeout(splashTimer);
+    splashTimer = setTimeout(() => n.classList.remove("on"), 3000);
+  };
+
   const renderAll = () => {
     renderBoard();
+    renderUpNext();
+    renderSplash();
     renderCurrentTeam();
     renderMode();
     renderSettings();

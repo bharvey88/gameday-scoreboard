@@ -43,6 +43,21 @@ inline void fill_scoreboard_filter(JsonDocument &f) {
   comp["venue"]["fullName"] = true;
 }
 
+inline void fill_upcoming_filter(JsonDocument &f) {
+  JsonObject ev = f["events"].add<JsonObject>();
+  ev["id"] = true;
+  ev["date"] = true;
+  JsonObject comp = ev["competitions"].add<JsonObject>();
+  comp["neutralSite"] = true;
+  comp["status"]["type"]["state"] = true;
+  JsonObject c = comp["competitors"].add<JsonObject>();
+  c["homeAway"] = true;
+  c["team"]["id"] = true;
+  c["team"]["abbreviation"] = true;
+  c["team"]["shortDisplayName"] = true;
+  comp["broadcasts"].add<JsonObject>()["media"]["shortName"] = true;
+}
+
 inline void fill_scan_filter(JsonDocument &f) {
   JsonObject ev = f["events"].add<JsonObject>();
   ev["id"] = true;
@@ -172,6 +187,46 @@ template<typename TInput> bool parse_team(TInput &input, Schedule &out) {
   }
   s.valid = true;
   out = s;
+  return true;
+}
+
+// Games that have not started yet, in the order ESPN lists them (by date).
+template<typename TInput>
+bool parse_upcoming(TInput &input, uint32_t our_team_id, size_t max, std::vector<Upcoming> &out) {
+  JsonDocument filter;
+  detail::fill_upcoming_filter(filter);
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
+                                              DeserializationOption::NestingLimit(40));
+  if (err)
+    return false;
+  out.clear();
+  for (JsonObjectConst ev : doc["events"].as<JsonArrayConst>()) {
+    if (out.size() >= max)
+      break;
+    JsonObjectConst comp = ev["competitions"][0];
+    if (detail::str_or_empty(comp["status"]["type"]["state"]) != "pre")
+      continue;
+    Upcoming u;
+    u.event_id = detail::str_or_empty(ev["id"]);
+    u.kickoff_epoch = parse_iso8601_z(detail::str_or_empty(ev["date"]));
+    u.neutral = comp["neutralSite"] | false;
+    for (JsonObjectConst c : comp["competitors"].as<JsonArrayConst>()) {
+      uint32_t id = (uint32_t) atol(detail::str_or_empty(c["team"]["id"]).c_str());
+      bool home = detail::str_or_empty(c["homeAway"]) == "home";
+      if (id == our_team_id) {
+        u.home = home;
+      } else {
+        u.opp_id = id;
+        u.opp_abbr = detail::str_or_empty(c["team"]["abbreviation"]);
+        u.opp_name = detail::str_or_empty(c["team"]["shortDisplayName"]);
+      }
+    }
+    JsonVariantConst tv = comp["broadcasts"][0]["media"]["shortName"];
+    u.tv = detail::str_or_empty(tv);
+    if (!u.event_id.empty() && u.opp_id != 0)
+      out.push_back(u);
+  }
   return true;
 }
 

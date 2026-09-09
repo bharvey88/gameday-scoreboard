@@ -409,6 +409,7 @@ void GamedayComponent::reset_game_() {
   this->live_none_ = false;
   this->schedule_ = Schedule{};
   this->schedule_fetched_ms_ = 0;
+  this->upcoming_.clear();
   this->game_ = GameSnapshot{};
   this->prev_ = GameSnapshot{};
   this->post_since_ms_ = 0;
@@ -451,6 +452,20 @@ bool GamedayComponent::fetch_schedule_(const ::espn::Team *team, Schedule &out) 
            (long long) s.kickoff_epoch, (unsigned) s.group, (unsigned) reader.total());
   out = s;
   return true;
+}
+
+bool GamedayComponent::fetch_upcoming_(const ::espn::Team *team, std::vector<::espn::Upcoming> &out) {
+  std::string url = ::espn::schedule_url(team->league, team->espn_id);
+  ESP_LOGD(TAG, "Fetching upcoming games: %s", url.c_str());
+  auto container = this->open_(url);
+  if (container == nullptr)
+    return false;
+  ContainerReader reader(container);
+  // Four: the game on the board plus the three after it.
+  bool ok = ::espn::parse_upcoming(reader, team->espn_id, 4, out);
+  container->end();
+  ESP_LOGI(TAG, "Upcoming: %u game(s) (%u bytes)", (unsigned) out.size(), (unsigned) reader.total());
+  return ok;
 }
 
 bool GamedayComponent::fetch_live_games_(League league, std::vector<::espn::LiveGame> &out) {
@@ -534,6 +549,7 @@ void GamedayComponent::start_job_() {
     return;
   }
   j.need_schedule = !this->schedule_.valid || (now - this->schedule_fetched_ms_) >= SCHEDULE_INTERVAL;
+  j.need_upcoming = j.need_schedule;
   if (this->post_since_ms_ != 0 && (now - this->post_since_ms_) >= POST_LINGER) {
     // Game is over and lingered: look for the next one.
     this->prev_ = GameSnapshot{};
@@ -578,6 +594,8 @@ void GamedayComponent::run_job_() {
     if (!j.schedule_ok)
       return;
     j.schedule = s;
+    if (j.need_upcoming)
+      j.upcoming_ok = this->fetch_upcoming_(j.team, j.upcoming);
     if (s.event_id.empty()) {
       j.no_event = true;
       return;
@@ -645,6 +663,8 @@ void GamedayComponent::apply_job_() {
     }
     this->schedule_ = j.schedule;
     this->schedule_fetched_ms_ = now;
+    if (j.upcoming_ok)
+      this->upcoming_ = j.upcoming;
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
@@ -823,6 +843,21 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
     game["oc"] = color;
     doc["status"] = f->status_text;
     doc["splash"] = f->splash_text;
+    snprintf(color, sizeof(color), "%06X", (unsigned) f->splash_color);
+    doc["splash_color"] = color;
+  }
+  game["id"] = g.event_id;
+  JsonArray next = doc["next"].to<JsonArray>();
+  for (const auto &u : this->upcoming_) {
+    JsonObject o = next.add<JsonObject>();
+    o["id"] = u.event_id;
+    o["kick"] = u.kickoff_epoch;
+    o["oi"] = u.opp_id;
+    o["oa"] = u.opp_abbr;
+    o["on"] = u.opp_name;
+    o["home"] = u.home;
+    o["neutral"] = u.neutral;
+    o["tv"] = u.tv;
   }
   std::string out;
   serializeJson(doc, out);

@@ -14,6 +14,8 @@ std::string team_url(League league, uint32_t espn_id) {
   return std::string(kSite) + league_path(league) + "/teams/" + std::to_string(espn_id);
 }
 
+std::string schedule_url(League league, uint32_t espn_id) { return team_url(league, espn_id) + "/schedule"; }
+
 // Number of days since 1970-01-01 for a UTC epoch, then split into y/m/d.
 // Avoids gmtime_r so the host and device agree regardless of libc quirks.
 static void civil_from_epoch(int64_t epoch, int &y, int &m, int &d) {
@@ -87,6 +89,10 @@ std::string team_logo_url(League league, uint32_t espn_id, const char *abbr) {
 }
 
 bool parse_team_str(const std::string &json, Schedule &out) { return parse_team(json, out); }
+
+bool parse_upcoming_str(const std::string &json, uint32_t our_team_id, size_t max, std::vector<Upcoming> &out) {
+  return parse_upcoming(json, our_team_id, max, out);
+}
 
 bool parse_scoreboard_str(const std::string &json, const std::string &event_id, uint32_t our_team_id,
                           GameSnapshot &out) {
