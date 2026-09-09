@@ -110,8 +110,10 @@ button { font: inherit; color: inherit; }
 .btn.danger { color: #ff8a8a; }
 
 /* Sections */
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; align-items: start; }
-@media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .team img { width: 64px; height: 64px; } .score { font-size: 42px; } .mid { min-width: 120px; } }
+/* Two flowing columns (not grid rows), so a short card never leaves a hole beside a tall one. */
+.grid { columns: 2; column-gap: 14px; margin-top: 14px; }
+.grid .card { break-inside: avoid; margin-bottom: 14px; }
+@media (max-width: 560px) { .grid { columns: 1; } .team img { width: 64px; height: 64px; } .score { font-size: 42px; } .mid { min-width: 120px; } }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
 .card h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
 .card p.hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
@@ -259,6 +261,6 @@ button { font: inherit; color: inherit; }
   .down { font-size: 17px; }
   .mid { min-width: 240px; }
   .ticker, .play { font-size: 15px; }
-  .grid { grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid { column-gap: 18px; }
 }
 

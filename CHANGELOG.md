@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.1.2
+
+- The device page's cards flow in two columns with no gaps: a short card no longer leaves a hole beside a tall one.
+
 ## v1.1.1
 
 - The possession marker is a gold underline under the team with the ball (under the score on a single panel), so it visibly jumps from one side to the other. The first cut of it was two dots in the middle that barely moved.
