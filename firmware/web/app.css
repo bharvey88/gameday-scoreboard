@@ -116,6 +116,9 @@ button { font: inherit; color: inherit; }
 .ctl { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid #1a2029; }
 .ctl:first-of-type { border-top: 0; }
 .ctl label { flex: 1; }
+.ctl label small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.35; }
+.card .sub { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.card .sub:first-of-type { margin-top: 4px; }
 .ctl .val { color: var(--muted); font-size: 12px; min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
 .ctl input[type=range] { width: 46%; accent-color: var(--accent); }
 .ctl select {

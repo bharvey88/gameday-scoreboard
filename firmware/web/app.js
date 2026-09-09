@@ -100,9 +100,6 @@
         <div id="celebCtls">
           <div class="ctl"><label>Opponent scores too</label><button class="sw" data-set="opp" aria-label="Opponent scores too"></button></div>
         </div>
-        <h2 style="margin-top:14px">Time</h2>
-        <div class="tzline" id="tzline">Timezone not known yet</div>
-        <div class="ctl" id="tzpick" hidden><label>Timezone</label><select id="tzsel"></select></div>
       </div>
       <div class="card">
         <h2>Panel</h2>
@@ -126,8 +123,10 @@
         <div class="actions" id="remoteActions" style="margin-top:8px"></div>
       </div>
       <div class="card">
-        <h2>Panels</h2>
-        <p class="hint">Click the picture that matches your matrix. The panel restarts with the new layout.</p>
+        <h2>Setup</h2>
+        <p class="hint">Things you set once.</p>
+        <div class="sub">Matrix</div>
+        <p class="hint">Click the picture that matches yours. The panel restarts with the new layout.</p>
         <div class="panels" id="panels">
           <button class="panelpick" data-cols="1" aria-label="One panel">
             <svg viewBox="0 0 96 48" aria-hidden="true"><rect x="30" y="6" width="36" height="36" rx="3"/></svg>
@@ -138,11 +137,18 @@
             <span>Two panels wide</span>
           </button>
         </div>
+        <div class="sub">Time</div>
+        <div class="tzline" id="tzline">Timezone not known yet</div>
+        <div class="ctl" id="tzpick" hidden><label>Timezone</label><select id="tzsel"></select></div>
+        <div class="sub">Startup</div>
+        <div class="ctl">
+          <label>Show the page address when the panel starts<small>For 3 seconds after it connects, so you can find this page without the button. Hold the boot button any time to show it again.</small></label>
+          <button class="sw" data-set="bootaddr" aria-label="Show the page address when the panel starts"></button>
+        </div>
       </div>
       <div class="card">
         <h2>Device</h2>
         <div class="actions" id="actions"></div>
-        <div class="ctl" style="margin-top:8px"><label>Show address at boot</label><button class="sw" data-set="bootaddr" aria-label="Show address at boot"></button></div>
         <div class="fw" id="fw" hidden>
           <div class="fwline"><span id="fwText">Firmware</span><button class="btn primary" id="fwInstall" hidden>Install</button></div>
           <div class="fwsub" id="fwSub"></div>

@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.8.4
+
+- A Setup card gathers the things you set once: the matrix pictures, the timezone, and the startup line, now labelled "Show the page address when the panel starts" with a note on what it does. Device is back to firmware, refresh, reboot and diagnostics.
+
 ## v0.8.3
 
 - The mode picker is a row of buttons above the team bar: My team, Live NFL, Live college, Any live game. In a live mode the team bar becomes a one-line explanation with a small "switch every N min" field instead of the big slider.
