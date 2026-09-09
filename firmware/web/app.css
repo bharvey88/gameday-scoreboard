@@ -129,11 +129,14 @@ button { font: inherit; color: inherit; }
   background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; max-width: 55%;
 }
 /* toggle */
-.sw { position: relative; width: 42px; height: 24px; border-radius: 12px; background: #2a3140; border: 0; cursor: pointer; transition: background .15s; flex: none; }
+.sw {
+  position: relative; width: 42px; min-width: 42px; height: 24px; min-height: 24px; border-radius: 12px;
+  background: #2a3140; border: 0; padding: 0; margin: 0; box-sizing: border-box; cursor: pointer;
+  transition: background .15s; flex: none; appearance: none; -webkit-appearance: none; opacity: 1; font-size: 0; line-height: 0;
+}
 .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #cfd6e0; transition: left .15s; }
 .sw.on { background: var(--accent); }
 .sw.on::after { left: 21px; background: #fff; }
-.sw:disabled { opacity: .4; cursor: default; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 /* panel picker */
 .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.1.3
+
+- The device page no longer offers to install a version older than the one running (the panel treats any different version as an update; the page now checks which way).
+- The Discovery toggle in the Remote card no longer picks up a phone browser's default button styling.
+
 ## v1.1.2
 
 - The device page's cards flow in two columns with no gaps: a short card no longer leaves a hole beside a tall one.

@@ -809,6 +809,15 @@
     fwDetailInflight = false;
   };
 
+  // true if a is newer than b, false if older, null if either is unreadable
+  const isNewer = (a, b) => {
+    const parse = (v) => String(v || "").replace(/^v/, "").split(".").map((n) => parseInt(n, 10));
+    const pa = parse(a), pb = parse(b);
+    if (pa.length < 3 || pb.length < 3 || pa.some(isNaN) || pb.some(isNaN)) return null;
+    for (let i = 0; i < 3; i++) { if (pa[i] !== pb[i]) return pa[i] > pb[i]; }
+    return false;
+  };
+
   // ---- firmware update -----------------------------------------------------
   // The manifest carries a one-line summary; the release on GitHub has the
   // real bullet list. Fetch that from the browser and fall back to the summary.
@@ -847,6 +856,10 @@
     if (st.includes("INSTALLING") || installing) {
       $("#fwText").textContent = "Installing " + (latest || "update");
       sub.textContent = "Keep the panel powered. It reboots when done and this page reconnects.";
+    } else if (st.includes("AVAILABLE") && isNewer(u.value, u.current_version) === false) {
+      // The device offers any different version; a lower one is a downgrade.
+      $("#fwText").textContent = "You're ahead of the latest release, " + cur;
+      sub.textContent = "The newest published version is " + latest + ". Nothing to install.";
     } else if (st.includes("AVAILABLE")) {
       $("#fwText").textContent = "Update available: " + latest;
       sub.textContent = cur ? "You have " + cur + "." : "";
