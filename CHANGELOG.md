@@ -8,6 +8,13 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v0.8.2
+
+- The board fills in right after boot again. Since v0.8.0 the season schedule for "Up next" was downloaded before the game, which held the board on "Loading" for up to half a minute. The game comes first now and the list follows a moment later.
+- The page reloads itself after an install again. It was waiting for a version field the device no longer sends in the plain state, so it sat on "Installing" after the panel had already rebooted.
+- A hidden demo for showing the panel off without a live game: POST /gameday/action?do=demo plays a scripted game with real splashes for about 50 seconds, then live data resumes.
+- The "Preview setup screen" button is gone from the device page. The boot button still shows the address on a long press.
+
 ## v0.8.1
 
 - Ready for ESPHome 2026.9: the timezone picker and the "Connecting to" screen use the new APIs, and the firmware still builds on 2026.8. No visible change.

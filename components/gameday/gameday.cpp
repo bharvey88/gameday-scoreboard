@@ -273,6 +273,11 @@ void GamedayComponent::dump_config() {
 }
 
 void GamedayComponent::loop() {
+  if (this->demo_active_) {
+    this->demo_tick_();
+    if (!this->busy_)
+      return;
+  }
   if (this->busy_) {
     if (!this->job_done_)
       return;
@@ -437,6 +442,7 @@ void GamedayComponent::reset_game_() {
   this->schedule_ = Schedule{};
   this->schedule_fetched_ms_ = 0;
   this->upcoming_.clear();
+  this->upcoming_due_ = false;
   this->game_ = GameSnapshot{};
   this->prev_ = GameSnapshot{};
   this->post_since_ms_ = 0;
@@ -576,7 +582,20 @@ void GamedayComponent::start_job_() {
     return;
   }
   j.need_schedule = !this->schedule_.valid || (now - this->schedule_fetched_ms_) >= SCHEDULE_INTERVAL;
-  j.need_upcoming = j.need_schedule;
+  // The season schedule is ~200KB; it is fetched on a cycle of its own right
+  // after the board has its game, never in front of it.
+  if (this->upcoming_due_ && !j.need_schedule && this->schedule_.valid) {
+    j.need_upcoming = true;
+    j.schedule = this->schedule_;
+    this->job_done_ = false;
+    this->busy_ = true;
+    BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
+    if (ok != pdPASS) {
+      this->busy_ = false;
+      this->schedule_next_(RETRY_INTERVAL);
+    }
+    return;
+  }
   if (this->post_since_ms_ != 0 && (now - this->post_since_ms_) >= POST_LINGER) {
     // Game is over and lingered: look for the next one.
     this->prev_ = GameSnapshot{};
@@ -615,14 +634,16 @@ void GamedayComponent::run_job_() {
       j.scan_ok = this->fetch_live_games_(League::NCAA, j.live) && j.scan_ok;
     return;  // the main loop picks a game, then the next cycle polls it
   }
+  if (j.need_upcoming) {
+    j.upcoming_ok = this->fetch_upcoming_(j.team, j.upcoming);
+    return;
+  }
   if (j.need_schedule) {
     Schedule s;
     j.schedule_ok = this->fetch_schedule_(j.team, s);
     if (!j.schedule_ok)
       return;
     j.schedule = s;
-    if (j.need_upcoming)
-      j.upcoming_ok = this->fetch_upcoming_(j.team, j.upcoming);
     if (s.event_id.empty()) {
       j.no_event = true;
       return;
@@ -681,6 +702,14 @@ void GamedayComponent::apply_job_() {
     this->schedule_next_(0);  // poll the chosen game right away
     return;
   }
+  if (j.need_upcoming) {
+    this->upcoming_due_ = false;
+    if (j.upcoming_ok)
+      this->upcoming_ = j.upcoming;
+    this->rebuild_state_(&this->last_fields_);
+    this->schedule_next_(this->interval_for_phase_());
+    return;
+  }
   if (j.need_schedule) {
     if (!j.schedule_ok) {
       this->misses_++;
@@ -690,14 +719,13 @@ void GamedayComponent::apply_job_() {
     }
     this->schedule_ = j.schedule;
     this->schedule_fetched_ms_ = now;
-    if (j.upcoming_ok)
-      this->upcoming_ = j.upcoming;
+    this->upcoming_due_ = true;  // refreshed on the next cycle, once the board is drawn
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
       this->misses_ = 0;
       this->emit_({});
-      this->schedule_next_(SCHEDULE_INTERVAL);
+      this->schedule_next_(0);
       return;
     }
   }
@@ -719,7 +747,7 @@ void GamedayComponent::apply_job_() {
     this->post_since_ms_ = 0;
   }
   this->emit_(splash);
-  this->schedule_next_(this->interval_for_phase_());
+  this->schedule_next_(this->upcoming_due_ ? 0 : this->interval_for_phase_());
 }
 
 void GamedayComponent::emit_(const ::espn::Splash &splash) {
@@ -787,6 +815,112 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   this->rebuild_state_(&f);
   for (auto &cb : this->callbacks_)
     cb(f);
+}
+
+// ---- demo ---------------------------------------------------------------------
+
+struct DemoStep {
+  GameState state;
+  int us, them;
+  const char *clock;
+  int period;
+  int possession;  // 1 us, 2 them
+  const char *down;
+  bool red_zone;
+  const char *play;
+  uint32_t hold_ms;
+};
+
+// A believable drive-by-drive script. Splashes come from decide_splash on the
+// score deltas, so the panel celebrates exactly as it would in a real game.
+static const DemoStep DEMO[] = {
+    {GameState::PRE, 0, 0, "", 0, 0, "", false, "", 3500},
+    {GameState::IN, 0, 0, "15:00", 1, 1, "1st & 10", false, "Kickoff", 4000},
+    {GameState::IN, 0, 0, "9:41", 1, 1, "3rd & 4", true, "Pass short left for 8 yards", 3500},
+    {GameState::IN, 7, 0, "9:35", 1, 2, "", false, "Pass deep right for 21 yards, TOUCHDOWN", 5000},
+    {GameState::IN, 7, 3, "2:10", 1, 1, "1st & 10", false, "38 yard field goal is GOOD", 4500},
+    {GameState::IN, 7, 3, "11:22", 2, 2, "2nd & 7", false, "Rush up the middle for 3 yards", 3500},
+    {GameState::IN, 7, 10, "6:48", 2, 1, "", false, "Pass deep middle for 44 yards, TOUCHDOWN", 5000},
+    {GameState::IN, 14, 10, "1:03", 2, 2, "", false, "Rush right end for 12 yards, TOUCHDOWN", 5000},
+    {GameState::IN, 14, 10, "0:00", 2, 0, "", false, "End of the 2nd quarter", 3500},
+    {GameState::IN, 21, 10, "8:15", 4, 2, "", false, "Interception returned 31 yards, TOUCHDOWN", 5000},
+    {GameState::IN, 24, 10, "2:00", 4, 2, "4th & 9", true, "27 yard field goal is GOOD", 4000},
+    {GameState::POST, 24, 10, "", 4, 0, "", false, "", 6000},
+};
+static const size_t DEMO_STEPS = sizeof(DEMO) / sizeof(DEMO[0]);
+
+void GamedayComponent::start_demo() {
+  if (this->demo_active_)
+    return;
+  ESP_LOGI(TAG, "Demo: starting");
+  this->demo_saved_game_ = this->game_;
+  this->demo_saved_prev_ = this->prev_;
+  this->generation_++;  // any fetch in flight belongs to before the demo
+  this->demo_active_ = true;
+  this->demo_step_ = 0;
+  this->demo_next_ms_ = millis();
+}
+
+void GamedayComponent::demo_tick_() {
+  uint32_t now = millis();
+  if ((int32_t) (now - this->demo_next_ms_) < 0)
+    return;
+  if (this->demo_step_ >= DEMO_STEPS) {
+    ESP_LOGI(TAG, "Demo: done, back to live data");
+    this->demo_active_ = false;
+    this->game_ = this->demo_saved_game_;
+    this->prev_ = this->demo_saved_prev_;
+    this->emit_({});
+    this->schedule_next_(0);
+    return;
+  }
+  const DemoStep &d = DEMO[this->demo_step_];
+  // Keep the real sides (logos already decoded, colors, records); fall back
+  // to a stock matchup on a panel that has nothing loaded yet.
+  GameSnapshot g = this->demo_saved_game_;
+  if (!g.valid || g.team_abbr.empty()) {
+    const ::espn::Team *t = this->current_team_();
+    g = GameSnapshot{};
+    g.team_abbr = t ? t->abbr : "DAL";
+    g.team_id = t ? t->espn_id : 6;
+    g.team_logo = t ? ::espn::team_logo_url(t->league, t->espn_id, t->abbr) : "";
+    g.opp_abbr = "PHI";
+    g.opp_id = 21;
+    g.opp_logo = ::espn::team_logo_url(League::NFL, 21, "PHI");
+    g.team_color = "041E42";
+    g.opp_color = "004C54";
+    g.team_record = "1-0";
+    g.opp_record = "1-0";
+  }
+  g.valid = true;
+  g.state = d.state;
+  g.completed = d.state == GameState::POST;
+  g.team_score = d.us;
+  g.opp_score = d.them;
+  g.display_clock = d.clock;
+  g.period = d.period;
+  g.possession = d.possession;
+  g.short_down_distance = d.down;
+  g.down_distance = d.down;
+  g.is_red_zone = d.red_zone;
+  g.last_play = d.play;
+  g.team_winner = d.state == GameState::POST && d.us > d.them;
+  g.team_timeouts = d.period <= 2 ? 3 : 2;
+  g.opp_timeouts = d.period <= 2 ? 3 : 1;
+  if (d.state == GameState::PRE) {
+    g.short_detail = "Tonight";
+    g.kickoff_epoch = this->time_ != nullptr ? (int64_t) this->time_->timestamp_now() + 3600 : 0;
+  } else if (d.state == GameState::POST) {
+    g.short_detail = "Final";
+  } else {
+    g.short_detail = std::string(d.clock) + " - " + (d.period == 1 ? "1st" : d.period == 2 ? "2nd" : d.period == 3 ? "3rd" : "4th");
+  }
+  this->prev_ = this->game_;
+  this->game_ = g;
+  ::espn::Splash splash = this->demo_step_ == 0 ? ::espn::Splash{} : ::espn::decide_splash(this->prev_, g, true, false);
+  this->emit_(splash);
+  this->demo_next_ms_ = now + d.hold_ms;
+  this->demo_step_++;
 }
 
 // ---- device page routes -----------------------------------------------------
@@ -923,6 +1057,8 @@ void GamedayComponent::handleRequest(AsyncWebServerRequest *request) {
     this->defer([this, name]() {
       if (name == "refresh")
         this->refresh_now();
+      else if (name == "demo")
+        this->start_demo();
       for (auto &cb : this->action_callbacks_)
         cb(name);
     });

@@ -41,7 +41,7 @@ The M-1 serves its own page: a live board that mirrors the panel (logos, score, 
 | Panels | One 64x64 panel or two side by side. Changing it restarts the device |
 | Firmware / Check for updates | The device checks this project's releases every 6 hours; an Install button appears on the page when a newer version exists and updates over WiFi |
 | Brightness, Panel on, Ticker speed, Showing | Panel brightness, panel on or off, ticker speed, scoreboard or clock page |
-| Refresh scores, Preview setup screen, Reboot | Re-fetch right away, play the setup screens on the panel, restart |
+| Refresh scores, Reboot | Re-fetch right away, restart |
 
 ## Home Assistant is optional
 

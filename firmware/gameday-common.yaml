@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "0.8.1"
+  version: "0.8.2"
   variant: "m1"
 
   display_panel_width: "64"
@@ -183,11 +183,6 @@ gameday:
   time_id: ha_time
   panel_layout_id: gd_panels
   on_action:
-    - if:
-        condition:
-          lambda: 'return x == "preview";'
-        then:
-          - script.execute: boot_preview
     - if:
         condition:
           lambda: 'return x == "team_picked";'

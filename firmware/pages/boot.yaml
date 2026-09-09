@@ -137,31 +137,6 @@ script:
           id: boot_overlay
           hidden: true
 
-  # Preview: play the three setup states on the panel without touching WiFi
-  - id: boot_preview
-    mode: restart
-    then:
-      - component.suspend: boot_check
-      - component.resume: boot_anim
-      - lvgl.obj.update:
-          id: boot_overlay
-          hidden: false
-      - lambda: |-
-          const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
-          if (wide)
-            id(boot_set_lines).execute("On your phone, join WiFi", "Game Day Scoreboard", "a setup page will open", "", true);
-          else
-            id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
-      - delay: 7s
-      - lambda: |-
-          const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
-          char ssid[wifi::SSID_BUFFER_SIZE];
-          id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", wifi::global_wifi_component->wifi_ssid_to(ssid), "", "", true);
-      - delay: 5s
-      - script.execute: boot_refresh
-      - delay: 10s
-      - script.execute: boot_hide
-
   # Boot button: bring the address back for 20 seconds
   - id: boot_show_address
     mode: restart

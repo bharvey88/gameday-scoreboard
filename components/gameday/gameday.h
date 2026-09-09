@@ -77,7 +77,7 @@ class GamedaySelect : public select::Select, public Component {
 //   GET  /gameday/state              full snapshot + settings
 //   POST /gameday/set?key=value...   team=nfl:6 mode=0-3 rotate=2-30 fav1..fav4=nfl:6|none
 //                                    tz=<index> tzauto=0/1 down/play/odds/opp=0/1 panels=1/2
-//   POST /gameday/action?do=preview|refresh
+//   POST /gameday/action?do=refresh|demo   (demo: a scripted game on the panel, ~40s)
 // Requests arrive on the HTTP task; settings are applied on the main loop.
 class GamedayComponent : public Component, public AsyncWebHandler {
  public:
@@ -111,6 +111,9 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void set_rotate_minutes(int minutes);
   int rotate_minutes() const { return this->prefs2_.rotate_minutes; }
   void refresh_now();
+  // Plays a scripted game through the real splash and render path, for
+  // showing the panel off without a live game. Real data resumes after.
+  void start_demo();
 
   bool ticker_clock() const { return this->flag_(FLAG_CLOCK); }
   bool ticker_down_distance() const { return this->flag_(FLAG_DOWN); }
@@ -247,6 +250,13 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   Schedule schedule_;
   uint32_t schedule_fetched_ms_{0};
   std::vector<::espn::Upcoming> upcoming_;  // next games after the one on the board
+  bool upcoming_due_{false};  // fetch the list on its own cycle, after the board has its game
+  // demo playback
+  bool demo_active_{false};
+  uint8_t demo_step_{0};
+  uint32_t demo_next_ms_{0};
+  GameSnapshot demo_saved_game_, demo_saved_prev_;
+  void demo_tick_();
   GameSnapshot game_;
   GameSnapshot prev_;
   uint32_t post_since_ms_{0};

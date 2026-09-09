@@ -5,7 +5,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
 // Scores and settings come from the gameday component's own routes:
 //   GET  /gameday/state           one JSON document with the game and every setting
 //   POST /gameday/set?key=value   change settings (team=nfl:6, mode=1, fav2=ncaa:333, tz=3 ...)
-//   POST /gameday/action?do=name  preview | refresh
+//   POST /gameday/action?do=name  refresh
 // The ESPHome event stream (/events) still carries the entities that stay
 // for Home Assistant (Power, Brightness, Firmware, WizMote...) and its
 // "Game Status" event is the cue to re-read the state document.
@@ -139,7 +139,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       </div>
       <div class="card">
         <h2>Device</h2>
-        <div class="actions" id="actions"><button class="btn" id="previewBtn">Preview setup screen</button></div>
+        <div class="actions" id="actions"></div>
         <div class="ctl" style="margin-top:8px"><label>Show address at boot</label><button class="sw" data-set="bootaddr" aria-label="Show address at boot"></button></div>
         <div class="fw" id="fw" hidden>
           <div class="fwline"><span id="fwText">Firmware</span><button class="btn primary" id="fwInstall" hidden>Install</button></div>
@@ -319,7 +319,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     if (document.activeElement !== rotateInput) { rotateInput.value = S.rotate; $("#rotateVal").textContent = S.rotate + " min"; }
   };
 
-  // ---- toggles, favorites, preview (static controls on the state document) ---
+  // ---- toggles and favorites (static controls on the state document) --------
   document.querySelectorAll(".sw[data-set]").forEach((sw) => {
     sw.onclick = () => {
       const on = !sw.classList.contains("on");
@@ -339,7 +339,6 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     }
     fs.onchange = () => setGD({ ["fav" + fs.dataset.fav]: fs.value });
   });
-  $("#previewBtn").onclick = () => { doAction("preview"); toast("Preview setup screen"); };
   const renderSettings = () => {
     if (!S) return;
     document.querySelectorAll(".sw[data-set]").forEach((sw) => sw.classList.toggle("on", !!S[sw.dataset.set]));
@@ -726,10 +725,13 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 1500);
       try {
-        const r = await fetch("/update/Firmware?" + Date.now(), { cache: "no-store", signal: ctl.signal });
+        // detail=all carries current_version; the plain state does not
+        const r = await fetch("/update/Firmware?detail=all&_=" + Date.now(), { cache: "no-store", signal: ctl.signal });
         if (r.ok) {
           const j = await r.json();
-          if (j.current_version && (fromVersion === "" ? sawDown : j.current_version !== fromVersion)) { location.reload(); return; }
+          const changed = j.current_version && fromVersion !== "" && j.current_version !== fromVersion;
+          // Once the device has been seen down, any good answer means it is back.
+          if (changed || sawDown) { location.reload(); return; }
         }
       } catch (_) { sawDown = true; }
       clearTimeout(timer);
