@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.0.1"
+  version: "1.1.0"
   variant: "m1"
 
   display_panel_width: "64"
@@ -49,6 +49,9 @@ external_components:
     components: [gameday, panel_layout]
   - source: github://pavlov-net/lvgl-page-manager@v0.3.0
     components: [lvgl_page_manager]
+  # Fireworks behind the touchdown and win splashes
+  - source: github://pavlov-net/lvgl-canvas-fx@v0.4.1
+    components: [lvgl_canvas_fx]
 
 packages:
   hub75_studio:

@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.1.0
+
+- Fireworks. Touchdowns and the win now set off fireworks on the panel behind the splash text, in the team's color. Field goals and extra points keep the quick color flash.
+- Possession is a small gold marker beside the team with the ball. Team names stay in their own colors instead of turning gold, which read like the teams had swapped.
+
 ## v1.0.1
 
 - The firmware box shows the version that's actually running after an update, without a manual refresh.

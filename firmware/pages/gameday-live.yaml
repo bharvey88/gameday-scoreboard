@@ -26,12 +26,23 @@ esphome:
               lv_label_set_long_mode(id(tt_game_status_lbl), LV_LABEL_LONG_SCROLL_CIRCULAR);
             });
 
+# Fireworks (lvgl-canvas-fx) on a canvas behind the splash text. The canvas
+# is allocated at the widest layout and simply clips on a single panel.
+lvgl_canvas_fx:
+  - id: tt_fx
+    effect: fireworks
+    canvas: tt_fx_canvas
+    fps: 30
+    start_paused: true
+
 script:
   - id: tt_hide_splash
     mode: restart
     then:
       - delay: 4s
-      - lambda: 'lv_obj_add_flag(id(tt_splash), LV_OBJ_FLAG_HIDDEN);'
+      - lambda: |-
+          lv_obj_add_flag(id(tt_splash), LV_OBJ_FLAG_HIDDEN);
+          id(tt_fx).pause();
 
   - id: tt_apply_layout
     then:
@@ -88,6 +99,8 @@ script:
               lv_obj_set_pos(abars[i], acx - 9 + i * 7, 48);
               lv_obj_set_pos(hbars[i], hcx - 9 + i * 7, 48);
             }
+            lv_obj_set_pos(id(tt_away_poss), W / 2 - 4, 8);
+            lv_obj_set_pos(id(tt_home_poss), W / 2, 8);
             lv_obj_set_pos(id(tt_game_status_lbl), 0, 56);
             lv_obj_set_style_text_font(id(tt_splash_lbl), id(spleen_16), 0);
             lv_obj_set_pos(id(tt_splash_lbl), 0, 16);
@@ -119,6 +132,8 @@ script:
               lv_obj_add_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
               lv_obj_add_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
             }
+            lv_obj_set_pos(id(tt_away_poss), W / 2 - 4, 46);
+            lv_obj_set_pos(id(tt_home_poss), W / 2, 46);
             lv_obj_set_pos(id(tt_game_status_lbl), 0, 56);
             lv_obj_set_style_text_font(id(tt_splash_lbl), id(spleen_12), 0);
             lv_obj_set_pos(id(tt_splash_lbl), 0, 18);
@@ -194,7 +209,8 @@ script:
             lv_obj_set_style_bg_color(hbars[i], i < h ? lv_color_hex(0xFFD000) : lv_color_hex(0x202020), 0);
           }
       - lambda: |-
-          // Abbreviations in team colors; the team with the ball turns gold.
+          // Abbreviations stay in team colors; possession is the gold square
+          // beside the side with the ball (a color swap read as a team change).
           // Dark team colors vanish on the panel, so lift them to full brightness.
           auto bright = [](uint32_t c) -> lv_color_t {
             uint32_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
@@ -208,15 +224,15 @@ script:
             }
             return lv_color_make(r, g, b);
           };
-          lv_color_t active = lv_color_hex(0xFFD000);
-          lv_color_t idle = lv_color_hex(0xFFFFFF);
-          lv_obj_set_style_text_color(id(tt_away_team_lbl), possession == 1 ? active : bright((uint32_t) team_color), 0);
-          lv_obj_set_style_text_color(id(tt_home_team_lbl), possession == 2 ? active : bright((uint32_t) opponent_color), 0);
-          // Narrow displays hide the abbreviations during the game, so the
-          // scores carry the possession color there.
-          const bool narrow = lv_disp_get_hor_res(lv_disp_get_default()) < 128;
-          lv_obj_set_style_text_color(id(tt_away_score_lbl), (narrow && possession == 1) ? active : idle, 0);
-          lv_obj_set_style_text_color(id(tt_home_score_lbl), (narrow && possession == 2) ? active : idle, 0);
+          lv_obj_set_style_text_color(id(tt_away_team_lbl), bright((uint32_t) team_color), 0);
+          lv_obj_set_style_text_color(id(tt_home_team_lbl), bright((uint32_t) opponent_color), 0);
+          lv_obj_set_style_text_color(id(tt_away_score_lbl), lv_color_hex(0xFFFFFF), 0);
+          lv_obj_set_style_text_color(id(tt_home_score_lbl), lv_color_hex(0xFFFFFF), 0);
+          const bool live = game_state == "IN";
+          if (live && possession == 1) lv_obj_clear_flag(id(tt_away_poss), LV_OBJ_FLAG_HIDDEN);
+          else lv_obj_add_flag(id(tt_away_poss), LV_OBJ_FLAG_HIDDEN);
+          if (live && possession == 2) lv_obj_clear_flag(id(tt_home_poss), LV_OBJ_FLAG_HIDDEN);
+          else lv_obj_add_flag(id(tt_home_poss), LV_OBJ_FLAG_HIDDEN);
       - lambda: |-
           // Toggle between the game layout and the "no game" layout
           if (game_state == "NOT_FOUND" || game_state == "BYE" || game_state == "") {
@@ -266,7 +282,25 @@ script:
           then:
             - lambda: |-
                 lv_label_set_text(id(tt_splash_lbl), splash_text.c_str());
-                lv_obj_set_style_bg_color(id(tt_splash), lv_color_hex((uint32_t) splash_color), 0);
+                // Touchdowns and the win get fireworks on black with the text in
+                // the team color; smaller scores keep the solid color flash.
+                const bool big = splash_text.find("TOUCHDOWN") != std::string::npos ||
+                                 splash_text.find("WINS") != std::string::npos;
+                if (big) {
+                  uint32_t c = (uint32_t) splash_color;
+                  uint32_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+                  uint32_t m = std::max(r, std::max(g, b));
+                  if (m > 0 && m < 0xE0) { r = r * 0xE0 / m; g = g * 0xE0 / m; b = b * 0xE0 / m; }
+                  lv_obj_set_style_bg_color(id(tt_splash), lv_color_hex(0x000000), 0);
+                  lv_obj_set_style_text_color(id(tt_splash_lbl), m == 0 ? lv_color_hex(0xFFFFFF) : lv_color_make(r, g, b), 0);
+                  lv_obj_clear_flag(id(tt_fx_canvas), LV_OBJ_FLAG_HIDDEN);
+                  id(tt_fx).resume();
+                } else {
+                  id(tt_fx).pause();
+                  lv_obj_add_flag(id(tt_fx_canvas), LV_OBJ_FLAG_HIDDEN);
+                  lv_obj_set_style_bg_color(id(tt_splash), lv_color_hex((uint32_t) splash_color), 0);
+                  lv_obj_set_style_text_color(id(tt_splash_lbl), lv_color_hex(0xFFFFFF), 0);
+                }
                 lv_obj_clear_flag(id(tt_splash), LV_OBJ_FLAG_HIDDEN);
             - script.execute: tt_hide_splash
 
@@ -380,6 +414,27 @@ lvgl:
                   text: ""
                   styles: ["tt_st_status_text"]
 
+              # Possession: a gold square beside the side that has the ball
+              - obj:
+                  id: tt_away_poss
+                  x: 0
+                  y: 0
+                  width: 4
+                  height: 4
+                  radius: 1
+                  bg_opa: COVER
+                  bg_color: 0xFFD000
+                  hidden: true
+              - obj:
+                  id: tt_home_poss
+                  x: 0
+                  y: 0
+                  width: 4
+                  height: 4
+                  radius: 1
+                  bg_opa: COVER
+                  bg_color: 0xFFD000
+                  hidden: true
               - obj:
                   id: tt_away_to1
                   x: 0
@@ -450,6 +505,13 @@ lvgl:
             bg_opa: COVER
             bg_color: 0x000000
             widgets:
+              - canvas:
+                  id: tt_fx_canvas
+                  x: 0
+                  y: 0
+                  width: 128
+                  height: 64
+                  hidden: true
               - label:
                   id: tt_splash_lbl
                   x: 0

@@ -271,7 +271,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     const a = node.querySelector(".abbr");
     a.textContent = abbr || "---";
     a.classList.toggle("poss", !!poss);
-    a.style.color = poss ? "" : "#" + (color || "ffffff");
+    a.style.color = "#" + (color || "ffffff");
     node.querySelector(".rec").textContent = rec || "";
     node.querySelectorAll(".pips i").forEach((p, i) => p.classList.toggle("on", i < (timeouts || 0)));
   };

@@ -59,7 +59,9 @@ button { font: inherit; color: inherit; }
 .team { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
 .team img { width: 84px; height: 84px; object-fit: contain; image-rendering: auto; filter: drop-shadow(0 0 12px rgba(255,255,255,.06)); }
 .team .abbr { font-weight: 800; font-size: 20px; letter-spacing: .06em; }
-.team .abbr.poss { color: var(--gold); text-shadow: 0 0 14px rgba(255,208,0,.55); }
+/* possession: a gold ball marker beside the name; team colors never change */
+.team .abbr { position: relative; }
+.team .abbr.poss::after { content: ""; position: absolute; top: 50%; margin-left: 8px; width: 10px; height: 10px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 10px rgba(255,208,0,.7); transform: translateY(-50%); }
 .team .rec { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .team .pips { display: flex; gap: 5px; margin-top: 2px; }
 .team .pips i { width: 12px; height: 4px; border-radius: 1px; background: #262626; }
