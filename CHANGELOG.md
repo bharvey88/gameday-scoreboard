@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.0.1
+
+- The firmware box shows the version that's actually running after an update, without a manual refresh.
+- Cards on the device page no longer stretch to match their neighbour, so Remote is as tall as its contents.
+
 ## v1.0.0
 
 - First full release. One firmware for one or two panels, installed from the browser, with the team, layout and every other setting on the panel's own page. No Home Assistant needed.

@@ -748,8 +748,9 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
         if (r.ok) {
           const j = await r.json();
           const changed = j.current_version && fromVersion !== "" && j.current_version !== fromVersion;
-          // Once the device has been seen down, any good answer means it is back.
-          if (changed || sawDown) { location.reload(); return; }
+          const settled = !String(j.state || "").toUpperCase().includes("INSTALLING");
+          // Once the device has been seen down, a settled answer means it is back.
+          if (changed || (sawDown && settled)) { location.reload(); return; }
         }
       } catch (_) { sawDown = true; }
       clearTimeout(timer);
@@ -792,6 +793,23 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     }
     btn.textContent = label;
     btn.disabled = false;
+  };
+
+  // State events carry the update state but not current_version; fetch the
+  // full detail whenever the state changes so the box shows the running version.
+  let fwDetailInflight = false;
+  const refreshFirmwareDetail = async (id) => {
+    if (fwDetailInflight) return;
+    fwDetailInflight = true;
+    try {
+      const r = await fetch("/update/Firmware?detail=all&_=" + Date.now(), { cache: "no-store" });
+      if (r.ok) {
+        const j = await r.json();
+        ents[id] = Object.assign(ents[id] || {}, j, { id });
+        renderUpdate(ents[id]);
+      }
+    } catch (_) {}
+    fwDetailInflight = false;
   };
 
   // ---- firmware update -----------------------------------------------------
@@ -876,7 +894,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       // A new ticker line means the device finished a poll: re-read the state document.
       case "Game Status": $("#ticker").textContent = e.value || ""; scheduleState(150); break;
       case "Last Play": $("#play").textContent = e.value ? "Last play: " + e.value : ""; break;
-      case "Firmware": renderUpdate(ents[e.id]); break;
+      case "Firmware": renderUpdate(ents[e.id]); refreshFirmwareDetail(e.id); break;
       case "WizMote Status": $("#wizStatus").textContent = e.value || ""; break;
       case "IP": $("#ip").textContent = e.value || ""; break;
       case "RSSI": $("#rssi").textContent = e.value ? e.value + " dBm" : ""; break;
