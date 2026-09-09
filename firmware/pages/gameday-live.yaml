@@ -99,8 +99,6 @@ script:
               lv_obj_set_pos(abars[i], acx - 9 + i * 7, 48);
               lv_obj_set_pos(hbars[i], hcx - 9 + i * 7, 48);
             }
-            lv_obj_set_pos(id(tt_away_poss), W / 2 - 4, 8);
-            lv_obj_set_pos(id(tt_home_poss), W / 2, 8);
             lv_obj_set_pos(id(tt_game_status_lbl), 0, 56);
             lv_obj_set_style_text_font(id(tt_splash_lbl), id(spleen_16), 0);
             lv_obj_set_pos(id(tt_splash_lbl), 0, 16);
@@ -132,8 +130,6 @@ script:
               lv_obj_add_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
               lv_obj_add_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
             }
-            lv_obj_set_pos(id(tt_away_poss), W / 2 - 4, 46);
-            lv_obj_set_pos(id(tt_home_poss), W / 2, 46);
             lv_obj_set_pos(id(tt_game_status_lbl), 0, 56);
             lv_obj_set_style_text_font(id(tt_splash_lbl), id(spleen_12), 0);
             lv_obj_set_pos(id(tt_splash_lbl), 0, 18);
@@ -209,8 +205,8 @@ script:
             lv_obj_set_style_bg_color(hbars[i], i < h ? lv_color_hex(0xFFD000) : lv_color_hex(0x202020), 0);
           }
       - lambda: |-
-          // Abbreviations stay in team colors; possession is the gold square
-          // beside the side with the ball (a color swap read as a team change).
+          // Abbreviations stay in team colors; possession is a gold underline
+          // under the side with the ball (a color swap read as a team change).
           // Dark team colors vanish on the panel, so lift them to full brightness.
           auto bright = [](uint32_t c) -> lv_color_t {
             uint32_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
@@ -229,10 +225,26 @@ script:
           lv_obj_set_style_text_color(id(tt_away_score_lbl), lv_color_hex(0xFFFFFF), 0);
           lv_obj_set_style_text_color(id(tt_home_score_lbl), lv_color_hex(0xFFFFFF), 0);
           const bool live = game_state == "IN";
-          if (live && possession == 1) lv_obj_clear_flag(id(tt_away_poss), LV_OBJ_FLAG_HIDDEN);
-          else lv_obj_add_flag(id(tt_away_poss), LV_OBJ_FLAG_HIDDEN);
-          if (live && possession == 2) lv_obj_clear_flag(id(tt_home_poss), LV_OBJ_FLAG_HIDDEN);
-          else lv_obj_add_flag(id(tt_home_poss), LV_OBJ_FLAG_HIDDEN);
+          // On a single panel the names hide during play, so underline the score.
+          const bool under_scores = lv_disp_get_hor_res(lv_disp_get_default()) < 128 && live && !clock_text.empty();
+          auto underline = [](lv_obj_t *lbl, lv_obj_t *bar, bool on) {
+            if (!on) {
+              lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+              return;
+            }
+            const lv_font_t *f = lv_obj_get_style_text_font(lbl, LV_PART_MAIN);
+            const char *txt = lv_label_get_text(lbl);
+            lv_point_t sz;
+            lv_text_get_size(&sz, txt, f, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+            int32_t tw = sz.x;
+            if (tw < 6) tw = 6;
+            int32_t lx = lv_obj_get_x(lbl), lw = lv_obj_get_width(lbl), ly = lv_obj_get_y(lbl);
+            lv_obj_set_size(bar, tw, 2);
+            lv_obj_set_pos(bar, lx + (lw - tw) / 2, ly + lv_font_get_line_height(f));
+            lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+          };
+          underline(under_scores ? id(tt_away_score_lbl) : id(tt_away_team_lbl), id(tt_away_poss), live && possession == 1);
+          underline(under_scores ? id(tt_home_score_lbl) : id(tt_home_team_lbl), id(tt_home_poss), live && possession == 2);
       - lambda: |-
           // Toggle between the game layout and the "no game" layout
           if (game_state == "NOT_FOUND" || game_state == "BYE" || game_state == "") {
@@ -414,14 +426,14 @@ lvgl:
                   text: ""
                   styles: ["tt_st_status_text"]
 
-              # Possession: a gold square beside the side that has the ball
+              # Possession: a gold underline under the side that has the ball
               - obj:
                   id: tt_away_poss
                   x: 0
                   y: 0
-                  width: 4
-                  height: 4
-                  radius: 1
+                  width: 12
+                  height: 2
+                  radius: 0
                   bg_opa: COVER
                   bg_color: 0xFFD000
                   hidden: true
@@ -429,9 +441,9 @@ lvgl:
                   id: tt_home_poss
                   x: 0
                   y: 0
-                  width: 4
-                  height: 4
-                  radius: 1
+                  width: 12
+                  height: 2
+                  radius: 0
                   bg_opa: COVER
                   bg_color: 0xFFD000
                   hidden: true

@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.1.0"
+  version: "1.1.1"
   variant: "m1"
 
   display_panel_width: "64"
