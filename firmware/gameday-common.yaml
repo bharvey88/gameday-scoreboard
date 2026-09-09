@@ -129,6 +129,18 @@ update:
 time:
   - platform: sntp
     id: ha_time  # the clock page extends this id
+    on_time_sync:
+      # The update component checks the manifest as soon as WiFi is up, which
+      # is before the clock is set; with verify_ssl that first check fails and
+      # the state reads "unknown" for six hours. Check once more after the
+      # first sync.
+      - if:
+          condition:
+            lambda: 'return !id(gd_update_checked);'
+          then:
+            - lambda: 'id(gd_update_checked) = true;'
+            - delay: 3s
+            - lambda: 'id(gd_firmware_update).update();'
     # Overridden at boot by the saved Timezone choice. Present so ESPHome
     # 2026.9+ compiles its timezone support at all (posix_tz.cpp is only
     # built when a timezone is configured).
@@ -166,6 +178,10 @@ image:
       - logger.log: "Opponent logo download failed"
 
 globals:
+  - id: gd_update_checked
+    type: bool
+    restore_value: no
+    initial_value: 'false'
   - id: gd_last_team_logo
     type: std::string
     restore_value: no

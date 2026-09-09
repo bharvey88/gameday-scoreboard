@@ -780,6 +780,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
         const st = String(j.state || "").toUpperCase();
         // The firmware row shows the result; only shout when there is something to do
         if (st.includes("AVAILABLE")) toast("Update available: v" + j.value);
+        else if (st.includes("INSTALLING")) { /* the install is running; nothing to say */ }
         else if (!st.includes("NO UPDATE")) toast("Could not reach the update server. Try again in a minute.");
       } else if (uid) {
         renderUpdate(ents[uid]);
@@ -849,7 +850,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       sub.textContent = "";
     } else {
       $("#fwText").textContent = "Firmware " + cur;
-      sub.textContent = "Update status unknown. Try Check for updates.";
+      sub.textContent = "Not checked yet. It checks a few seconds after the clock syncs, or tap Check for updates.";
     }
     if (u.release_url && !st.includes("INSTALLING")) {
       const a = el("a", null, "Release notes");

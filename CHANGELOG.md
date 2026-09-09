@@ -13,7 +13,7 @@ owns the panel, not for the code.
 - First full release. One firmware for one or two panels, installed from the browser, with the team, layout and every other setting on the panel's own page. No Home Assistant needed.
 - Next-game card with the line, TV and kickoff; live scoreboard with clock, down and distance, possession and timeouts; full-screen celebrations; a final that lingers, then the next game.
 - Device page: mirrors the panel and its celebrations, lists the next three games, holds favorites for a WizMote remote, live modes that follow any game in progress, and updates the firmware over WiFi.
-- Since v0.8.4: the installer pins its loader with an integrity hash and describes the current setup flow.
+- Since v0.8.4: the installer pins its loader with an integrity hash and describes the current setup flow; the firmware box no longer reads "unknown" after a reboot (the first update check ran before the clock was set); Check for updates stays quiet during an install.
 
 ## v0.8.4
 
