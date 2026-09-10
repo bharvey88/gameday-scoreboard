@@ -27,7 +27,7 @@ If you already use Home Assistant and want room lighting to celebrate too, [game
 
 ## Install
 
-1. Open the [installer page](https://bharvey88.github.io/gameday-scoreboard/) in Chrome or Edge, plug the M-1 in over USB, and click Install.
+1. Open the [installer page](https://bharvey88.github.io/gameday-scoreboard/), plug the M-1 in over USB, and click Install.
 2. Enter your WiFi details in the dialog that follows the install.
 3. Once it's on WiFi the panel says where to go: open the `gameday-xxxxxx.local` name it shows on your phone, or the address underneath if your phone can't resolve `.local` names. Pick your team on that page. The ticker repeats the address until you've chosen a team, and holding the M-1's boot button for 1.5 seconds shows it again any time.
 

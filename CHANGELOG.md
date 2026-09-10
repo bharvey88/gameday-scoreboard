@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.1.6
+
+- Installer page and README no longer name browsers. No change to the firmware.
+
 ## v1.1.5
 
 - Installer page wording under the demo video. No change to the firmware.

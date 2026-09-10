@@ -38,11 +38,11 @@
 
   <div class="card">
     <h2>1. Install</h2>
-    <p>Plug the M-1 into this computer over USB. Use Chrome or Edge; Firefox and Safari cannot talk to serial ports. One firmware covers a single 64x64 panel and two panels side by side; you pick which on the device page afterwards.</p>
+    <p>Plug the M-1 into this computer over USB and click Install. One firmware covers a single 64x64 panel and two panels side by side; you pick which on the device page afterwards.</p>
     <p>
       <esp-web-install-button manifest="firmware/m1/manifest.json">
         <button slot="activate">Install Game Day Scoreboard</button>
-        <span slot="unsupported">This browser cannot install firmware. Use Chrome or Edge on a desktop.</span>
+        <span slot="unsupported">This browser cannot talk to the M-1 over USB. Try a desktop browser.</span>
         <span slot="not-allowed">Open this page over HTTPS to install.</span>
       </esp-web-install-button>
     </p>
