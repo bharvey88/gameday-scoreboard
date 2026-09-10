@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.1.5
+
+- Installer page wording under the demo video. No change to the firmware.
+
 ## v1.1.4
 
 - The installer page plays the demo, and the README shows a touchdown, so you can see what you're getting before you flash. No change to the firmware itself.
