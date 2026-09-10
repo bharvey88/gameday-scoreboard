@@ -227,7 +227,7 @@ button { font: inherit; color: inherit; }
 .game .gm .at { color: #3a4150; font-size: 12px; }
 .game .gm .det { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.2; }
 .game.live .gm .det { color: var(--red); font-weight: 700; }
-@media (max-width: 560px) { .game { grid-template-columns: 1fr 58px 1fr; } .game .side { grid-template-columns: 28px 1fr auto; padding: 7px 8px; } .game .side img { width: 28px; height: 28px; } .game .side .n { font-size: 12px; } }
+@media (max-width: 560px) { .favbar { flex-direction: column; } .game { grid-template-columns: 1fr 58px 1fr; } .game .side { grid-template-columns: 28px 1fr auto; padding: 7px 8px; } .game .side img { width: 28px; height: 28px; } .game .side .n { font-size: 12px; } }
 
 /* Firmware update */
 .fw { margin-top: 12px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
@@ -252,6 +252,16 @@ button { font: inherit; color: inherit; }
 .modes button.on { background: var(--accent); border-color: var(--accent); color: #041022; font-weight: 700; }
 .modes + .teambar { margin-top: 8px; }
 .livebar .stepper { display: flex; align-items: center; gap: 8px; flex: none; font-size: 13px; color: var(--muted); }
+.favbar { align-items: flex-start; }
+.favbar .favctls { display: flex; flex-direction: column; gap: 8px; flex: none; }
+.favbar .stepper, .livebar .stepper { display: flex; align-items: center; gap: 8px; flex: none; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.favbar .stepper label { min-width: 118px; }
+.favbar .stepper select, .favbar .stepper input { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; }
+.favbar .stepper input { width: 58px; text-align: center; }
+.favmove { display: inline-flex; gap: 4px; margin-left: 6px; flex: none; }
+.favmove button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; color: var(--text); width: 26px; height: 26px; cursor: pointer; font-size: 9px; padding: 0; }
+.favmove button:hover { border-color: #3a4556; }
+.upnext .un.fav.shown { outline: 1px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
 .livebar .stepper input { width: 58px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; text-align: center; }
 
 /* Wide screens: bigger board, controls side by side */

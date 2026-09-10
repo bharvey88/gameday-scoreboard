@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "espn_parse.h"
+#include "favorites.h"
 
 using namespace espn;
 
@@ -360,6 +361,97 @@ static void test_color() {
   CHECK_EQ(parse_color("zzzzzz"), (uint32_t) 0xFFFFFF);
 }
 
+// ---- favorites mode: lock-on, release, collisions, playlist -------------------
+static FavGame fav(GameState st, int64_t kick, int64_t final_at = 0) {
+  FavGame g;
+  g.valid = true;
+  g.state = st;
+  g.kickoff_epoch = kick;
+  g.final_epoch = final_at;
+  return g;
+}
+
+static void test_favorites() {
+  FavRules r;
+  r.lockon_s = 15 * 60;
+  r.release_s = 30;
+  r.alternate = false;
+  r.rotate_s = 5 * 60;
+  r.dwell_s = 10;
+  const int64_t T = 1000000;
+
+  // lock window: only within lockon_s before kickoff, while IN, or release_s after the final
+  CHECK(!fav_locked(fav(GameState::PRE, T + 16 * 60), T, r));
+  CHECK(fav_locked(fav(GameState::PRE, T + 15 * 60), T, r));
+  CHECK(fav_locked(fav(GameState::PRE, T - 60), T, r));  // ESPN lag: still PRE past kickoff
+  CHECK(fav_locked(fav(GameState::IN, T - 3600), T, r));
+  CHECK(fav_locked(fav(GameState::POST, T - 3 * 3600, T - 29), T, r));
+  CHECK(!fav_locked(fav(GameState::POST, T - 3 * 3600, T - 30), T, r));
+  CHECK(!fav_locked(fav(GameState::POST, T - 3 * 3600, 0), T, r));  // already final when fetched
+  CHECK(!fav_locked(FavGame{}, T, r));
+
+  // playlist: nothing locked, cycle valid entries in slot order every dwell_s
+  std::vector<FavGame> idle = {fav(GameState::PRE, T + 86400), FavGame{}, fav(GameState::PRE, T + 2 * 86400),
+                               fav(GameState::PRE, T + 3 * 86400)};
+  FavChoice c = pick_favorite(idle, T, r, -1, 0, -1);
+  CHECK_EQ(c.index, 0);
+  CHECK(!c.locked);
+  c = pick_favorite(idle, T + 9, r, 0, T, -1);
+  CHECK_EQ(c.index, 0);  // dwell not over
+  c = pick_favorite(idle, T + 10, r, 0, T, -1);
+  CHECK_EQ(c.index, 2);  // skips the empty slot
+  c = pick_favorite(idle, T + 30, r, 3, T + 20, -1);
+  CHECK_EQ(c.index, 0);  // wraps
+  // a current entry that became invalid moves on at once
+  c = pick_favorite(idle, T + 1, r, 1, T, -1);
+  CHECK_EQ(c.index, 2);
+  // nothing valid at all
+  std::vector<FavGame> none = {FavGame{}, FavGame{}, FavGame{}, FavGame{}};
+  c = pick_favorite(none, T, r, -1, 0, -1);
+  CHECK_EQ(c.index, -1);
+
+  // one locked: hold it regardless of dwell
+  std::vector<FavGame> one = {fav(GameState::PRE, T + 86400), fav(GameState::IN, T - 600), fav(GameState::PRE, T + 86400),
+                              FavGame{}};
+  c = pick_favorite(one, T + 100, r, 0, T, -1);
+  CHECK_EQ(c.index, 1);
+  CHECK(c.locked);
+  c = pick_favorite(one, T + 5000, r, 1, T + 100, -1);
+  CHECK_EQ(c.index, 1);
+
+  // collision, stick: the higher slot wins even when the lower one is shown
+  std::vector<FavGame> two = {fav(GameState::IN, T - 600), fav(GameState::IN, T - 600), fav(GameState::PRE, T + 86400),
+                              FavGame{}};
+  c = pick_favorite(two, T + 5000, r, 1, T, -1);
+  CHECK_EQ(c.index, 0);
+  CHECK(c.locked);
+  // collision, alternate: hold for rotate_s, then the next locked one, wrapping
+  r.alternate = true;
+  c = pick_favorite(two, T + 299, r, 0, T, -1);
+  CHECK_EQ(c.index, 0);
+  c = pick_favorite(two, T + 300, r, 0, T, -1);
+  CHECK_EQ(c.index, 1);
+  c = pick_favorite(two, T + 600, r, 1, T + 300, -1);
+  CHECK_EQ(c.index, 0);
+  // alternate with the shown entry not locked jumps to a locked one at once
+  c = pick_favorite(two, T + 1, r, 2, T, -1);
+  CHECK_EQ(c.index, 0);
+  r.alternate = false;
+
+  // pin: a pinned locked entry beats priority; a pinned idle entry only seeds the playlist
+  c = pick_favorite(two, T + 5000, r, 0, T, 1);
+  CHECK_EQ(c.index, 1);
+  CHECK(c.locked);
+  c = pick_favorite(idle, T + 5, r, 2, T, 2);
+  CHECK_EQ(c.index, 2);
+  CHECK(!c.locked);
+  c = pick_favorite(idle, T + 10, r, 2, T, 2);
+  CHECK_EQ(c.index, 3);  // dwell over, playlist continues past the pin
+  // a pin on an empty slot is ignored
+  c = pick_favorite(two, T + 5000, r, 0, T, 3);
+  CHECK_EQ(c.index, 0);
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -374,6 +466,7 @@ int main() {
   test_upcoming();
   test_clock_text();
   test_color();
+  test_favorites();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

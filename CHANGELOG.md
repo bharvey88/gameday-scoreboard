@@ -8,6 +8,15 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.2.0
+
+- New "Favorite teams" mode. Set up to four favorites on the page (the same slots the remote buttons use), and the panel cycles through their next games. When one of them is about to kick off, the panel locks onto that game and follows it like My team does, then goes back to cycling after the final.
+- Lock-on time (default 15 minutes before kickoff) and how long the final stays up (default 30 seconds) are adjustable from the page.
+- Two favorites playing at once: the panel sticks with the one higher in your list, or alternates between them if you prefer.
+- The Favorites card has arrows to reorder the slots. In Favorite teams mode the order is the priority.
+- Up next lists every favorite's next game while this mode is on.
+- A WizMote button press in this mode jumps to that favorite and stays in the mode.
+
 ## v1.1.6
 
 - Installer page and README no longer name browsers. No change to the firmware.

@@ -16,6 +16,7 @@
 #include "esphome/core/preferences.h"
 
 #include "espn_parse.h"
+#include "favorites.h"
 
 namespace esphome {
 namespace gameday {
@@ -55,7 +56,7 @@ struct UpdateFields {
 
 enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE, FAVORITE };
 
-enum class Mode : uint8_t { MY_TEAM = 0, LIVE_NFL = 1, LIVE_NCAA = 2, LIVE_ANY = 3 };
+enum class Mode : uint8_t { MY_TEAM = 0, LIVE_NFL = 1, LIVE_NCAA = 2, LIVE_ANY = 3, FAVORITES = 4 };
 
 class GamedayComponent;
 
@@ -75,8 +76,9 @@ class GamedaySelect : public select::Select, public Component {
 // The component is also the web handler for /gameday/*: the device page reads
 // one JSON document and posts settings there instead of driving entities.
 //   GET  /gameday/state              full snapshot + settings
-//   POST /gameday/set?key=value...   team=nfl:6 mode=0-3 rotate=2-30 fav1..fav4=nfl:6|none
+//   POST /gameday/set?key=value...   team=nfl:6 mode=0-4 rotate=2-30 fav1..fav4=nfl:6|none
 //                                    tz=<index> tzauto=0/1 down/play/odds/opp=0/1 panels=1/2
+//                                    lockon=5-120 (min) release=30-3600 (s) collide=0 stick|1 alternate
 //   POST /gameday/action?do=refresh|demo   (demo: a scripted game on the panel, ~40s)
 // Requests arrive on the HTTP task; settings are applied on the main loop.
 class GamedayComponent : public Component, public AsyncWebHandler {
@@ -110,6 +112,10 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void press_favorite(uint8_t slot);
   void set_rotate_minutes(int minutes);
   int rotate_minutes() const { return this->prefs2_.rotate_minutes; }
+  // Favorite Teams mode timing (see favorites.h for the rules).
+  void set_lockon_minutes(int minutes);
+  void set_release_seconds(int seconds);
+  void set_collision_alternate(bool alternate);
   void refresh_now();
   // Plays a scripted game through the real splash and render path, for
   // showing the panel off without a live game. Real data resumes after.
@@ -182,6 +188,11 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     uint8_t fav_league[4];
     uint32_t fav_id[4];  // 0 = slot empty
   } __attribute__((packed));
+  struct Prefs4 {
+    uint8_t lockon_minutes;
+    uint16_t release_seconds;
+    uint8_t collide;  // 0 = stick with the higher slot, 1 = alternate on the rotate timer
+  } __attribute__((packed));
 
   bool flag_(uint8_t f) const { return (this->prefs_.flags & f) != 0; }
   void set_flag_(uint8_t f, bool on);
@@ -211,6 +222,9 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     bool no_event{false};
     GameSnapshot game;
     bool game_ok{false};
+    // Favorite Teams mode: which cached entry this cycle refreshes or polls
+    int fav_index{-1};
+    uint32_t our_id{0};
   };
   void start_job_();
   static void worker_(void *arg);
@@ -220,7 +234,11 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   bool fetch_upcoming_(const ::espn::Team *team, std::vector<::espn::Upcoming> &out);
   bool fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out);
   bool fetch_live_games_(League league, std::vector<::espn::LiveGame> &out);
-  bool live_mode_() const { return this->prefs2_.mode != (uint8_t) Mode::MY_TEAM; }
+  bool live_mode_() const {
+    return this->prefs2_.mode >= (uint8_t) Mode::LIVE_NFL && this->prefs2_.mode <= (uint8_t) Mode::LIVE_ANY;
+  }
+  // Mode 4 with at least one favorite set; with none it behaves like My Team.
+  bool favorites_mode_() const { return this->prefs2_.mode == (uint8_t) Mode::FAVORITES && !this->fav_.empty(); }
   uint32_t our_id_() const;  // team id the snapshot is oriented around
   std::shared_ptr<http_request::HttpContainer> open_(const std::string &url);
   void schedule_next_(uint32_t ms) { this->next_fetch_ms_ = millis() + ms; }
@@ -242,7 +260,33 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   select::Select *favorite_selects_[4]{nullptr, nullptr, nullptr, nullptr};
   ESPPreferenceObject pref3_;
   Prefs3 prefs3_{};
+  ESPPreferenceObject pref4_;
+  Prefs4 prefs4_{};
   std::string favorite_option_(uint8_t slot) const;
+  // Favorite Teams mode: one cached next-game card per set slot, in slot
+  // order. The worker refreshes one entry per cycle; the main loop picks
+  // which one the panel shows (favorites.h) and polls only that game.
+  struct FavEntry {
+    const ::espn::Team *team{nullptr};
+    uint8_t slot{0};  // 1-4, the remote button
+    Schedule sched;
+    GameSnapshot game;
+    uint32_t fetched_ms{0};  // last schedule attempt
+    int64_t final_epoch{0};  // when the panel saw the game go final, 0 if it was fetched final
+    bool stale{false};       // released after a final: fetch the next game
+  };
+  std::vector<FavEntry> fav_;
+  int fav_shown_{-1};
+  int64_t fav_shown_since_{0};  // epoch seconds
+  int fav_pinned_{-1};
+  bool fav_locked_{false};
+  uint32_t fav_poll_ms_{0};
+  void rebuild_favorites_(bool keep_cards);
+  ::espn::FavRules fav_rules_() const;
+  std::vector<::espn::FavGame> fav_games_() const;
+  bool fav_choose_(int64_t now_epoch);  // true when the shown entry changed
+  void start_fav_job_(uint32_t now);
+  void apply_fav_job_(uint32_t now);
   uint32_t live_away_id_{0};      // the followed live game's away team
   uint32_t live_started_ms_{0};   // when the current live game was picked
   bool live_none_{false};         // last scan found nothing in progress

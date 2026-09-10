@@ -74,6 +74,7 @@
       <button data-mode="1">Live NFL</button>
       <button data-mode="2">Live college</button>
       <button data-mode="3">Any live game</button>
+      <button data-mode="4">Favorite teams</button>
     </div>
     <div class="teambar" id="teambar">
       <div class="cur"><img id="curLogo" alt=""><div><div class="name" id="curName">No team chosen</div><div class="lg" id="curLg">Pick the team the panel should follow</div></div></div>
@@ -82,6 +83,19 @@
     <div class="teambar livebar" id="livebar" hidden>
       <div class="cur"><div><div class="name">Following a random game in progress</div><div class="lg">Moves on when it ends, or after the time below.</div></div></div>
       <div class="stepper"><label for="rotate">Switch every</label><input type="number" id="rotate" min="2" max="30" step="1"><span>min</span></div>
+    </div>
+    <div class="teambar favbar" id="favbar" hidden>
+      <div class="cur"><div><div class="name" id="favName">Cycling through your favorites</div><div class="lg">A favorite's game takes the panel near kickoff. Slot order decides who wins when two overlap.</div></div></div>
+      <div class="favctls">
+        <div class="stepper"><label for="lockon">Take over</label><input type="number" id="lockon" min="5" max="120" step="1"><span>min before kickoff</span></div>
+        <div class="stepper"><label for="release">After the final</label><select id="release">
+          <option value="30">30 s</option><option value="60">1 min</option><option value="120">2 min</option><option value="300">5 min</option>
+          <option value="600">10 min</option><option value="900">15 min</option><option value="1800">30 min</option><option value="3600">60 min</option>
+        </select></div>
+        <div class="stepper"><label for="collide">Two games at once</label><select id="collide">
+          <option value="0">Stick with the higher team</option><option value="1">Alternate</option>
+        </select><input type="number" id="favrotate" min="2" max="30" step="1" hidden><span id="favrotateUnit" hidden>min</span></div>
+      </div>
     </div>
 
     <div class="grid">
@@ -107,12 +121,12 @@
       </div>
       <div class="card">
         <h2>Favorites</h2>
-        <p class="hint">Buttons 1 to 4 on a WizMote remote jump straight to these teams.</p>
+        <p class="hint">Buttons 1 to 4 on a WizMote remote jump straight to these teams. In Favorite teams mode the order is the priority.</p>
         <div id="favCtls">
-          <div class="ctl"><label>Button 1</label><select data-fav="1"></select></div>
-          <div class="ctl"><label>Button 2</label><select data-fav="2"></select></div>
-          <div class="ctl"><label>Button 3</label><select data-fav="3"></select></div>
-          <div class="ctl"><label>Button 4</label><select data-fav="4"></select></div>
+          <div class="ctl"><label>Button 1</label><select data-fav="1"></select><span class="favmove"><button data-move="1,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="1,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
+          <div class="ctl"><label>Button 2</label><select data-fav="2"></select><span class="favmove"><button data-move="2,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="2,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
+          <div class="ctl"><label>Button 3</label><select data-fav="3"></select><span class="favmove"><button data-move="3,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="3,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
+          <div class="ctl"><label>Button 4</label><select data-fav="4"></select><span class="favmove"><button data-move="4,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="4,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
         </div>
       </div>
       <div class="card">
@@ -308,7 +322,7 @@
   };
 
   // ---- mode pills ----------------------------------------------------------------
-  // Index = device mode: 0 my team, 1 live NFL, 2 live college, 3 any live game.
+  // Index = device mode: 0 my team, 1 live NFL, 2 live college, 3 any live game, 4 favorite teams.
   const modeButtons = Array.from(document.querySelectorAll("#modes button"));
   modeButtons.forEach((b) => {
     b.onclick = () => {
@@ -324,14 +338,57 @@
     rotateInput.value = v;
     setGD({ rotate: v });
   };
+  // Favorite teams mode settings (mode 4).
+  const lockonInput = $("#lockon");
+  lockonInput.onchange = () => {
+    const v = Math.min(120, Math.max(5, Number(lockonInput.value) || 15));
+    lockonInput.value = v;
+    setGD({ lockon: v });
+  };
+  const releaseSelect = $("#release");
+  releaseSelect.onchange = () => setGD({ release: releaseSelect.value });
+  const collideSelect = $("#collide");
+  const favRotate = $("#favrotate");
+  const showFavRotate = () => {
+    const alt = collideSelect.value === "1";
+    favRotate.hidden = !alt;
+    $("#favrotateUnit").hidden = !alt;
+  };
+  collideSelect.onchange = () => {
+    showFavRotate();
+    setGD({ collide: collideSelect.value });
+  };
+  favRotate.onchange = () => {
+    const v = Math.min(30, Math.max(2, Number(favRotate.value) || 5));
+    favRotate.value = v;
+    setGD({ rotate: v });
+  };
   const renderMode = () => {
     if (!S) return;
     const mode = String(S.mode || 0);
     modeButtons.forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
-    const live = mode !== "0";
-    $("#teambar").hidden = live;
+    const live = mode !== "0" && mode !== "4";
+    const favs = mode === "4";
+    $("#teambar").hidden = live || favs;
     $("#livebar").hidden = !live;
+    $("#favbar").hidden = !favs;
     if (document.activeElement !== rotateInput) rotateInput.value = S.rotate;
+    if (document.activeElement !== favRotate) favRotate.value = S.rotate;
+    if (document.activeElement !== lockonInput) lockonInput.value = S.lockon || 15;
+    if (document.activeElement !== releaseSelect) releaseSelect.value = String(S.release || 30);
+    if (document.activeElement !== collideSelect) {
+      collideSelect.value = String(S.collide || 0);
+      showFavRotate();
+    }
+    if (favs) {
+      const set = (S.next || []).filter((n) => n.t && n.t.id).length;
+      const shown = (S.next || []).find((n) => n.slot === S.shown);
+      $("#favName").textContent = !set
+        ? "No favorites set yet"
+        : S.locked && shown
+          ? "Locked on " + (shown.t.name || shown.t.abbr)
+          : "Cycling through your favorites";
+    }
   };
 
   // ---- toggles and favorites (static controls on the state document) --------
@@ -353,6 +410,20 @@
       fs.appendChild(o);
     }
     fs.onchange = () => setGD({ ["fav" + fs.dataset.fav]: fs.value });
+  });
+  // Reorder: swap two slots and post all four so the device sees one list.
+  document.querySelectorAll("#favCtls button[data-move]").forEach((b) => {
+    b.onclick = () => {
+      const [slot, dir] = b.dataset.move.split(",").map(Number);
+      const other = slot + dir;
+      if (other < 1 || other > 4) return;
+      const cur = favSelects.map((fs) => fs.value);
+      const tmp = cur[slot - 1];
+      cur[slot - 1] = cur[other - 1];
+      cur[other - 1] = tmp;
+      favSelects.forEach((fs, i) => (fs.value = cur[i]));
+      setGD({ fav1: cur[0], fav2: cur[1], fav3: cur[2], fav4: cur[3] });
+    };
   });
   const renderSettings = () => {
     if (!S) return;
@@ -676,8 +747,34 @@
     const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     return day + " " + time;
   };
+  // Favorite teams mode: one row per favorite, both logos, state or kickoff.
+  const renderFavNext = (box) => {
+    const list = (S.next || []).filter((n) => n.t && n.t.id);
+    box.hidden = !list.length;
+    const host = $("#upnextList");
+    host.innerHTML = "";
+    for (const n of list) {
+      const row = el("div", "un fav" + (n.slot === S.shown ? " shown" : ""));
+      const img = el("img");
+      img.loading = "lazy";
+      img.alt = "";
+      img.src = logoUrl(n.t.l, n.t.id, n.t.abbr);
+      row.appendChild(img);
+      const txt = el("div", "ut");
+      const name = n.t.abbr + (n.oa ? " vs " + n.oa : "");
+      txt.appendChild(el("div", "n", name));
+      let when = "No game scheduled";
+      if (n.s === "IN") when = n.ts + " - " + n.os + (n.detail ? " · " + n.detail : "");
+      else if (n.s === "POST") when = "Final " + n.ts + " - " + n.os;
+      else if (n.s === "PRE") when = kickLabel(n.kick) + (n.tv ? " · " + n.tv : "");
+      txt.appendChild(el("div", "w", when));
+      row.appendChild(txt);
+      host.appendChild(row);
+    }
+  };
   const renderUpNext = () => {
     const box = $("#upnext");
+    if (S && (S.mode || 0) === 4) { renderFavNext(box); return; }
     if (!S || (S.mode || 0) !== 0) { box.hidden = true; return; }
     const curId = game && game.s !== "NOT_FOUND" ? String(game.id || "") : "";
     const list = (S.next || []).filter((u) => String(u.id) !== curId).slice(0, 3);
