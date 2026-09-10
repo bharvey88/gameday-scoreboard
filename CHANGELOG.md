@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.1.4
+
+- The installer page plays the demo, and the README shows a touchdown, so you can see what you're getting before you flash. No change to the firmware itself.
+
 ## v1.1.3
 
 - The device page no longer offers to install a version older than the one running (the panel treats any different version as an update; the page now checks which way).

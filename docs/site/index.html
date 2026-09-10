@@ -19,6 +19,8 @@
     .note { font-size: 0.9rem; color: #9da7b3; }
     a { color: #7cc4ff; }
     footer { margin-top: 40px; font-size: 0.85rem; color: #6f7a86; }
+    .demo { display: block; width: 100%; border-radius: 12px; border: 1px solid #262e38; background: #000; margin: 0 0 6px; }
+    .demo-note { margin: 0 0 28px; }
   </style>
   <!-- Pinned with an integrity hash. To move versions: fetch the new file, compute
        sha384 (openssl dgst -sha384 -binary | openssl base64 -A) and update both. -->
@@ -30,6 +32,9 @@
 <main>
   <h1>Game Day Scoreboard</h1>
   <p class="sub">Football scoreboard for the Apollo M-1 HUB75 matrix. Version __VERSION__.</p>
+
+  <video class="demo" src="media/demo.mp4" autoplay muted loop playsinline preload="metadata"></video>
+  <p class="note demo-note">The built-in demo: a scripted game with real celebrations, so you can see it before kickoff.</p>
 
   <div class="card">
     <h2>1. Install</h2>

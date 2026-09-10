@@ -1,6 +1,10 @@
 # Game Day Scoreboard
 
+![Touchdown fireworks on the panel](docs/site/media/touchdown.gif)
+
 A standalone football scoreboard for the [Apollo Automation M-1](https://wiki.apolloautomation.com/) HUB75 matrix. Install it from your browser, join it to WiFi, pick your NFL or college team on the panel's own web page, and it follows the game from ESPN by itself. Nothing else to run.
+
+Watch the [full demo](https://bharvey88.github.io/gameday-scoreboard/) on the installer page.
 
 If you already use Home Assistant and want room lighting to celebrate too, [gameday-matrix](https://github.com/bharvey88/gameday-matrix) does the same thing through a blueprint.
 
