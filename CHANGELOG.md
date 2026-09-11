@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.3.3
+
+- After Reset Wi-Fi (button or the 10 second boot hold), the panel now offers its hotspot and Bluetooth setup within a second of restarting instead of a minute later.
+
 ## v1.3.2
 
 - Hold the boot button for 10 seconds to reset Wi-Fi. The panel forgets its network and restarts into setup mode; team, favorites and the rest of your settings stay. Shorter holds still show the page address.
