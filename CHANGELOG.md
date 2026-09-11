@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.3.5
+
+- The panel shows "Setup, open the Game Day app" while it waits to be set up over Bluetooth, and "Joining Wi-Fi" while it connects, instead of sitting on the boot screen.
+
 ## v1.3.4
 
 - Fixes panels restarting every minute after the Bluetooth update. Bluetooth and secure-connection buffers now live in the larger PSRAM, so score fetches and update checks have room again.
