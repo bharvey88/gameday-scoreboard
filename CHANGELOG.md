@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.3.0
+
+- Set up Wi-Fi from your phone over Bluetooth. The panel advertises while it has no network; the Game Day iPhone app finds it and sends your Wi-Fi details. The hotspot and captive portal still work as before.
+
 ## v1.2.0
 
 - New "Favorite teams" mode. Set up to four favorites on the page (the same slots the remote buttons use), and the panel cycles through their next games. When one of them is about to kick off, the panel locks onto that game and follows it like My team does, then goes back to cycling after the final.
