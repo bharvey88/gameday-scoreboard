@@ -8,9 +8,13 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
-## v1.3.6
+## v1.3.8
 
 - After connecting, the panel points at the Game Day app first and shows its address as the fallback. Holding the boot button still shows the address.
+
+## v1.3.7
+
+- Fixes the restart loop from v1.3.0 onwards. Bluetooth now runs only while the panel has no Wi-Fi (first setup, or after Reset Wi-Fi) and switches off once it is connected, so scores and updates have their memory back.
 
 ## v1.3.5
 

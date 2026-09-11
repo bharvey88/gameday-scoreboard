@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.3.6"
+  version: "1.3.8"
   variant: "m1"
 
   display_panel_width: "64"
@@ -127,6 +127,17 @@ wifi:
   power_save_mode: none
   ap:
     ssid: "Game Day Scoreboard"
+  # Bluetooth (esp32_improv) is only needed to hand the panel Wi-Fi
+  # credentials, but Bluedroid's buffers keep starving internal RAM for the
+  # ESPN/update HTTPS fetches even after moving BT and TLS to PSRAM (v1.3.4),
+  # causing mbedtls_ssl_setup to fail and the panel to reboot. Once Wi-Fi is
+  # up there's nothing left for Bluetooth to do, so tear the BLE stack down
+  # and give that memory back. enable_on_boot (default true, unchanged) means
+  # an unprovisioned panel still advertises at boot, and "Reset Wi-Fi" blanks
+  # the saved network, so the panel re-enters setup mode and BLE turns back
+  # on next boot without any extra logic here.
+  on_connect:
+    - ble.disable:
 
 captive_portal:
 
