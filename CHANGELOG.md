@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.3.1
+
+- Reset Wi-Fi button on the page and in Home Assistant. The panel forgets its network, restarts, and waits for setup from the app over Bluetooth or through its hotspot.
+- Factory reset button. Erases everything the panel remembers, including the team and favorites, then restarts.
+
 ## v1.3.0
 
 - Set up Wi-Fi from your phone over Bluetooth. The panel advertises while it has no network; the Game Day iPhone app finds it and sends your Wi-Fi details. The hotspot and captive portal still work as before.

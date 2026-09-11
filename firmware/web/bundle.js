@@ -467,6 +467,8 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     { name: "Refresh Now", into: "#actions", label: "Refresh scores" },
     { name: "Check for Updates", into: "#actions", label: "Check for updates" },
     { name: "Reboot", into: "#actions", label: "Reboot", danger: true },
+    { name: "Reset Wi-Fi", into: "#actions", label: "Reset Wi-Fi", danger: true },
+    { name: "Factory Reset", into: "#actions", label: "Factory reset", danger: true },
   ];
   const built = {};
 
