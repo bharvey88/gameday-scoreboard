@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.3.6
+
+- After connecting, the panel points at the Game Day app first and shows its address as the fallback. Holding the boot button still shows the address.
+
 ## v1.3.5
 
 - The panel shows "Setup, open the Game Day app" while it waits to be set up over Bluetooth, and "Joining Wi-Fi" while it connects, instead of sitting on the boot screen.
