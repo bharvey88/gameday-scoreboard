@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.3.7
+
+- Fixes the restart loop from v1.3.0 onwards. Bluetooth now runs only while the panel has no Wi-Fi (first setup, or after Reset Wi-Fi) and switches off once it is connected, so scores and updates have their memory back.
+
 ## v1.3.5
 
 - The panel shows "Setup, open the Game Day app" while it waits to be set up over Bluetooth, and "Joining Wi-Fi" while it connects, instead of sitting on the boot screen.
