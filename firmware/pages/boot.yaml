@@ -11,6 +11,11 @@
 # A fresh panel keeps the address up for 45 seconds, or until a team is
 # picked. A panel that already has a team flashes it for 3 seconds (or skips
 # it when "Show address at boot" is off on the device page).
+#
+# Two more states, event-driven off esp32_improv (Bluetooth setup) instead of
+# the WiFi poll, since that's how the Game Day app actually provisions a
+# panel: SETUP / open the / Game Day app while advertising, JOINING / Wi-Fi
+# once the app hands over credentials. See the esp32_improv block below.
 
 globals:
   - id: boot_ip_shown_ms
@@ -164,6 +169,40 @@ interval:
           id(boot_bar_value) = (id(boot_bar_value) + 3) % 130;
           int v = id(boot_bar_value) > 100 ? 100 : id(boot_bar_value);
           lv_bar_set_value(id(boot_bar), v, LV_ANIM_OFF);
+
+# Bluetooth setup (esp32_improv, configured in gameday-common.yaml) starts
+# advertising about a second after a boot with no saved network, and the
+# Game Day app finds the panel over Bluetooth rather than someone joining the
+# AP hotspot by hand. Say so on the overlay instead of leaving it on
+# "Connecting" (or blank, before boot_check's first 500ms tick) while it
+# waits. boot_check keeps polling the whole time, so once WiFi actually
+# connects it overwrites these lines with the normal address/Ready flow on
+# its own; on_stop needs no action here for that reason.
+esp32_improv:
+  on_start:
+    # The overlay may already be hidden and boot_check/boot_anim suspended
+    # (a panel that already had a team, or a fallback AP coming up mid-run
+    # without a reboot) - undo boot_hide and cancel any pending boot_hide_later
+    # so setup text isn't hidden out from under itself.
+    - component.resume: boot_check
+    - component.resume: boot_anim
+    - script.stop: boot_hide_later
+    - lvgl.obj.update:
+        id: boot_overlay
+        hidden: false
+    - lambda: |-
+        const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+        if (wide)
+          id(boot_set_lines).execute("SETUP", "open the", "Game Day app", "", true);
+        else
+          id(boot_set_lines).execute("SETUP", "Game Day", "app", "", true);
+  on_provisioning:
+    - lambda: 'id(boot_set_lines).execute("JOINING", "Wi-Fi", "", "", true);'
+  on_provisioned:
+    # Credentials worked; nudge boot_check's 500ms poll now instead of
+    # waiting up to half a second for it to notice and repaint the
+    # address/Ready lines itself.
+    - script.execute: boot_refresh
 
 # Boot button: a short hold (>=1.5s) brings the address back, a long hold
 # (>=10s) resets WiFi instead. Timed by hand (millis() on press, compared on
