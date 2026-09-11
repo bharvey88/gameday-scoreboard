@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.3.0"
+  version: "1.3.1"
   variant: "m1"
 
   display_panel_width: "64"
@@ -351,6 +351,19 @@ button:
     icon: mdi:power-cycle
     name: "Reboot"
     entity_category: "diagnostic"
+  - platform: template
+    name: "Reset Wi-Fi"
+    icon: mdi:wifi-remove
+    entity_category: config
+    on_press:
+      - lambda: |-
+          wifi::global_wifi_component->save_wifi_sta("", "");
+      - delay: 500ms
+      - lambda: |-
+          App.safe_reboot();
+  - platform: factory_reset
+    name: "Factory Reset"
+    entity_category: config
 
 text_sensor:
   - platform: template
