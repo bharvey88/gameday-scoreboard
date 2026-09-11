@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.3.2"
+  version: "1.3.3"
   variant: "m1"
 
   display_panel_width: "64"
@@ -41,6 +41,19 @@ esphome:
         - hub75.set_brightness:
             id: matrix
             brightness: !lambda 'return id(power).state ? (uint8_t) id(brightness).state : 0;'
+    # After "Reset Wi-Fi" the saved network name is blank. ESPHome still counts it
+    # as a configured network and would wait a minute before the hotspot and
+    # Bluetooth setup appear. Cut both waits to a second in that one case.
+    - priority: 240.0
+      then:
+        - lambda: |-
+            auto *w = wifi::global_wifi_component;
+            if (w != nullptr && w->has_sta() && w->get_sta().get_ssid().empty()) {
+              w->set_ap_timeout(1000);
+              if (esp32_improv::global_improv_component != nullptr) {
+                esp32_improv::global_improv_component->set_wifi_timeout(1000);
+              }
+            }
 
 external_components:
   - source:
