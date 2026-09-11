@@ -1,16 +1,19 @@
 # Boot and setup screen. Shown over everything until the panel is on WiFi
-# and has displayed its address for a while; the boot button brings it back.
+# and has shown its connect hint for a while; the boot button brings the
+# full address back.
 #
 # Three states, driven by the real WiFi state every half second. Each is a
 # title plus up to four lines: small, big, small, small.
 #
 #   hotspot up     On your phone, join WiFi / Game Day Scoreboard / a setup page will open
 #   connecting     Connecting to / <network name>
-#   connected      On your phone, open / gameday.local / or 10.10.10.97 / then pick your team
+#   connected      GAME DAY APP / or visit / gameday-2f6a70
 #
-# A fresh panel keeps the address up for 45 seconds, or until a team is
+# A fresh panel keeps that hint up for 45 seconds, or until a team is
 # picked. A panel that already has a team flashes it for 3 seconds (or skips
-# it when "Show address at boot" is off on the device page).
+# it when "Show address at boot" is off on the device page). Either way, a
+# boot button hold shows the full address instead: On your phone, open /
+# gameday.local / or 10.10.10.97 / then pick your team.
 #
 # Two more states, event-driven off esp32_improv (Bluetooth setup) instead of
 # the WiFi poll, since that's how the Game Day app actually provisions a
@@ -87,26 +90,38 @@ script:
           else lv_obj_add_flag(id(boot_bar), LV_OBJ_FLAG_HIDDEN);
 
   - id: boot_refresh
+    parameters:
+      via_button: bool
     then:
       - lambda: |-
           auto *w = wifi::global_wifi_component;
           if (w == nullptr) return;
           if (w->is_connected()) {
-            std::string ip;
-            for (auto &a : w->wifi_sta_ip_addresses()) {
-              if (a.is_set() && a.is_ip4()) {
-                char buf[48];
-                a.str_to(buf);
-                ip = buf;
-                break;
-              }
-            }
-            // A single panel is 12 characters wide: terse lines, only the hostname scrolls.
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
-            if (wide)
-              id(boot_set_lines).execute("On your phone, open", id(gameday_ctl).hostname() + ".local", "or " + ip, "then pick your team", false);
-            else
-              id(boot_set_lines).execute("Open", id(gameday_ctl).hostname() + ".local", ip, "pick a team", false);
+            if (via_button) {
+              // Boot button hold: always the full address, never the app hint.
+              std::string ip;
+              for (auto &a : w->wifi_sta_ip_addresses()) {
+                if (a.is_set() && a.is_ip4()) {
+                  char buf[48];
+                  a.str_to(buf);
+                  ip = buf;
+                  break;
+                }
+              }
+              // A single panel is 12 characters wide: terse lines, only the hostname scrolls.
+              if (wide)
+                id(boot_set_lines).execute("On your phone, open", id(gameday_ctl).hostname() + ".local", "or " + ip, "then pick your team", false);
+              else
+                id(boot_set_lines).execute("Open", id(gameday_ctl).hostname() + ".local", ip, "pick a team", false);
+            } else {
+              // Normal connect: point at the Game Day app first, the
+              // hostname is only a fallback for typing the address by hand.
+              if (wide)
+                id(boot_set_lines).execute("GAME DAY APP", "or visit", id(gameday_ctl).hostname(), "", false);
+              else
+                id(boot_set_lines).execute("GAME DAY", "APP", id(gameday_ctl).hostname(), "", false);
+            }
             if (id(boot_ip_shown_ms) == 0) {
               id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
               if (!id(gameday_ctl).setup_done())
@@ -149,7 +164,9 @@ script:
   - id: boot_show_address
     mode: restart
     then:
-      - script.execute: boot_refresh
+      - script.execute:
+          id: boot_refresh
+          via_button: true
       - lvgl.obj.update:
           id: boot_overlay
           hidden: false
@@ -161,7 +178,9 @@ interval:
     startup_delay: 500ms
     id: boot_check
     then:
-      - script.execute: boot_refresh
+      - script.execute:
+          id: boot_refresh
+          via_button: false
   - interval: 60ms
     id: boot_anim
     then:
@@ -176,7 +195,7 @@ interval:
 # AP hotspot by hand. Say so on the overlay instead of leaving it on
 # "Connecting" (or blank, before boot_check's first 500ms tick) while it
 # waits. boot_check keeps polling the whole time, so once WiFi actually
-# connects it overwrites these lines with the normal address/Ready flow on
+# connects it overwrites these lines with the normal app-hint/Ready flow on
 # its own; on_stop needs no action here for that reason.
 esp32_improv:
   on_start:
@@ -201,8 +220,10 @@ esp32_improv:
   on_provisioned:
     # Credentials worked; nudge boot_check's 500ms poll now instead of
     # waiting up to half a second for it to notice and repaint the
-    # address/Ready lines itself.
-    - script.execute: boot_refresh
+    # app-hint/Ready lines itself.
+    - script.execute:
+        id: boot_refresh
+        via_button: false
 
 # Boot button: a short hold (>=1.5s) brings the address back, a long hold
 # (>=10s) resets WiFi instead. Timed by hand (millis() on press, compared on

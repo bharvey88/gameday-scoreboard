@@ -156,8 +156,8 @@
         <div class="ctl" id="tzpick" hidden><label>Timezone</label><select id="tzsel"></select></div>
         <div class="sub">Startup</div>
         <div class="ctl">
-          <label>Show the page address when the panel starts<small>For 3 seconds after it connects, so you can find this page without the button. Hold the boot button any time to show it again.</small></label>
-          <button class="sw" data-set="bootaddr" aria-label="Show the page address when the panel starts"></button>
+          <label>Show how to connect when the panel starts<small>For 3 seconds after it connects: the Game Day app, or the page address. Hold the boot button any time to show the address again.</small></label>
+          <button class="sw" data-set="bootaddr" aria-label="Show how to connect when the panel starts"></button>
         </div>
       </div>
       <div class="card">
