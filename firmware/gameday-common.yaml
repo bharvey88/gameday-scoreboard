@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.3.3"
+  version: "1.3.4"
   variant: "m1"
 
   display_panel_width: "64"
@@ -20,6 +20,21 @@ substitutions:
   # hub75-studio packages (controller, theme, clock page). Pinned to a commit
   # so a release always builds the same thing.
   hub75_studio_ref: "2c121972321cc1e3c2c87d9647fd3beb9a5e2271"
+
+# The m1 controller package already sets board/framework/psram; this only
+# adds sdkconfig options, which ESPHome merges into that package's esp32:
+# block. Bluetooth setup (esp32_improv) and HTTPS fetches (ESPN, update
+# manifest) were both starving internal RAM once BT was added, causing
+# mbedtls_ssl_setup to fail (MBEDTLS_ERR_SSL_ALLOC_FAILED) and the panel to
+# reboot ~50s after boot. Move the BT stack and TLS buffers into PSRAM.
+esp32:
+  framework:
+    sdkconfig_options:
+      CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST: y
+      CONFIG_BT_BLE_DYNAMIC_ENV_MEMORY: y
+      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: y
+      CONFIG_MBEDTLS_DYNAMIC_BUFFER: y
+      CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA: y
 
 esphome:
   name: "${name}"

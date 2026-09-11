@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.3.4
+
+- Fixes panels restarting every minute after the Bluetooth update. Bluetooth and secure-connection buffers now live in the larger PSRAM, so score fetches and update checks have room again.
+
 ## v1.3.3
 
 - After Reset Wi-Fi (button or the 10 second boot hold), the panel now offers its hotspot and Bluetooth setup within a second of restarting instead of a minute later.
