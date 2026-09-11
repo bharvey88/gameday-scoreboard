@@ -19,6 +19,9 @@ globals:
   - id: boot_bar_value
     type: int
     initial_value: '0'
+  - id: boot_button_press_ms
+    type: uint32_t
+    initial_value: '0'
 
 script:
   # Positions and fonts for the current panel width
@@ -162,13 +165,21 @@ interval:
           int v = id(boot_bar_value) > 100 ? 100 : id(boot_bar_value);
           lv_bar_set_value(id(boot_bar), v, LV_ANIM_OFF);
 
+# Boot button: a short hold (>=1.5s) brings the address back, a long hold
+# (>=10s) resets WiFi instead. Timed by hand (millis() on press, compared on
+# release) rather than on_multi_click, so the two behaviors stay exclusive.
 binary_sensor:
   - id: !extend power_button
-    on_multi_click:
-      - timing:
-          - ON for at least 1.5s
-        then:
-          - script.execute: boot_show_address
+    on_press:
+      - lambda: 'id(boot_button_press_ms) = millis();'
+    on_release:
+      - lambda: |-
+          uint32_t held = millis() - id(boot_button_press_ms);
+          if (held >= 10000) {
+            id(reset_wifi).press();
+          } else if (held >= 1500) {
+            id(boot_show_address).execute();
+          }
 
 lvgl:
   style_definitions:
