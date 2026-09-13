@@ -566,12 +566,56 @@ Note: the spec's third bullet (emit on every poll) is dropped. See "Deviations".
 - Modify: `components/gameday/gameday.h` (new member)
 - Modify: `components/gameday/gameday.cpp` (`apply_job_`, `loop`, `start_job_`, `start_fav_job_`)
 
-- [ ] **Step 1: Add the worker deadline member**
+- [ ] **Step 1: Add the worker deadline members**
 
 In `components/gameday/gameday.h`, next to `last_good_ms_`, add:
 
 ```cpp
   uint32_t busy_since_ms_{0};  // millis() when the worker task was started
+  uint32_t worker_seq_{0};     // bumped when a worker is abandoned
+```
+
+### Why `worker_seq_`, and what it does not fix
+
+`run_job_()` writes into `this->job_` as it goes. If the loop abandons a worker
+and that worker later wakes up, it would write into the Job the next cycle is
+using. Bumping `worker_seq_` stops the zombie signalling `job_done_`, so it
+cannot make the loop apply a half-written Job.
+
+It does NOT stop the zombie writing Job fields while a later job is in flight.
+Fixing that properly means giving each worker its own Job rather than sharing
+`this->job_`, which is a refactor this release is not doing. The residual risk
+is bounded: `http_request` is configured with a 20s timeout and a 30s watchdog,
+so a worker still alive at 60s is wedged rather than slow, and the alternative
+today is a panel that never fetches again until it is power cycled. Note it,
+do not fix it here.
+
+- [ ] **Step 1b: Make the worker check its sequence before signalling**
+
+In `components/gameday/gameday.cpp`, change `worker_()` from:
+
+```cpp
+void GamedayComponent::worker_(void *arg) {
+  auto *self = static_cast<GamedayComponent *>(arg);
+  self->run_job_();
+  self->job_done_ = true;
+  vTaskDelete(nullptr);
+}
+```
+
+to:
+
+```cpp
+void GamedayComponent::worker_(void *arg) {
+  auto *self = static_cast<GamedayComponent *>(arg);
+  uint32_t mine = self->worker_seq_;
+  self->run_job_();
+  // A worker the loop gave up on must not hand back a result: the Job it
+  // was writing into belongs to a later cycle by now.
+  if (self->worker_seq_ == mine)
+    self->job_done_ = true;
+  vTaskDelete(nullptr);
+}
 ```
 
 - [ ] **Step 2: Stamp it wherever the worker is started**
@@ -603,11 +647,15 @@ to:
       // A worker that died without setting job_done_ would block the loop
       // forever and Refresh Now could never clear it. Give up after 60s.
       if (this->busy_since_ms_ != 0 && (millis() - this->busy_since_ms_) >= 60000) {
-        ESP_LOGW(TAG, "Fetch task did not finish in 60s, starting a fresh job");
+        ESP_LOGW(TAG, "Fetch task did not finish in 60s, giving up on it");
         this->busy_ = false;
         this->busy_since_ms_ = 0;
-        this->generation_++;  // disown anything the old task may still write
-        this->schedule_next_(0);
+        this->worker_seq_++;  // a late finisher must not signal job_done_
+        // Wait a full retry before starting another worker rather than
+        // stacking a second one on top of a task that may still be alive.
+        // http_request has a 20s timeout and a 30s watchdog, so a worker
+        // still running at 60s is stuck, not slow.
+        this->schedule_next_(RETRY_INTERVAL);
       }
       return;
     }
