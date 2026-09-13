@@ -8,6 +8,16 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.4.0
+
+- The panel now says "Wi-Fi lost, open the Game Day app" instead of leaving an old score on the screen, and Bluetooth switches back on so the app can hand it a new password. A panel that cannot get back on Wi-Fi restarts itself after ten minutes.
+- When scores stop updating the ticker says "no update for 4 min" instead of a bare asterisk.
+- A college team in a favorite slot now finds its games. It was asking the NFL scoreboard.
+- The boot screen shows an address you can actually type, and holding the boot button warns you before it erases your Wi-Fi, with five seconds to let go.
+- "Switch every" can be set as low as 1 minute.
+- After a game ends the panel moves on to the next one instead of sitting on a final, even when ESPN keeps reporting the finished game.
+- The live modes show your team instead of an empty board when no game is on, and go back to live games the moment one starts.
+
 ## v1.3.8
 
 - After connecting, the panel points at the Game Day app first and shows its address as the fallback. Holding the boot button still shows the address.
