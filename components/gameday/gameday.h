@@ -245,6 +245,18 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   uint32_t interval_for_phase_() const;
   void emit_(const ::espn::Splash &splash);
   void reset_game_();
+  // A game poll came back clean: clear the miss count and start the clock over.
+  void mark_good_poll_() {
+    this->misses_ = 0;
+    this->last_good_ms_ = millis() == 0 ? 1 : millis();
+  }
+  // Seconds since the last good poll, 0 when fresh or when nothing has
+  // succeeded yet (the Wi-Fi lost overlay covers that case).
+  uint32_t stale_seconds_() const {
+    if (this->last_good_ms_ == 0)
+      return 0;
+    return (millis() - this->last_good_ms_) / 1000;
+  }
 
   http_request::HttpRequestComponent *http_{nullptr};
   time::RealTimeClock *time_{nullptr};
@@ -306,6 +318,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   uint32_t post_since_ms_{0};
   uint32_t next_fetch_ms_{0};
   uint8_t misses_{0};
+  uint32_t last_good_ms_{0};  // millis() of the last successful game poll, 0 = never
   Job job_;
   uint32_t generation_{0};
   bool busy_{false};

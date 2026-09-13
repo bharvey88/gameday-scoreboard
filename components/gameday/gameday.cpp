@@ -506,7 +506,7 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
     e.final_epoch = 0;
   if (e.game.state == GameState::POST && old.valid && old.event_id == e.game.event_id && old.state != GameState::POST)
     e.final_epoch = tnow;
-  this->misses_ = 0;
+  this->mark_good_poll_();
   bool switched = this->fav_choose_(tnow);
   if (!switched && shown) {
     // Same game on the board: render the new poll with its splash.
@@ -955,7 +955,7 @@ void GamedayComponent::apply_job_() {
       this->schedule_ = Schedule{};
       this->game_ = GameSnapshot{};
       this->prev_ = GameSnapshot{};
-      this->misses_ = 0;
+      this->mark_good_poll_();
       this->emit_({});
       this->schedule_next_(NO_LIVE_RESCAN);
       return;
@@ -998,7 +998,7 @@ void GamedayComponent::apply_job_() {
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
-      this->misses_ = 0;
+      this->mark_good_poll_();
       this->emit_({});
       this->schedule_next_(0);
       return;
@@ -1012,7 +1012,7 @@ void GamedayComponent::apply_job_() {
   }
   this->prev_ = this->game_;
   this->game_ = j.game;
-  this->misses_ = 0;
+  this->mark_good_poll_();
   ::espn::Splash splash =
       ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(), this->live_mode_());
   if (this->game_.state == GameState::POST) {
@@ -1069,8 +1069,12 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
     f.status_text = this->live_none_ ? "No live games right now" : "Looking for a live game";
   if (this->prefs2_.mode == (uint8_t) Mode::FAVORITES && this->fav_.empty())
     f.status_text = "Favorites: add teams on the page | " + f.status_text;
-  if (this->misses_ >= 3)
-    f.status_text += " *";
+  if (this->misses_ >= 3) {
+    uint32_t mins = this->stale_seconds_() / 60;
+    if (mins < 1)
+      mins = 1;
+    f.status_text += " | no update for " + std::to_string(mins) + " min";
+  }
   // Until a team has been picked once, the ticker says where the setup page is.
   if (!this->flag_(FLAG_SETUP) && network::is_connected()) {
     std::string ip;
@@ -1248,6 +1252,7 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   doc["opp"] = this->opponent_splashes();
   doc["bootaddr"] = this->show_boot_address();
   doc["misses"] = this->misses_;
+  doc["stale_s"] = this->stale_seconds_();
 
   JsonObject game = doc["game"].to<JsonObject>();
   game["s"] = g.valid ? ::espn::state_name(g.state) : "NOT_FOUND";
