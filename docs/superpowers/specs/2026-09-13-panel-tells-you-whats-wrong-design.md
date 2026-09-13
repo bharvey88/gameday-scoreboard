@@ -115,6 +115,30 @@ so ESPN was answering and the firmware was polling the wrong event.
 - Bench: (h) set the team to one that played yesterday, wait past the final
   linger, confirm the next game card appears within one poll.
 
+### Correction, 2026-09-13, after implementation
+
+Part 6's diagnosis above is wrong and the code below it was never shipped as
+written. `start_job_` (gameday.cpp:885) already forces a schedule re-read 30
+minutes after a game goes POST, and re-arms every 30 minutes, so a finished
+game was never held for six hours. The panel in the field report was re-reading
+the team endpoint all night and getting the same finished event back: ESPN's
+`team.nextEvent[0]` was itself stuck.
+
+Two further errors in the part 6 text:
+
+- `schedule_fetched_ms_ = 0` does not force a re-read. The test is
+  `!schedule_.valid || (now - schedule_fetched_ms_) >= SCHEDULE_INTERVAL`, so
+  with a valid schedule it reduces to `millis() >= 6h` and does nothing for the
+  first six hours of uptime. Clearing `schedule_` is what forces it.
+- The `NOT_FOUND` branch was unreachable. `parse_scoreboard` returns false when
+  the event is missing, so that lands in `!j.game_ok` and never reaches the tail.
+
+What shipped instead: the worker deadline from this part is unchanged and
+valuable. The stale-game half was replaced by taking the next event from
+`upcoming_`, the season schedule, inside the existing 30 minute post-linger
+block. See the plan's Task 6b. The panel still moves at final + 30 minutes;
+what changed is what it moves to.
+
 ## 7. Live modes fall back to your team
 
 Field report 2026-09-13: the panel sat in "Live college" on an NFL Sunday
