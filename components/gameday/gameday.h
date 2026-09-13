@@ -319,6 +319,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   uint32_t next_fetch_ms_{0};
   uint8_t misses_{0};
   uint32_t last_good_ms_{0};  // millis() of the last successful game poll, 0 = never
+  uint32_t busy_since_ms_{0};  // millis() when the worker task was started
+  uint32_t worker_seq_{0};     // bumped when a worker is abandoned
   Job job_;
   uint32_t generation_{0};
   bool busy_{false};

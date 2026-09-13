@@ -455,6 +455,7 @@ void GamedayComponent::start_fav_job_(uint32_t now) {
     e.fetched_ms = now == 0 ? 1 : now;
   this->job_done_ = false;
   this->busy_ = true;
+  this->busy_since_ms_ = millis() == 0 ? 1 : millis();
   BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
   if (ok != pdPASS) {
     ESP_LOGW(TAG, "Could not start the fetch task");
@@ -544,9 +545,22 @@ void GamedayComponent::loop() {
       return;
   }
   if (this->busy_) {
-    if (!this->job_done_)
+    if (!this->job_done_) {
+      // A worker that died without setting job_done_ would block the loop
+      // forever and Refresh Now could never clear it. Give up after 60s.
+      if (this->busy_since_ms_ != 0 && (millis() - this->busy_since_ms_) >= 60000) {
+        ESP_LOGW(TAG, "Fetch task did not finish in 60s, giving up on it");
+        this->busy_ = false;
+        this->busy_since_ms_ = 0;
+        this->worker_seq_++;  // a late finisher must not signal job_done_
+        // Wait a full retry before starting another worker rather than
+        // stacking a second one on top of a task that may still be alive.
+        this->schedule_next_(RETRY_INTERVAL);
+      }
       return;
+    }
     this->busy_ = false;
+    this->busy_since_ms_ = 0;
     this->job_done_ = false;
     this->apply_job_();
     return;
@@ -844,6 +858,7 @@ void GamedayComponent::start_job_() {
     j.schedule = this->schedule_;
     this->job_done_ = false;
     this->busy_ = true;
+    this->busy_since_ms_ = millis() == 0 ? 1 : millis();
     BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
     if (ok != pdPASS) {
       this->busy_ = false;
@@ -859,6 +874,7 @@ void GamedayComponent::start_job_() {
     j.schedule = this->schedule_;
     this->job_done_ = false;
     this->busy_ = true;
+    this->busy_since_ms_ = millis() == 0 ? 1 : millis();
     BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
     if (ok != pdPASS) {
       this->busy_ = false;
@@ -876,6 +892,7 @@ void GamedayComponent::start_job_() {
   j.schedule = this->schedule_;
   this->job_done_ = false;
   this->busy_ = true;
+  this->busy_since_ms_ = millis() == 0 ? 1 : millis();
   // TLS plus a nested JSON parse needs a roomy stack; 16KB has headroom.
   BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
   if (ok != pdPASS) {
@@ -887,8 +904,12 @@ void GamedayComponent::start_job_() {
 
 void GamedayComponent::worker_(void *arg) {
   auto *self = static_cast<GamedayComponent *>(arg);
+  uint32_t mine = self->worker_seq_;
   self->run_job_();
-  self->job_done_ = true;
+  // A worker the loop gave up on must not hand back a result: the Job it
+  // was writing into belongs to a later cycle by now.
+  if (self->worker_seq_ == mine)
+    self->job_done_ = true;
   vTaskDelete(nullptr);
 }
 
@@ -1013,6 +1034,27 @@ void GamedayComponent::apply_job_() {
   this->prev_ = this->game_;
   this->game_ = j.game;
   this->mark_good_poll_();
+  // Never sit on last week's game. If the event we are polling finished
+  // hours ago, the team endpoint has moved on: re-read it now instead of
+  // waiting out the POST linger. ESPN can keep pointing at a finished game
+  // for a while, so a re-read is allowed only once per linger window: the
+  // condition is a pure function of what ESPN returns, and re-reading on
+  // every poll would spin on the same event with no delay between fetches.
+  {
+    int64_t tnow = (int64_t) this->time_->timestamp_now();
+    bool long_final = this->game_.state == GameState::POST && this->game_.kickoff_epoch != 0 &&
+                      tnow - this->game_.kickoff_epoch > 6 * 3600;
+    if (!this->live_mode_() && long_final && (now - this->schedule_fetched_ms_) >= POST_LINGER) {
+      ESP_LOGI(TAG, "Polled game is long over, re-reading the schedule");
+      this->schedule_ = Schedule{};  // invalid: the next cycle must re-read it
+      this->post_since_ms_ = 0;
+      this->prev_ = GameSnapshot{};
+      this->game_ = GameSnapshot{};
+      this->emit_({});
+      this->schedule_next_(0);
+      return;
+    }
+  }
   ::espn::Splash splash =
       ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(), this->live_mode_());
   if (this->game_.state == GameState::POST) {
