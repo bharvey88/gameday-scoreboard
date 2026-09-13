@@ -172,6 +172,45 @@ script:
       - delay: 30s
       - ble.enable:
 
+interval:
+  # A panel that has a saved network but cannot get back on it is stuck in a
+  # way nothing else recovers from. ESPHome's own reboot_timeout is disabled
+  # while an ap: block is present (wifi_component.cpp guards it with
+  # !has_ap()), so count the minutes here. Not armed on a panel with no
+  # network to fail to reach: a fresh unit, or one whose credentials the
+  # "Reset Wi-Fi" button blanked, is legitimately sitting in setup mode.
+  - interval: 60s
+    then:
+      - lambda: |-
+          auto *w = wifi::global_wifi_component;
+          if (w == nullptr) return;
+          // has_sta() is still true after "Reset Wi-Fi": that button saves an
+          // empty SSID and the component loads it back as a configured
+          // network, so the blank SSID is the second half of this test.
+          if (w->is_connected() || !w->has_sta() || w->get_sta().get_ssid().empty()) {
+            id(gd_offline_minutes) = 0;
+            return;
+          }
+          // Someone is handing the panel new credentials right now. This is
+          // the narrow state that only exists between the app sending an
+          // ssid and the attempt resolving (30s at most, then Improv times
+          // out by itself), so holding the count here cannot disarm the
+          // restart. Improv's own is_active() would: it goes true 90s into
+          // any outage and stays true for the whole outage.
+          if (esp32_improv::global_improv_component != nullptr &&
+              esp32_improv::global_improv_component->get_improv_state() ==
+                  improv::STATE_PROVISIONING) {
+            ESP_LOGI("wifi", "Setup in progress, holding the offline restart");
+            return;
+          }
+          id(gd_offline_minutes)++;
+          ESP_LOGW("wifi", "Offline for %d minute(s)", id(gd_offline_minutes));
+          if (id(gd_offline_minutes) >= 10) {
+            ESP_LOGW("wifi", "Ten minutes with no Wi-Fi, restarting");
+            id(gd_offline_minutes) = 0;
+            App.safe_reboot();
+          }
+
 captive_portal:
 
 improv_serial:
@@ -268,6 +307,13 @@ globals:
     type: std::string
     restore_value: no
     initial_value: '""'
+  # Minutes the panel has been off its saved network. Not restored: a panel
+  # that reboots for this reason starts the ten minutes over, so the worst
+  # case is one restart every ten minutes, not a tight loop.
+  - id: gd_offline_minutes
+    type: int
+    restore_value: no
+    initial_value: '0'
 
 # The device page talks to /gameday/state, /gameday/set and /gameday/action
 # (components/gameday). Only the entities worth having in Home Assistant stay.
