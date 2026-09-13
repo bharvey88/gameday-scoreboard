@@ -729,6 +729,95 @@ MSG
 
 ---
 
+## Task 6b: Trust the season schedule when the team endpoint is stuck
+
+Added 2026-09-13 after Task 6, on Brandon's call. Not in the original spec.
+
+Task 6 shortened the wait before a finished game is replaced. It does not fix
+the field report. Reading `start_job_` at gameday.cpp:885-891, a POST game
+already forces `need_schedule = true` 30 minutes after it finishes, and re-arms
+every 30 minutes after that. So a panel that sat on last week's game all night
+was re-reading the team endpoint the whole time and getting the same event back:
+ESPN's `team.nextEvent[0]` was itself stuck on the final. Re-reading it faster
+cannot help.
+
+`upcoming_` is the authoritative answer. It comes from the season schedule
+endpoint (`parse_upcoming_str`, games that have not started, in date order) and
+is cleared on a team change by `reset_game_()`, so it always belongs to the
+current team. Prefer it when the team endpoint is sitting on a final.
+
+**Files:**
+- Modify: `components/gameday/gameday.cpp` (the Task 6 block in `apply_job_`)
+
+- [ ] **Step 1: Take the next game from the season schedule when there is one**
+
+In `apply_job_()`, inside the `if (!this->live_mode_() && long_final && ...)`
+block added by Task 6, BEFORE the existing `ESP_LOGI(TAG, "Polled game is long
+over, re-reading the schedule");` line, insert:
+
+```cpp
+      // The team endpoint can keep pointing at a game that finished hours
+      // ago, which is what a re-read alone cannot fix. The season schedule
+      // lists only games that have not started, so prefer it when it has one.
+      const ::espn::Upcoming *next = nullptr;
+      for (const auto &u : this->upcoming_) {
+        if (u.kickoff_epoch > tnow && u.event_id != this->game_.event_id) {
+          next = &u;
+          break;
+        }
+      }
+      if (next != nullptr) {
+        ESP_LOGI(TAG, "Team endpoint still on a final, taking event %s from the season schedule",
+                 next->event_id.c_str());
+        // group, colors and the record are team properties from the team
+        // endpoint and stay valid; only the event moves.
+        this->schedule_.event_id = next->event_id;
+        this->schedule_.kickoff_epoch = next->kickoff_epoch;
+        this->schedule_fetched_ms_ = now == 0 ? 1 : now;  // re-arms the throttle
+        this->post_since_ms_ = 0;
+        this->prev_ = GameSnapshot{};
+        this->game_ = GameSnapshot{};
+        this->emit_({});
+        this->schedule_next_(0);
+        return;
+      }
+```
+
+The existing re-read stays as the fallback for when `upcoming_` is empty or
+stale (fresh boot, end of season).
+
+- [ ] **Step 2: Verify**
+
+Run: `make -C tests && /Users/harvey/development/tools/esphome-venv/bin/esphome compile firmware/gameday.yaml 2>&1 | tail -3`
+Expected: `192 checks, 0 failures` then `Successfully compiled program.`
+
+The toolchain is already warm in this worktree, so the compile is incremental.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add components/gameday/gameday.cpp
+git commit -F- <<'MSG'
+Take the next game from the season schedule when the team endpoint sticks
+
+ESPN's team endpoint can keep returning a game that finished hours ago,
+which is what the overnight stale-game report looks like: the thirty
+minute re-read was firing all along and getting the same event back.
+
+The season schedule is already fetched and lists only games that have
+not started, so use its first future entry instead of waiting for the
+team endpoint to move on. Falls back to the re-read when the list is
+empty, which is a fresh boot or the end of a season.
+MSG
+```
+
+- [ ] **Step 4: Bench check for Brandon**
+
+Add to the bench list: after a game finishes, confirm the panel moves to the
+next game's card without waiting 30 minutes, and that it does not flip back.
+
+---
+
 ## Task 7: Wi-Fi lost says so, and Bluetooth comes back (spec part 1, first half)
 
 The panel keeps drawing the last score with the ticker scrolling when Wi-Fi is
