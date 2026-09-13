@@ -883,11 +883,32 @@ void GamedayComponent::start_job_() {
     return;
   }
   if (this->post_since_ms_ != 0 && (now - this->post_since_ms_) >= POST_LINGER) {
-    // Game is over and lingered: look for the next one.
+    // Game is over and lingered: look for the next one. Re-reading the team
+    // endpoint is not enough on its own, because it can keep pointing at a
+    // game that finished hours ago. The season schedule lists only games that
+    // have not started, so prefer it when it has one.
+    int64_t tnow = (int64_t) this->time_->timestamp_now();
+    const ::espn::Upcoming *next = nullptr;
+    for (const auto &u : this->upcoming_) {
+      if (u.kickoff_epoch > tnow && u.event_id != this->game_.event_id) {
+        next = &u;
+        break;
+      }
+    }
     this->prev_ = GameSnapshot{};
     this->game_ = GameSnapshot{};
     this->post_since_ms_ = 0;
-    j.need_schedule = true;
+    if (next != nullptr) {
+      ESP_LOGI(TAG, "Game is over: taking event %s from the season schedule", next->event_id.c_str());
+      // group, colors and the record are team properties from the team
+      // endpoint and stay valid; only the event moves.
+      this->schedule_.event_id = next->event_id;
+      this->schedule_.kickoff_epoch = next->kickoff_epoch;
+      this->schedule_fetched_ms_ = now == 0 ? 1 : now;
+      this->upcoming_due_ = true;  // the list just lost an entry: refresh it
+    } else {
+      j.need_schedule = true;  // no list yet: a fresh boot or the end of a season
+    }
   }
   j.schedule = this->schedule_;
   this->job_done_ = false;
@@ -1034,27 +1055,6 @@ void GamedayComponent::apply_job_() {
   this->prev_ = this->game_;
   this->game_ = j.game;
   this->mark_good_poll_();
-  // Never sit on last week's game. If the event we are polling finished
-  // hours ago, the team endpoint has moved on: re-read it now instead of
-  // waiting out the POST linger. ESPN can keep pointing at a finished game
-  // for a while, so a re-read is allowed only once per linger window: the
-  // condition is a pure function of what ESPN returns, and re-reading on
-  // every poll would spin on the same event with no delay between fetches.
-  {
-    int64_t tnow = (int64_t) this->time_->timestamp_now();
-    bool long_final = this->game_.state == GameState::POST && this->game_.kickoff_epoch != 0 &&
-                      tnow - this->game_.kickoff_epoch > 6 * 3600;
-    if (!this->live_mode_() && long_final && (now - this->schedule_fetched_ms_) >= POST_LINGER) {
-      ESP_LOGI(TAG, "Polled game is long over, re-reading the schedule");
-      this->schedule_ = Schedule{};  // invalid: the next cycle must re-read it
-      this->post_since_ms_ = 0;
-      this->prev_ = GameSnapshot{};
-      this->game_ = GameSnapshot{};
-      this->emit_({});
-      this->schedule_next_(0);
-      return;
-    }
-  }
   ::espn::Splash splash =
       ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(), this->live_mode_());
   if (this->game_.state == GameState::POST) {
