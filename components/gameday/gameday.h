@@ -300,8 +300,12 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void start_fav_job_(uint32_t now);
   void apply_fav_job_(uint32_t now);
   uint32_t live_away_id_{0};      // the followed live game's away team
-  uint32_t live_started_ms_{0};   // when the current live game was picked
+  uint32_t live_started_ms_{0};   // when the current live game was picked,
+                                  // or, in the fallback, when the last scan ran
   bool live_none_{false};         // last scan found nothing in progress
+  // A live mode with nothing live: the board shows the saved team's card and
+  // keeps scanning. The mode the owner picked does not change.
+  bool live_fallback_{false};
 
   Schedule schedule_;
   uint32_t schedule_fetched_ms_{0};
