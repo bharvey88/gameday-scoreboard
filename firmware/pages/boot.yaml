@@ -118,9 +118,9 @@ script:
               // Normal connect: point at the Game Day app first, the
               // hostname is only a fallback for typing the address by hand.
               if (wide)
-                id(boot_set_lines).execute("GAME DAY APP", "or visit", id(gameday_ctl).hostname(), "", false);
+                id(boot_set_lines).execute("GAME DAY APP", "or visit", id(gameday_ctl).hostname() + ".local", "", false);
               else
-                id(boot_set_lines).execute("GAME DAY", "APP", id(gameday_ctl).hostname(), "", false);
+                id(boot_set_lines).execute("GAME DAY", "APP", id(gameday_ctl).hostname() + ".local", "", false);
             }
             if (id(boot_ip_shown_ms) == 0) {
               id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
