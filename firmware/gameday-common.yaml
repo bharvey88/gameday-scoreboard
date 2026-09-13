@@ -137,7 +137,40 @@ wifi:
   # the saved network, so the panel re-enters setup mode and BLE turns back
   # on next boot without any extra logic here.
   on_connect:
+    - script.stop: gd_ble_grace
     - ble.disable:
+    - lambda: |-
+        ESP_LOGI("wifi", "Connected. Internal heap free: %u bytes",
+                 (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  # Wi-Fi is gone. Turn Bluetooth back on so the Game Day app can find the
+  # panel and hand it new credentials (a changed router password is the
+  # common case, and there is no other way back in), and say so on the
+  # screen instead of leaving a stale score up. boot_check's poll repaints
+  # the normal lines by itself once Wi-Fi returns, so a router reboot
+  # resolves with no reboot of our own.
+  on_disconnect:
+    - script.execute: gd_ble_grace
+    - script.execute: boot_wifi_lost
+    - lambda: |-
+        ESP_LOGW("wifi", "Disconnected. Internal heap free: %u bytes",
+                 (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+
+script:
+  # Bluetooth back on, but not for every two second blip. Bringing Bluedroid
+  # up and down is a large internal-RAM alloc and free each time, and that
+  # churn is the v1.3.4 territory this release is stepping back into, so do
+  # it once the panel is properly off the network instead of on every flap.
+  # The wait costs no recovery time: ble.enable alone does not advertise.
+  # esp32_improv only starts when the Wi-Fi component calls its start(),
+  # which it does after the panel has been offline for wifi_timeout (90s by
+  # default), so a stack that comes up at 30s is still a minute early.
+  # on_connect stops this script, so a blip shorter than the delay never
+  # touches Bluetooth at all.
+  - id: gd_ble_grace
+    mode: restart
+    then:
+      - delay: 30s
+      - ble.enable:
 
 captive_portal:
 
@@ -432,6 +465,19 @@ sensor:
       #include "esp_heap_caps.h"
       return (float) heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024;
     disabled_by_default: true
+  # Not disabled_by_default, unlike the PSRAM one above: internal RAM is what
+  # ran out in v1.3.4, and Bluetooth coming back on a Wi-Fi drop is what can
+  # run it out again, so this one is visible without anyone enabling it.
+  - platform: template
+    name: "Free Heap (internal)"
+    device_class: data_size
+    state_class: measurement
+    entity_category: diagnostic
+    unit_of_measurement: "KiB"
+    update_interval: 30s
+    lambda: |-
+      #include "esp_heap_caps.h"
+      return (float) heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
   - platform: wifi_signal
     name: RSSI
     update_interval: 60s

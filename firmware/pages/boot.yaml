@@ -33,6 +33,12 @@ globals:
   - id: boot_hold_stage
     type: int
     initial_value: '0'
+  # True from the moment Wi-Fi drops until it is back. boot_check repaints the
+  # overlay twice a second, so the Wi-Fi lost lines have to come out of the
+  # poll itself, not just out of the one-shot boot_wifi_lost script below.
+  - id: boot_wifi_was_lost
+    type: bool
+    initial_value: 'false'
 
 script:
   # Positions and fonts for the current panel width
@@ -100,6 +106,7 @@ script:
           auto *w = wifi::global_wifi_component;
           if (w == nullptr) return;
           if (w->is_connected()) {
+            id(boot_wifi_was_lost) = false;
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
             if (via_button) {
               // Boot button hold: always the full address, never the app hint.
@@ -140,6 +147,15 @@ script:
               id(boot_set_lines).execute("On your phone, join WiFi", "Game Day Scoreboard", "a setup page will open", "", true);
             else
               id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
+          } else if (id(boot_wifi_was_lost)) {
+            // Wi-Fi we already had went away. Keep saying so rather than
+            // "Connecting to <network>", which reads like a first boot and
+            // does not tell the customer what to do about it.
+            const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+            if (wide)
+              id(boot_set_lines).execute("Wi-Fi lost", "open the", "Game Day app", "", true);
+            else
+              id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
           } else {
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
             char ssid[wifi::SSID_BUFFER_SIZE];
@@ -216,6 +232,40 @@ script:
             id(boot_hold_stage) = 1;
             id(boot_show_address).execute();
           }
+
+  # Wi-Fi went away. Undo boot_hide, cancel any pending hide, and say what
+  # happened instead of leaving a stale score on the board. Bluetooth is
+  # switched back on by the wifi: on_disconnect handler so the app can find
+  # the panel again, exactly as it does on a fresh unit.
+  - id: boot_wifi_lost
+    then:
+      # boot_refresh only arms the hide timer when boot_ip_shown_ms is 0, so
+      # clearing it lets the overlay hide itself again normally once Wi-Fi
+      # comes back. The flag is what keeps the lines below on the screen:
+      # boot_check would otherwise repaint over them within half a second.
+      - lambda: |-
+          id(boot_ip_shown_ms) = 0;
+          id(boot_wifi_was_lost) = true;
+      # Stage 2 is the "keep holding to reset Wi-Fi" warning, which owns both
+      # the lines and the bar and stopped boot_check for exactly this reason.
+      # Do not repaint over a warning that is about to erase the network.
+      # boot_refresh picks these lines up from the flag when it next runs.
+      - if:
+          condition:
+            lambda: 'return id(boot_hold_stage) < 2;'
+          then:
+            - component.resume: boot_check
+            - component.resume: boot_anim
+            - script.stop: boot_hide_later
+            - lvgl.obj.update:
+                id: boot_overlay
+                hidden: false
+            - lambda: |-
+                const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+                if (wide)
+                  id(boot_set_lines).execute("Wi-Fi lost", "open the", "Game Day app", "", true);
+                else
+                  id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
 
 interval:
   - interval: 500ms
