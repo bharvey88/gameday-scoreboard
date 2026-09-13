@@ -136,7 +136,7 @@ inline void adopt_league(Schedule &s, League league) { s.league = (uint8_t) leag
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `make -C tests`
-Expected: `191 checks, 0 failures` (186 baseline + 5 new).
+Expected: `192 checks, 0 failures` (186 baseline + 6 new).
 
 - [ ] **Step 5: Stamp the league where the schedule is fetched**
 
@@ -528,7 +528,7 @@ In `rebuild_state_()`, after `doc["misses"] = this->misses_;`, add:
 - [ ] **Step 6: Verify it configures and the host tests still pass**
 
 Run: `make -C tests && ~/development/tools/esphome-venv/bin/esphome config firmware/gameday.yaml >/dev/null && echo OK`
-Expected: `191 checks, 0 failures` then `OK`.
+Expected: `192 checks, 0 failures` then `OK`.
 
 - [ ] **Step 7: Commit**
 
@@ -653,7 +653,7 @@ before the early return.
 - [ ] **Step 6: Verify it configures and the host tests still pass**
 
 Run: `make -C tests && ~/development/tools/esphome-venv/bin/esphome config firmware/gameday.yaml >/dev/null && echo OK`
-Expected: `191 checks, 0 failures` then `OK`.
+Expected: `192 checks, 0 failures` then `OK`.
 
 - [ ] **Step 7: Commit**
 
@@ -1048,7 +1048,7 @@ change and reset already funnels through. Add to it, next to `live_none_`:
 - [ ] **Step 8: Verify it configures and the host tests still pass**
 
 Run: `make -C tests && ~/development/tools/esphome-venv/bin/esphome config firmware/gameday.yaml >/dev/null && echo OK`
-Expected: `191 checks, 0 failures` then `OK`.
+Expected: `192 checks, 0 failures` then `OK`.
 
 - [ ] **Step 9: Commit**
 
@@ -1140,7 +1140,7 @@ Expected: one hit each. A tag without a matching section fails CI.
 - [ ] **Step 4: Final full check**
 
 Run: `make -C tests && ~/development/tools/esphome-venv/bin/esphome config firmware/gameday.yaml >/dev/null && echo OK`
-Expected: `191 checks, 0 failures` then `OK`.
+Expected: `192 checks, 0 failures` then `OK`.
 
 - [ ] **Step 5: Commit**
 
