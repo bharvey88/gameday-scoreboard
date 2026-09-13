@@ -16,7 +16,10 @@
 - Commit as `bharvey88 <8107750+bharvey88@users.noreply.github.com>`, no Claude credit, multi-line messages via `git commit -F`.
 - Host tests: `make -C tests`. Baseline before any change is **186 checks, 0 failures**.
 - Config check (no flash): `~/development/tools/esphome-venv/bin/esphome config firmware/gameday.yaml`
-- Rebuild the page bundle after touching `firmware/web/app.js`: `python scripts/build_web.py`
+- Rebuild the page bundle after touching `firmware/web/app.js`:
+  `/Users/harvey/development/tools/esphome-venv/bin/python scripts/build_web.py`
+  NOT bare `python3`: this Mac's system python3 is 3.9.6 and the script uses the
+  `newline=` kwarg of `Path.write_text()`, which needs 3.10+. The venv is 3.12.
 - Read-only on the live panel unless Brandon asks. GET only, no POSTs.
 - Nothing is verified until Brandon runs the bench. Do not claim a part works.
 
