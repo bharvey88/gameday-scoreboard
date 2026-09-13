@@ -30,6 +30,9 @@ globals:
   - id: boot_button_press_ms
     type: uint32_t
     initial_value: '0'
+  - id: boot_hold_stage
+    type: int
+    initial_value: '0'
 
 script:
   # Positions and fonts for the current panel width
@@ -173,6 +176,47 @@ script:
       - delay: 20s
       - script.execute: boot_hide
 
+  # Boot button held down: stage 1 shows the address, stage 2 warns that a
+  # reset is coming with a bar that fills from 5s to 10s, stage 3 resets.
+  # Timed from the press so the customer sees the warning before anything
+  # is erased.
+  - id: boot_hold_tick
+    then:
+      - lambda: |-
+          if (id(boot_button_press_ms) == 0) return;
+          const uint32_t held = millis() - id(boot_button_press_ms);
+          if (held >= 10000) {
+            if (id(boot_hold_stage) == 3) return;
+            id(boot_hold_stage) = 3;
+            id(boot_set_lines).execute("Wi-Fi reset", "restarting", "", "", false);
+            id(boot_button_press_ms) = 0;
+            id(reset_wifi).press();
+            return;
+          }
+          if (held >= 5000) {
+            if (id(boot_hold_stage) != 2) {
+              id(boot_hold_stage) = 2;
+              // component.suspend maps to stop_poller() on a PollingComponent;
+              // there is no suspend() method to call from a lambda.
+              id(boot_anim).stop_poller();
+              // boot_check repaints the overlay twice a second. On a panel
+              // whose overlay is still up (first boot, or the 45s setup hint)
+              // it would overwrite this warning as fast as we draw it. It is
+              // not resumed on release: boot_show_address ends in boot_hide,
+              // which suspends it anyway, so this is where it would land.
+              id(boot_check).stop_poller();
+              id(boot_set_lines).execute("Keep holding", "to reset", "Wi-Fi", "", true);
+            }
+            int pct = (int) ((held - 5000) / 50);  // 5000ms span -> 0..100
+            if (pct > 100) pct = 100;
+            lv_bar_set_value(id(boot_bar), pct, LV_ANIM_OFF);
+            return;
+          }
+          if (held >= 1500 && id(boot_hold_stage) < 1) {
+            id(boot_hold_stage) = 1;
+            id(boot_show_address).execute();
+          }
+
 interval:
   - interval: 500ms
     startup_delay: 500ms
@@ -188,6 +232,10 @@ interval:
           id(boot_bar_value) = (id(boot_bar_value) + 3) % 130;
           int v = id(boot_bar_value) > 100 ? 100 : id(boot_bar_value);
           lv_bar_set_value(id(boot_bar), v, LV_ANIM_OFF);
+  - interval: 100ms
+    id: boot_hold_check
+    then:
+      - script.execute: boot_hold_tick
 
 # Bluetooth setup (esp32_improv, configured in gameday-common.yaml) starts
 # advertising about a second after a boot with no saved network, and the
@@ -225,19 +273,24 @@ esp32_improv:
         id: boot_refresh
         via_button: false
 
-# Boot button: a short hold (>=1.5s) brings the address back, a long hold
-# (>=10s) resets WiFi instead. Timed by hand (millis() on press, compared on
-# release) rather than on_multi_click, so the two behaviors stay exclusive.
+# Boot button: the hold is timed from the press so the panel can warn before
+# it erases anything. 1.5s shows the address, 5s starts the "keep holding"
+# warning with a filling bar, 10s resets Wi-Fi. Releasing before 10s leaves
+# the address up for 20s as before and resets nothing.
 binary_sensor:
   - id: !extend power_button
     on_press:
-      - lambda: 'id(boot_button_press_ms) = millis();'
+      - lambda: |-
+          id(boot_button_press_ms) = millis() == 0 ? 1 : millis();
+          id(boot_hold_stage) = 0;
     on_release:
       - lambda: |-
-          uint32_t held = millis() - id(boot_button_press_ms);
-          if (held >= 10000) {
-            id(reset_wifi).press();
-          } else if (held >= 1500) {
+          const bool warned = id(boot_hold_stage) == 2;
+          id(boot_button_press_ms) = 0;
+          id(boot_hold_stage) = 0;
+          if (warned) {
+            // Back out of the warning: restore the address screen and its bar.
+            id(boot_anim).start_poller();
             id(boot_show_address).execute();
           }
 
