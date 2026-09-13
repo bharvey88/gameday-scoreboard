@@ -12,7 +12,7 @@ cycle nobody told them about. Separately, a college team in a favorite slot
 never shows a game, and the boot screen prints an address that does not work
 when typed, next to a button that erases Wi-Fi with no warning.
 
-Six fixes, one release. No security changes: the panel trusts the home
+Seven fixes, one release. No security changes: the panel trusts the home
 network, and that stays as it is (say so in the README).
 
 ## 1. Wi-Fi lost
@@ -114,6 +114,33 @@ so ESPN was answering and the firmware was polling the wrong event.
   that dies silently blocks the loop forever and Refresh Now cannot clear it.
 - Bench: (h) set the team to one that played yesterday, wait past the final
   linger, confirm the next game card appears within one poll.
+
+## 7. Live modes fall back to your team
+
+Field report 2026-09-13: the panel sat in "Live college" on an NFL Sunday
+showing nothing useful, because the mode means "a live college game or
+nothing". `components/gameday/gameday.cpp` (start_job_ ~825, apply_job_
+~926 live branch ~938-984, emit_ ~1027, rebuild_state_ ~1221).
+
+- When a live scan returns zero games, the panel shows the My team card
+  for the saved team: live if that team is playing, otherwise its next-game
+  card with kickoff and odds, exactly as My team mode draws it. The ticker
+  gets a leading `No live college games, showing DAL |` (league named from
+  the mode). Mode stays what the customer chose; the state document adds
+  `fallback: true` so the page and app can show the same note on the mode
+  row.
+- The scan keeps running every 2 minutes (`NO_LIVE_RESCAN`). The first scan
+  that finds a game switches back to it; when that game ends the existing
+  rotate and rescan logic applies, and an empty scan drops back to the team
+  card.
+- In the fallback the team card polls on the My team schedule (schedule
+  re-read, POST linger, intervals by phase) so it is never a stale card.
+- No team saved (fresh unit): keep today's text, "No live college games
+  right now".
+- Bench: (i) Live college on a Sunday shows the DAL next-game card with the
+  note; (j) Live NFL on a Saturday the same; (k) switch to Live college on a
+  Saturday morning before kickoff, see the DAL card, see it replaced by the
+  first live college game.
 
 ## Not in this release
 
