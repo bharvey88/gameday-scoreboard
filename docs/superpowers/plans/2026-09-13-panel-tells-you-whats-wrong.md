@@ -359,14 +359,10 @@ In the `script:` block, after `boot_show_address`, add:
       - lambda: |-
           if (id(boot_button_press_ms) == 0) return;
           const uint32_t held = millis() - id(boot_button_press_ms);
-          const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
           if (held >= 10000) {
             if (id(boot_hold_stage) == 3) return;
             id(boot_hold_stage) = 3;
-            if (wide)
-              id(boot_set_lines).execute("Wi-Fi reset", "restarting", "", "", false);
-            else
-              id(boot_set_lines).execute("Wi-Fi reset", "restarting", "", "", false);
+            id(boot_set_lines).execute("Wi-Fi reset", "restarting", "", "", false);
             id(boot_button_press_ms) = 0;
             id(reset_wifi).press();
             return;
@@ -374,11 +370,10 @@ In the `script:` block, after `boot_show_address`, add:
           if (held >= 5000) {
             if (id(boot_hold_stage) != 2) {
               id(boot_hold_stage) = 2;
-              id(boot_anim).suspend();
-              if (wide)
-                id(boot_set_lines).execute("Keep holding", "to reset", "Wi-Fi", "", true);
-              else
-                id(boot_set_lines).execute("Keep holding", "to reset", "Wi-Fi", "", true);
+              // component.suspend maps to stop_poller() on a PollingComponent;
+              // there is no suspend() method to call from a lambda.
+              id(boot_anim).stop_poller();
+              id(boot_set_lines).execute("Keep holding", "to reset", "Wi-Fi", "", true);
             }
             int pct = (int) ((held - 5000) / 50);  // 5000ms span -> 0..100
             if (pct > 100) pct = 100;
@@ -424,7 +419,7 @@ binary_sensor:
           id(boot_hold_stage) = 0;
           if (warned) {
             // Back out of the warning: restore the address screen and its bar.
-            id(boot_anim).resume();
+            id(boot_anim).start_poller();
             id(boot_show_address).execute();
           }
 ```
