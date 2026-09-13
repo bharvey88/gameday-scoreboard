@@ -373,6 +373,12 @@ In the `script:` block, after `boot_show_address`, add:
               // component.suspend maps to stop_poller() on a PollingComponent;
               // there is no suspend() method to call from a lambda.
               id(boot_anim).stop_poller();
+              // boot_check repaints the overlay twice a second. On a panel
+              // whose overlay is still up (first boot, or the 45s setup hint)
+              // it would overwrite this warning as fast as we draw it. It is
+              // not resumed on release: boot_show_address ends in boot_hide,
+              // which suspends it anyway, so this is where it would land.
+              id(boot_check).stop_poller();
               id(boot_set_lines).execute("Keep holding", "to reset", "Wi-Fi", "", true);
             }
             int pct = (int) ((held - 5000) / 50);  // 5000ms span -> 0..100
