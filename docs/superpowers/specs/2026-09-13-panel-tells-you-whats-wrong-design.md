@@ -1,6 +1,6 @@
 # The panel tells you what's wrong, v1.4.0
 
-Date: 2026-09-13. Status: draft for Brandon's review.
+Date: 2026-09-13. Status: approved by Brandon 2026-09-13, all seven parts, one release.
 
 ## Why
 
