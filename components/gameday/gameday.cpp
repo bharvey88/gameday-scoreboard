@@ -285,8 +285,8 @@ void GamedayComponent::select_mode(const std::string &option) {
 }
 
 void GamedayComponent::set_rotate_minutes(int minutes) {
-  if (minutes < 2)
-    minutes = 2;
+  if (minutes < 1)
+    minutes = 1;
   if (minutes > 30)
     minutes = 30;
   if (minutes == this->prefs2_.rotate_minutes)
