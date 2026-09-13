@@ -107,6 +107,12 @@ const char *state_name(GameState s);
 // have no clock (Halftime, End of 3rd, Delayed).
 std::string clock_text(const GameSnapshot &s);
 
+// The team endpoint does not say which league answered, so a freshly parsed
+// Schedule carries league 0 (NFL). Favorites and the live modes choose the
+// follow-up scoreboard endpoint from Schedule::league, so it must be stamped
+// from the team the schedule was fetched for.
+inline void adopt_league(Schedule &s, League league) { s.league = (uint8_t) league; }
+
 }  // namespace espn
 
 // Streaming entry points live in the header because they are templates on

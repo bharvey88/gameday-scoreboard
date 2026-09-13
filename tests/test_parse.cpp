@@ -452,6 +452,24 @@ static void test_favorites() {
   CHECK_EQ(c.index, 0);
 }
 
+// A schedule parsed from the team endpoint does not know its own league, so
+// the caller has to stamp it. Without the stamp a college favorite polls the
+// NFL scoreboard and never finds its game.
+static void test_schedule_league() {
+  std::string json = slurp("fixtures/team_ncaa_bc.json");
+  Schedule s;
+  CHECK(parse_team_str(json, s));
+  CHECK(s.valid);
+  CHECK_EQ((int) s.league, 0);  // documents the gap: 0 is League::NFL
+
+  adopt_league(s, League::NCAA);
+  CHECK_EQ((int) s.league, (int) League::NCAA);
+
+  std::string url = scoreboard_url((League) s.league, s.group, s.kickoff_epoch);
+  CHECK(url.find("/college-football/") != std::string::npos);
+  CHECK(url.find("/nfl/") == std::string::npos);
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -467,6 +485,7 @@ int main() {
   test_clock_text();
   test_color();
   test_favorites();
+  test_schedule_league();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

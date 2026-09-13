@@ -481,7 +481,7 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
       return;
     }
     e.sched = j.schedule;
-    e.sched.league = (uint8_t) e.team->league;
+    ::espn::adopt_league(e.sched, e.team->league);
     e.stale = false;
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for %s", e.team->abbr);
@@ -914,6 +914,7 @@ void GamedayComponent::run_job_() {
     if (!j.schedule_ok)
       return;
     j.schedule = s;
+    ::espn::adopt_league(j.schedule, j.team->league);
     if (s.event_id.empty()) {
       j.no_event = true;
       return;
