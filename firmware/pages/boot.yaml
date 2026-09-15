@@ -2,12 +2,19 @@
 # and has shown its connect hint for a while; the boot button brings the
 # full address back.
 #
-# Three states, driven by the real WiFi state every half second. Each is a
-# title plus up to four lines: small, big, small, small.
+# Four states, driven by the real WiFi state every half second. Each is a
+# title plus up to four lines: small, big, small, small. boot_refresh tests
+# them in this order: connected, wifi lost, hotspot up, connecting.
 #
+#   connected      GAME DAY APP / or visit / gameday-2f6a70
+#   wifi lost      Wi-Fi lost / open the / Game Day app
 #   hotspot up     On your phone, join WiFi / Game Day Scoreboard / a setup page will open
 #   connecting     Connecting to / <network name>
-#   connected      GAME DAY APP / or visit / gameday-2f6a70
+#
+# "wifi lost" means the panel has a saved network and is not on it, either
+# because it dropped or because it never came up this boot. It sits above the
+# hotspot state on purpose: an owner whose settings are fine should never be
+# told to re-provision the panel.
 #
 # A fresh panel keeps that hint up for 45 seconds, or until a team is
 # picked. A panel that already has a team flashes it for 3 seconds (or skips
@@ -33,12 +40,14 @@ globals:
   - id: boot_hold_stage
     type: int
     initial_value: '0'
-  # True from the moment Wi-Fi drops until it is back. boot_check repaints the
-  # overlay twice a second, so the Wi-Fi lost lines have to come out of the
-  # poll itself, not just out of the one-shot boot_wifi_lost script below.
-  - id: boot_wifi_was_lost
-    type: bool
-    initial_value: 'false'
+  # millis() at the last moment the panel was seen on its saved network this
+  # boot, 0 if it has never been on it. Read by boot_refresh and boot_hide to
+  # work out whether Wi-Fi is lost; nothing latches that as a flag, because a
+  # flag does not survive the ten minute offline restart in gameday-common.yaml
+  # and never gets set at all on a boot that never connects.
+  - id: boot_last_connected_ms
+    type: uint32_t
+    initial_value: '0'
 
 script:
   # Positions and fonts for the current panel width
@@ -105,8 +114,28 @@ script:
       - lambda: |-
           auto *w = wifi::global_wifi_component;
           if (w == nullptr) return;
+          // Lost means: there is a real saved network and the panel is not on
+          // it. Derived from the live Wi-Fi state every time rather than
+          // latched, so it is still right after the ten minute offline restart
+          // and on a cold boot with the router already down.
+          //
+          // Two cases, deliberately different. Connected at some point this
+          // boot and not now is a drop: say so immediately, the owner is
+          // watching a board that just stopped updating. Never connected this
+          // boot could just be a panel still coming up, so wait out a grace
+          // period first. Association normally takes a few seconds, 30 leaves
+          // room for a scan and a retry without ever flashing the alarm on a
+          // healthy boot, and it is a full minute short of the 90s fallback AP
+          // so the message is up long before the hotspot text could appear.
+          //
+          // The blank-SSID half of have_creds is what keeps a panel out of
+          // here after "Reset Wi-Fi": that button saves an empty network, which
+          // still counts as has_sta(), and that panel is in setup, not in
+          // trouble. Mirrored in boot_hide below.
+          const bool have_creds = w->has_sta() && !w->get_sta().get_ssid().empty();
+          const bool lost = have_creds && (id(boot_last_connected_ms) != 0 || millis() > 30000);
           if (w->is_connected()) {
-            id(boot_wifi_was_lost) = false;
+            id(boot_last_connected_ms) = millis() == 0 ? 1 : millis();
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
             if (via_button) {
               // Boot button hold: always the full address, never the app hint.
@@ -141,14 +170,11 @@ script:
               else
                 id(boot_hide).execute();
             }
-          } else if (id(boot_wifi_was_lost) && w->has_sta() && !w->get_sta().get_ssid().empty()) {
+          } else if (lost) {
             // Tested before the hotspot branch below on purpose. The fallback AP
             // starts 90 seconds into any outage, so that branch would otherwise
             // take over for the rest of the outage and tell an owner whose
             // settings are perfectly fine to go re-provision the panel.
-            // The blank-SSID test is what keeps a genuinely unprovisioned panel
-            // out of here: "Reset Wi-Fi" saves an empty network, which still
-            // counts as has_sta(), and that panel is in setup, not in trouble.
             //
             // Wi-Fi we already had went away. Keep saying so rather than
             // "Connecting to <network>", which reads like a first boot and
@@ -186,9 +212,13 @@ script:
             lambda: |-
               // Wi-Fi is still gone: the overlay is the only thing telling the
               // owner why the scores stopped. Never hide it out from under
-              // them, whatever asked for the hide.
+              // them, whatever asked for the hide. Same derived test as
+              // boot_refresh above, so the two cannot disagree about whether
+              // the panel is in an outage.
               auto *w = wifi::global_wifi_component;
-              return w != nullptr && !w->is_connected() && id(boot_wifi_was_lost);
+              if (w == nullptr || w->is_connected()) return false;
+              const bool have_creds = w->has_sta() && !w->get_sta().get_ssid().empty();
+              return have_creds && (id(boot_last_connected_ms) != 0 || millis() > 30000);
           then:
             - component.resume: boot_check
             - component.resume: boot_anim
@@ -266,15 +296,16 @@ script:
     then:
       # boot_refresh only arms the hide timer when boot_ip_shown_ms is 0, so
       # clearing it lets the overlay hide itself again normally once Wi-Fi
-      # comes back. The flag is what keeps the lines below on the screen:
-      # boot_check would otherwise repaint over them within half a second.
+      # comes back. What keeps the lines below on the screen is boot_refresh
+      # deriving the same lost state from the Wi-Fi component on its next
+      # 500ms tick; this script only exists to paint them now instead of up to
+      # half a second from now.
       - lambda: |-
           id(boot_ip_shown_ms) = 0;
-          id(boot_wifi_was_lost) = true;
       # Stage 2 is the "keep holding to reset Wi-Fi" warning, which owns both
       # the lines and the bar and stopped boot_check for exactly this reason.
       # Do not repaint over a warning that is about to erase the network.
-      # boot_refresh picks these lines up from the flag when it next runs.
+      # boot_refresh derives these same lines when it next runs.
       - if:
           condition:
             lambda: 'return id(boot_hold_stage) < 2;'
