@@ -39,6 +39,15 @@ static const uint32_t RETRY_INTERVAL = MINUTE;
 static const uint32_t NOT_READY_INTERVAL = 5 * 1000;
 static const int64_t PRE_NEAR_SECONDS = 60 * 60;
 static const uint32_t NO_LIVE_RESCAN = 2 * MINUTE;
+// How long the loop waits on a worker task before writing it off. A job chains
+// at most two requests (schedule then game, or the NFL then the NCAA
+// scoreboard). http_request in gameday-common.yaml allows each one 20s, with a
+// 30s watchdog_timeout as the hard ceiling, so two requests can legitimately
+// spend 60s on the network alone. Add the TLS handshakes and the streamed
+// parse of a Saturday NCAA scoreboard and the old 60s deadline was under the
+// worst honest case, not over it. 2 x watchdog_timeout for the network plus
+// 60s for handshakes and parsing leaves only a genuinely wedged worker here.
+static const uint32_t WORKER_DEADLINE = 120 * 1000;
 
 static const char *const MODE_OPTIONS[] = {"My team", "Live NFL", "Live college", "Live anything", "Favorite teams"};
 static const uint32_t FAV_TICK = 1000;  // playlist / lock decisions re-run this often
@@ -549,9 +558,12 @@ void GamedayComponent::loop() {
   if (this->busy_) {
     if (!this->job_done_) {
       // A worker that died without setting job_done_ would block the loop
-      // forever and Refresh Now could never clear it. Give up after 60s.
-      if (this->busy_since_ms_ != 0 && (millis() - this->busy_since_ms_) >= 60000) {
-        ESP_LOGW(TAG, "Fetch task did not finish in 60s, giving up on it");
+      // forever and Refresh Now could never clear it. Give up eventually, but
+      // not before a slow-but-honest job could have finished: abandoning a
+      // live worker is what makes the accepted run_job_/job_ write race
+      // reachable, and that must stay out of reach on a merely slow network.
+      if (this->busy_since_ms_ != 0 && (millis() - this->busy_since_ms_) >= WORKER_DEADLINE) {
+        ESP_LOGW(TAG, "Fetch task did not finish in %us, giving up on it", (unsigned) (WORKER_DEADLINE / 1000));
         this->busy_ = false;
         this->busy_since_ms_ = 0;
         this->worker_seq_++;  // a late finisher must not signal job_done_
@@ -1032,7 +1044,12 @@ void GamedayComponent::apply_job_() {
         this->live_none_ = true;
         this->live_fallback_ = true;
         this->live_started_ms_ = now == 0 ? 1 : now;  // start the rescan clock
-        this->mark_good_poll_();
+        // No freshness marking here on purpose. What is on the board in the
+        // fallback is the saved team's card, and only a poll of that card can
+        // say how old it is. Marking a scan good here reset misses_ every
+        // rescan, so a failing game endpoint never reached the three misses
+        // the ticker warns at, and stale_s stayed near zero under a frozen
+        // score. The card's own poll below marks it good when it lands.
         if (already) {
           // The card is already on the board: leave it there, and let the My
           // team path keep polling it rather than reloading it every scan.
@@ -1060,7 +1077,12 @@ void GamedayComponent::apply_job_() {
       this->schedule_ = Schedule{};
       this->game_ = GameSnapshot{};
       this->prev_ = GameSnapshot{};
-      this->mark_good_poll_();
+      // The scan itself came back clean, so there is no run of failures to
+      // report: clear the miss count. last_good_ms_ stays where it was,
+      // because no game data was applied - there is no card on the board to
+      // be fresh or stale. Nothing polls a game in this state, so clearing
+      // the count here cannot hide a failing game poll.
+      this->misses_ = 0;
       this->emit_({});
       this->schedule_next_(NO_LIVE_RESCAN);
       return;
@@ -1104,7 +1126,10 @@ void GamedayComponent::apply_job_() {
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
-      this->mark_good_poll_();
+      // Same as the no-live-games case: the schedule fetch succeeded, so the
+      // failure run is over, but no GameSnapshot was applied and the board
+      // has no score whose age last_good_ms_ could describe.
+      this->misses_ = 0;
       this->emit_({});
       this->schedule_next_(0);
       return;
@@ -1190,10 +1215,17 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   if (this->prefs2_.mode == (uint8_t) Mode::FAVORITES && this->fav_.empty())
     f.status_text = "Favorites: add teams on the page | " + f.status_text;
   if (this->misses_ >= 3) {
-    uint32_t mins = this->stale_seconds_() / 60;
-    if (mins < 1)
-      mins = 1;
-    f.status_text += " | no update for " + std::to_string(mins) + " min";
+    if (!this->ever_polled_good_()) {
+      // Nothing has ever come back, so there is no age to quote. Saying "no
+      // update for 1 min" here was wrong however long the panel had been
+      // trying, on a screen someone is reading because something is broken.
+      f.status_text += " | no update yet";
+    } else {
+      uint32_t mins = this->stale_seconds_() / 60;
+      if (mins < 1)
+        mins = 1;
+      f.status_text += " | no update for " + std::to_string(mins) + " min";
+    }
   }
   // Until a team has been picked once, the ticker says where the setup page is.
   if (!this->flag_(FLAG_SETUP) && network::is_connected()) {

@@ -250,11 +250,15 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     this->misses_ = 0;
     this->last_good_ms_ = millis() == 0 ? 1 : millis();
   }
-  // Seconds since the last good poll, 0 when fresh or when nothing has
-  // succeeded yet (the Wi-Fi lost overlay covers that case).
+  // True once a poll has actually put game data on the board this boot.
+  bool ever_polled_good_() const { return this->last_good_ms_ != 0; }
+  // Seconds since the last good poll. With nothing ever polled, report the
+  // time since boot rather than 0: the board has had no update for its whole
+  // uptime, and 0 would read to the app as "fresh". Callers that need to
+  // phrase it for a person test ever_polled_good_() first.
   uint32_t stale_seconds_() const {
     if (this->last_good_ms_ == 0)
-      return 0;
+      return millis() / 1000;
     return (millis() - this->last_good_ms_) / 1000;
   }
 

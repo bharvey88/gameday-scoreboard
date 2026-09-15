@@ -140,6 +140,11 @@ wifi:
     - script.stop: gd_ble_grace
     - ble.disable:
     - lambda: |-
+        // Arms the ten minute offline restart below. Until the panel has been
+        // on its network once this boot there is nothing to recover, so that
+        // counter stays parked at zero.
+        id(gd_ever_connected) = true;
+        id(gd_offline_minutes) = 0;
         ESP_LOGI("wifi", "Connected. Internal heap free: %u bytes",
                  (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
   # Wi-Fi is gone. Turn Bluetooth back on so the Game Day app can find the
@@ -179,6 +184,16 @@ interval:
   # !has_ap()), so count the minutes here. Not armed on a panel with no
   # network to fail to reach: a fresh unit, or one whose credentials the
   # "Reset Wi-Fi" button blanked, is legitimately sitting in setup mode.
+  #
+  # Nor on a panel that has not been on its network yet this boot. Whole-house
+  # power restoration is the common case: the ESP32 is up in seconds and the
+  # router and the ISP take minutes, and a panel that restarted at the ten
+  # minute mark came back into the same wait and did it again, for as long as
+  # the outage lasted. ESPHome's own Wi-Fi retry is the thing doing useful
+  # work in that window, so leave it to it. That also caps this at one restart
+  # per outage without a counter: gd_ever_connected is not restored, so the
+  # panel that comes back from the restart is a panel that has not connected
+  # this boot.
   - interval: 60s
     then:
       - lambda: |-
@@ -188,6 +203,12 @@ interval:
           // empty SSID and the component loads it back as a configured
           // network, so the blank SSID is the second half of this test.
           if (w->is_connected() || !w->has_sta() || w->get_sta().get_ssid().empty()) {
+            id(gd_offline_minutes) = 0;
+            return;
+          }
+          // Never been on the network this boot: nothing has been lost, so
+          // there is nothing for a restart to recover. Keep waiting.
+          if (!id(gd_ever_connected)) {
             id(gd_offline_minutes) = 0;
             return;
           }
@@ -307,13 +328,25 @@ globals:
     type: std::string
     restore_value: no
     initial_value: '""'
-  # Minutes the panel has been off its saved network. Not restored: a panel
-  # that reboots for this reason starts the ten minutes over, so the worst
-  # case is one restart every ten minutes, not a tight loop.
+  # Minutes the panel has been off its saved network, counted only once it has
+  # been on that network at least once this boot. Not restored, and neither is
+  # gd_ever_connected: the panel that comes back from the offline restart has
+  # not connected this boot, so it waits and retries instead of restarting
+  # again. One restart per outage, which is what the CHANGELOG promises.
   - id: gd_offline_minutes
     type: int
     restore_value: no
     initial_value: '0'
+  # True once Wi-Fi has connected this boot (wifi: on_connect). Arms the
+  # restart above. Deliberately a second global rather than a read of
+  # boot_last_connected_ms in firmware/pages/boot.yaml: that one is maintained
+  # by the boot overlay's 500ms poll, which stops when the overlay hides, and
+  # the recovery restart should not depend on a display page being built into
+  # the image or on when that poll happens to be running.
+  - id: gd_ever_connected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
 
 # The device page talks to /gameday/state, /gameday/set and /gameday/action
 # (components/gameday). Only the entities worth having in Home Assistant stay.
