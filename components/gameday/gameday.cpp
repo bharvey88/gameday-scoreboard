@@ -39,6 +39,15 @@ static const uint32_t RETRY_INTERVAL = MINUTE;
 static const uint32_t NOT_READY_INTERVAL = 5 * 1000;
 static const int64_t PRE_NEAR_SECONDS = 60 * 60;
 static const uint32_t NO_LIVE_RESCAN = 2 * MINUTE;
+// How long the loop waits on a worker task before writing it off. A job chains
+// at most two requests (schedule then game, or the NFL then the NCAA
+// scoreboard). http_request in gameday-common.yaml allows each one 20s, with a
+// 30s watchdog_timeout as the hard ceiling, so two requests can legitimately
+// spend 60s on the network alone. Add the TLS handshakes and the streamed
+// parse of a Saturday NCAA scoreboard and the old 60s deadline was under the
+// worst honest case, not over it. 2 x watchdog_timeout for the network plus
+// 60s for handshakes and parsing leaves only a genuinely wedged worker here.
+static const uint32_t WORKER_DEADLINE = 120 * 1000;
 
 static const char *const MODE_OPTIONS[] = {"My team", "Live NFL", "Live college", "Live anything", "Favorite teams"};
 static const uint32_t FAV_TICK = 1000;  // playlist / lock decisions re-run this often
@@ -285,8 +294,8 @@ void GamedayComponent::select_mode(const std::string &option) {
 }
 
 void GamedayComponent::set_rotate_minutes(int minutes) {
-  if (minutes < 2)
-    minutes = 2;
+  if (minutes < 1)
+    minutes = 1;
   if (minutes > 30)
     minutes = 30;
   if (minutes == this->prefs2_.rotate_minutes)
@@ -455,6 +464,7 @@ void GamedayComponent::start_fav_job_(uint32_t now) {
     e.fetched_ms = now == 0 ? 1 : now;
   this->job_done_ = false;
   this->busy_ = true;
+  this->busy_since_ms_ = millis() == 0 ? 1 : millis();
   BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
   if (ok != pdPASS) {
     ESP_LOGW(TAG, "Could not start the fetch task");
@@ -481,7 +491,7 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
       return;
     }
     e.sched = j.schedule;
-    e.sched.league = (uint8_t) e.team->league;
+    ::espn::adopt_league(e.sched, e.team->league);
     e.stale = false;
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for %s", e.team->abbr);
@@ -506,7 +516,7 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
     e.final_epoch = 0;
   if (e.game.state == GameState::POST && old.valid && old.event_id == e.game.event_id && old.state != GameState::POST)
     e.final_epoch = tnow;
-  this->misses_ = 0;
+  this->mark_good_poll_();
   bool switched = this->fav_choose_(tnow);
   if (!switched && shown) {
     // Same game on the board: render the new poll with its splash.
@@ -523,7 +533,9 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
 uint32_t GamedayComponent::our_id_() const {
   if (this->job_.fav_index >= 0)
     return this->job_.our_id;
-  if (this->live_mode_())
+  // In the fallback the panel is showing the saved team's own game, so the
+  // snapshot is oriented around that team, exactly as in My team mode.
+  if (this->live_mode_() && !this->live_fallback_)
     return this->live_away_id_;
   const ::espn::Team *t = this->current_team_();
   return t ? t->espn_id : 0;
@@ -544,9 +556,25 @@ void GamedayComponent::loop() {
       return;
   }
   if (this->busy_) {
-    if (!this->job_done_)
+    if (!this->job_done_) {
+      // A worker that died without setting job_done_ would block the loop
+      // forever and Refresh Now could never clear it. Give up eventually, but
+      // not before a slow-but-honest job could have finished: abandoning a
+      // live worker is what makes the accepted run_job_/job_ write race
+      // reachable, and that must stay out of reach on a merely slow network.
+      if (this->busy_since_ms_ != 0 && (millis() - this->busy_since_ms_) >= WORKER_DEADLINE) {
+        ESP_LOGW(TAG, "Fetch task did not finish in %us, giving up on it", (unsigned) (WORKER_DEADLINE / 1000));
+        this->busy_ = false;
+        this->busy_since_ms_ = 0;
+        this->worker_seq_++;  // a late finisher must not signal job_done_
+        // Wait a full retry before starting another worker rather than
+        // stacking a second one on top of a task that may still be alive.
+        this->schedule_next_(RETRY_INTERVAL);
+      }
       return;
+    }
     this->busy_ = false;
+    this->busy_since_ms_ = 0;
     this->job_done_ = false;
     this->apply_job_();
     return;
@@ -655,7 +683,10 @@ void GamedayComponent::select_timezone(const std::string &option) {
 }
 
 void GamedayComponent::refresh_now() {
-  this->schedule_fetched_ms_ = 0;
+  // Read the team endpoint again, do not just re-poll the game already on
+  // the board: the owner presses this when the board looks wrong, and a
+  // moved, postponed or finished game only shows up in that read.
+  this->force_schedule_ = true;
   this->schedule_next_(0);
 }
 
@@ -705,8 +736,10 @@ void GamedayComponent::reset_game_() {
   this->live_away_id_ = 0;
   this->live_started_ms_ = 0;
   this->live_none_ = false;
+  this->live_fallback_ = false;
   this->schedule_ = Schedule{};
   this->schedule_fetched_ms_ = 0;
+  this->force_schedule_ = false;
   this->upcoming_.clear();
   this->upcoming_due_ = false;
   this->game_ = GameSnapshot{};
@@ -806,19 +839,33 @@ bool GamedayComponent::fetch_game_(const ::espn::Team *team, const Schedule &sch
 }
 
 uint32_t GamedayComponent::interval_for_phase_() const {
+  uint32_t ms;
   switch (this->game_.state) {
     case GameState::IN:
-      return IN_INTERVAL;
+      ms = IN_INTERVAL;
+      break;
     case GameState::POST:
-      return POST_INTERVAL;
+      ms = POST_INTERVAL;
+      break;
     case GameState::PRE: {
       int64_t now = (int64_t) this->time_->timestamp_now();
       int64_t until = this->game_.kickoff_epoch - now;
-      return until <= PRE_NEAR_SECONDS ? PRE_NEAR_INTERVAL : PRE_FAR_INTERVAL;
+      ms = until <= PRE_NEAR_SECONDS ? PRE_NEAR_INTERVAL : PRE_FAR_INTERVAL;
+      break;
     }
     default:
-      return SCHEDULE_INTERVAL;
+      ms = SCHEDULE_INTERVAL;
+      break;
   }
+  // The fallback card is only borrowing the board: a 15 minute PRE cycle, or
+  // the 6 hours an out of season team gets, must never outlast the rescan.
+  if (this->live_fallback_) {
+    uint32_t since = millis() - this->live_started_ms_;
+    uint32_t left = since >= NO_LIVE_RESCAN ? 0 : NO_LIVE_RESCAN - since;
+    if (ms > left)
+      ms = left;
+  }
+  return ms;
 }
 
 // Main loop: decide what this cycle needs and hand it to the worker task.
@@ -837,21 +884,38 @@ void GamedayComponent::start_job_() {
     return;
   }
   if (this->live_mode_()) {
-    bool rotate = this->live_started_ms_ != 0 &&
-                  (now - this->live_started_ms_) >= (uint32_t) this->prefs2_.rotate_minutes * MINUTE;
-    bool ended = this->game_.valid && this->game_.state != GameState::IN;
-    j.need_scan = !this->schedule_.valid || rotate || ended || this->live_none_;
-    j.schedule = this->schedule_;
-    this->job_done_ = false;
-    this->busy_ = true;
-    BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
-    if (ok != pdPASS) {
-      this->busy_ = false;
-      this->schedule_next_(RETRY_INTERVAL);
+    // Inside the fallback live_started_ms_ times the rescan instead of the
+    // rotate: the board is on the owner's own team until a game kicks off.
+    bool rescan_due = this->live_started_ms_ == 0 || (now - this->live_started_ms_) >= NO_LIVE_RESCAN;
+    if (!this->live_fallback_ || rescan_due) {
+      if (this->live_fallback_) {
+        j.need_scan = true;
+        // Stamped here, not when the scan lands, so a failed scan does not
+        // fire another one on the retry a minute later.
+        this->live_started_ms_ = now == 0 ? 1 : now;
+      } else {
+        bool rotate = this->live_started_ms_ != 0 &&
+                      (now - this->live_started_ms_) >= (uint32_t) this->prefs2_.rotate_minutes * MINUTE;
+        bool ended = this->game_.valid && this->game_.state != GameState::IN;
+        j.need_scan = !this->schedule_.valid || rotate || ended || this->live_none_;
+      }
+      j.schedule = this->schedule_;
+      this->job_done_ = false;
+      this->busy_ = true;
+      this->busy_since_ms_ = millis() == 0 ? 1 : millis();
+      BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
+      if (ok != pdPASS) {
+        this->busy_ = false;
+        this->schedule_next_(RETRY_INTERVAL);
+      }
+      return;
     }
-    return;
+    // In the fallback with the rescan not due: fall through to the My team
+    // path below, so the card is fetched and polled by that code and not by
+    // a copy of it.
   }
-  j.need_schedule = !this->schedule_.valid || (now - this->schedule_fetched_ms_) >= SCHEDULE_INTERVAL;
+  j.need_schedule = ::espn::schedule_due(this->schedule_.valid, this->force_schedule_, now,
+                                         this->schedule_fetched_ms_, SCHEDULE_INTERVAL);
   // The season schedule is ~200KB; it is fetched on a cycle of its own right
   // after the board has its game, never in front of it.
   if (this->upcoming_due_ && !j.need_schedule && this->schedule_.valid) {
@@ -859,6 +923,7 @@ void GamedayComponent::start_job_() {
     j.schedule = this->schedule_;
     this->job_done_ = false;
     this->busy_ = true;
+    this->busy_since_ms_ = millis() == 0 ? 1 : millis();
     BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
     if (ok != pdPASS) {
       this->busy_ = false;
@@ -867,15 +932,37 @@ void GamedayComponent::start_job_() {
     return;
   }
   if (this->post_since_ms_ != 0 && (now - this->post_since_ms_) >= POST_LINGER) {
-    // Game is over and lingered: look for the next one.
+    // Game is over and lingered: look for the next one. Re-reading the team
+    // endpoint is not enough on its own, because it can keep pointing at a
+    // game that finished hours ago. The season schedule lists only games that
+    // have not started, so prefer it when it has one.
+    int64_t tnow = (int64_t) this->time_->timestamp_now();
+    const ::espn::Upcoming *next = nullptr;
+    for (const auto &u : this->upcoming_) {
+      if (u.kickoff_epoch > tnow && u.event_id != this->game_.event_id) {
+        next = &u;
+        break;
+      }
+    }
     this->prev_ = GameSnapshot{};
     this->game_ = GameSnapshot{};
     this->post_since_ms_ = 0;
-    j.need_schedule = true;
+    if (next != nullptr) {
+      ESP_LOGI(TAG, "Game is over: taking event %s from the season schedule", next->event_id.c_str());
+      // group, colors and the record are team properties from the team
+      // endpoint and stay valid; only the event moves.
+      this->schedule_.event_id = next->event_id;
+      this->schedule_.kickoff_epoch = next->kickoff_epoch;
+      this->schedule_fetched_ms_ = now == 0 ? 1 : now;
+      this->upcoming_due_ = true;  // the list just lost an entry: refresh it
+    } else {
+      j.need_schedule = true;  // no list yet: a fresh boot or the end of a season
+    }
   }
   j.schedule = this->schedule_;
   this->job_done_ = false;
   this->busy_ = true;
+  this->busy_since_ms_ = millis() == 0 ? 1 : millis();
   // TLS plus a nested JSON parse needs a roomy stack; 16KB has headroom.
   BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
   if (ok != pdPASS) {
@@ -887,8 +974,12 @@ void GamedayComponent::start_job_() {
 
 void GamedayComponent::worker_(void *arg) {
   auto *self = static_cast<GamedayComponent *>(arg);
+  uint32_t mine = self->worker_seq_;
   self->run_job_();
-  self->job_done_ = true;
+  // A worker the loop gave up on must not hand back a result: the Job it
+  // was writing into belongs to a later cycle by now.
+  if (self->worker_seq_ == mine)
+    self->job_done_ = true;
   vTaskDelete(nullptr);
 }
 
@@ -914,6 +1005,7 @@ void GamedayComponent::run_job_() {
     if (!j.schedule_ok)
       return;
     j.schedule = s;
+    ::espn::adopt_league(j.schedule, j.team->league);
     if (s.event_id.empty()) {
       j.no_event = true;
       return;
@@ -949,11 +1041,52 @@ void GamedayComponent::apply_job_() {
     if (pick.empty() && !j.live.empty())
       pick.push_back(0);
     if (pick.empty()) {
+      const ::espn::Team *saved = this->current_team_();
+      if (saved != nullptr) {
+        // Nothing live, but the owner has a team: show that team's card and
+        // keep scanning. The mode they picked is untouched.
+        bool already = this->live_fallback_;
+        this->live_none_ = true;
+        this->live_fallback_ = true;
+        this->live_started_ms_ = now == 0 ? 1 : now;  // start the rescan clock
+        // No freshness marking here on purpose. What is on the board in the
+        // fallback is the saved team's card, and only a poll of that card can
+        // say how old it is. Marking a scan good here reset misses_ every
+        // rescan, so a failing game endpoint never reached the three misses
+        // the ticker warns at, and stale_s stayed near zero under a frozen
+        // score. The card's own poll below marks it good when it lands.
+        if (already) {
+          // The card is already on the board: leave it there, and let the My
+          // team path keep polling it rather than reloading it every scan.
+          ESP_LOGI(TAG, "Still no live games: staying on %s", saved->abbr);
+          this->rebuild_state_(&this->last_fields_);
+          this->schedule_next_(0);
+          return;
+        }
+        ESP_LOGI(TAG, "No live games right now: showing %s instead", saved->abbr);
+        this->live_away_id_ = 0;  // the card is oriented around the saved team
+        // Clearing the schedule is what forces the re-read; zeroing the
+        // timestamp alone would not, because the test is on schedule_.valid.
+        this->schedule_ = Schedule{};
+        this->schedule_fetched_ms_ = 0;
+        this->game_ = GameSnapshot{};
+        this->prev_ = GameSnapshot{};
+        this->post_since_ms_ = 0;
+        this->emit_({});
+        this->schedule_next_(0);  // fetch the card now
+        return;
+      }
       ESP_LOGI(TAG, "No live games right now");
       this->live_none_ = true;
+      this->live_fallback_ = false;
       this->schedule_ = Schedule{};
       this->game_ = GameSnapshot{};
       this->prev_ = GameSnapshot{};
+      // The scan itself came back clean, so there is no run of failures to
+      // report: clear the miss count. last_good_ms_ stays where it was,
+      // because no game data was applied - there is no card on the board to
+      // be fresh or stale. Nothing polls a game in this state, so clearing
+      // the count here cannot hide a failing game poll.
       this->misses_ = 0;
       this->emit_({});
       this->schedule_next_(NO_LIVE_RESCAN);
@@ -962,6 +1095,7 @@ void GamedayComponent::apply_job_() {
     const ::espn::LiveGame &g = j.live[pick[random_uint32() % pick.size()]];
     ESP_LOGI(TAG, "Following %s @ %s", g.away_abbr.c_str(), g.home_abbr.c_str());
     this->live_none_ = false;
+    this->live_fallback_ = false;
     this->schedule_ = Schedule{};
     this->schedule_.valid = true;
     this->schedule_.event_id = g.event_id;
@@ -993,10 +1127,14 @@ void GamedayComponent::apply_job_() {
     }
     this->schedule_ = j.schedule;
     this->schedule_fetched_ms_ = now;
+    this->force_schedule_ = false;
     this->upcoming_due_ = true;  // refreshed on the next cycle, once the board is drawn
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
+      // Same as the no-live-games case: the schedule fetch succeeded, so the
+      // failure run is over, but no GameSnapshot was applied and the board
+      // has no score whose age last_good_ms_ could describe.
       this->misses_ = 0;
       this->emit_({});
       this->schedule_next_(0);
@@ -1011,9 +1149,10 @@ void GamedayComponent::apply_job_() {
   }
   this->prev_ = this->game_;
   this->game_ = j.game;
-  this->misses_ = 0;
+  this->mark_good_poll_();
   ::espn::Splash splash =
-      ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(), this->live_mode_());
+      ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(),
+                            this->live_mode_() && !this->live_fallback_);
   if (this->game_.state == GameState::POST) {
     if (this->post_since_ms_ == 0)
       this->post_since_ms_ = now == 0 ? 1 : now;
@@ -1064,12 +1203,36 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   }
   f.kickoff = kickoff;
   f.status_text = ::espn::status_text(g, opts, kickoff);
-  if (this->live_mode_() && (!g.valid || g.state == GameState::NOT_FOUND))
-    f.status_text = this->live_none_ ? "No live games right now" : "Looking for a live game";
+  if (this->live_mode_()) {
+    // "college", "NFL", or nothing at all in Live any, with its own space.
+    std::string league_word;
+    if (this->prefs2_.mode == (uint8_t) Mode::LIVE_NCAA)
+      league_word = "college ";
+    else if (this->prefs2_.mode == (uint8_t) Mode::LIVE_NFL)
+      league_word = "NFL ";
+    const ::espn::Team *saved = this->current_team_();
+    if (this->live_fallback_ && saved != nullptr) {
+      f.status_text = "No live " + league_word + "games, showing " + saved->abbr + " | " + f.status_text;
+    } else if (!g.valid || g.state == GameState::NOT_FOUND) {
+      f.status_text = this->live_none_ ? "No live " + league_word + "games right now"
+                                       : "Looking for a live " + league_word + "game";
+    }
+  }
   if (this->prefs2_.mode == (uint8_t) Mode::FAVORITES && this->fav_.empty())
     f.status_text = "Favorites: add teams on the page | " + f.status_text;
-  if (this->misses_ >= 3)
-    f.status_text += " *";
+  if (this->misses_ >= 3) {
+    if (!this->ever_polled_good_()) {
+      // Nothing has ever come back, so there is no age to quote. Saying "no
+      // update for 1 min" here was wrong however long the panel had been
+      // trying, on a screen someone is reading because something is broken.
+      f.status_text += " | no update yet";
+    } else {
+      uint32_t mins = this->stale_seconds_() / 60;
+      if (mins < 1)
+        mins = 1;
+      f.status_text += " | no update for " + std::to_string(mins) + " min";
+    }
+  }
   // Until a team has been picked once, the ticker says where the setup page is.
   if (!this->flag_(FLAG_SETUP) && network::is_connected()) {
     std::string ip;
@@ -1247,6 +1410,8 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   doc["opp"] = this->opponent_splashes();
   doc["bootaddr"] = this->show_boot_address();
   doc["misses"] = this->misses_;
+  doc["stale_s"] = this->stale_seconds_();
+  doc["fallback"] = this->live_fallback_;
 
   JsonObject game = doc["game"].to<JsonObject>();
   game["s"] = g.valid ? ::espn::state_name(g.state) : "NOT_FOUND";

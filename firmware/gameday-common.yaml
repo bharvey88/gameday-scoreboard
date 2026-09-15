@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.3.8"
+  version: "1.4.0"
   variant: "m1"
 
   display_panel_width: "64"
@@ -137,7 +137,100 @@ wifi:
   # the saved network, so the panel re-enters setup mode and BLE turns back
   # on next boot without any extra logic here.
   on_connect:
+    - script.stop: gd_ble_grace
     - ble.disable:
+    - lambda: |-
+        // Arms the ten minute offline restart below. Until the panel has been
+        // on its network once this boot there is nothing to recover, so that
+        // counter stays parked at zero.
+        id(gd_ever_connected) = true;
+        id(gd_offline_minutes) = 0;
+        ESP_LOGI("wifi", "Connected. Internal heap free: %u bytes",
+                 (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  # Wi-Fi is gone. Turn Bluetooth back on so the Game Day app can find the
+  # panel and hand it new credentials (a changed router password is the
+  # common case, and there is no other way back in), and say so on the
+  # screen instead of leaving a stale score up. boot_check's poll repaints
+  # the normal lines by itself once Wi-Fi returns, so a router reboot
+  # resolves with no reboot of our own.
+  on_disconnect:
+    - script.execute: gd_ble_grace
+    - script.execute: boot_wifi_lost
+    - lambda: |-
+        ESP_LOGW("wifi", "Disconnected. Internal heap free: %u bytes",
+                 (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+
+script:
+  # Bluetooth back on, but not for every two second blip. Bringing Bluedroid
+  # up and down is a large internal-RAM alloc and free each time, and that
+  # churn is the v1.3.4 territory this release is stepping back into, so do
+  # it once the panel is properly off the network instead of on every flap.
+  # The wait costs no recovery time: ble.enable alone does not advertise.
+  # esp32_improv only starts when the Wi-Fi component calls its start(),
+  # which it does after the panel has been offline for wifi_timeout (90s by
+  # default), so a stack that comes up at 30s is still a minute early.
+  # on_connect stops this script, so a blip shorter than the delay never
+  # touches Bluetooth at all.
+  - id: gd_ble_grace
+    mode: restart
+    then:
+      - delay: 30s
+      - ble.enable:
+
+interval:
+  # A panel that has a saved network but cannot get back on it is stuck in a
+  # way nothing else recovers from. ESPHome's own reboot_timeout is disabled
+  # while an ap: block is present (wifi_component.cpp guards it with
+  # !has_ap()), so count the minutes here. Not armed on a panel with no
+  # network to fail to reach: a fresh unit, or one whose credentials the
+  # "Reset Wi-Fi" button blanked, is legitimately sitting in setup mode.
+  #
+  # Nor on a panel that has not been on its network yet this boot. Whole-house
+  # power restoration is the common case: the ESP32 is up in seconds and the
+  # router and the ISP take minutes, and a panel that restarted at the ten
+  # minute mark came back into the same wait and did it again, for as long as
+  # the outage lasted. ESPHome's own Wi-Fi retry is the thing doing useful
+  # work in that window, so leave it to it. That also caps this at one restart
+  # per outage without a counter: gd_ever_connected is not restored, so the
+  # panel that comes back from the restart is a panel that has not connected
+  # this boot.
+  - interval: 60s
+    then:
+      - lambda: |-
+          auto *w = wifi::global_wifi_component;
+          if (w == nullptr) return;
+          // has_sta() is still true after "Reset Wi-Fi": that button saves an
+          // empty SSID and the component loads it back as a configured
+          // network, so the blank SSID is the second half of this test.
+          if (w->is_connected() || !w->has_sta() || w->get_sta().get_ssid().empty()) {
+            id(gd_offline_minutes) = 0;
+            return;
+          }
+          // Never been on the network this boot: nothing has been lost, so
+          // there is nothing for a restart to recover. Keep waiting.
+          if (!id(gd_ever_connected)) {
+            id(gd_offline_minutes) = 0;
+            return;
+          }
+          // Someone is handing the panel new credentials right now. This is
+          // the narrow state that only exists between the app sending an
+          // ssid and the attempt resolving (30s at most, then Improv times
+          // out by itself), so holding the count here cannot disarm the
+          // restart. Improv's own is_active() would: it goes true 90s into
+          // any outage and stays true for the whole outage.
+          if (esp32_improv::global_improv_component != nullptr &&
+              esp32_improv::global_improv_component->get_improv_state() ==
+                  improv::STATE_PROVISIONING) {
+            ESP_LOGI("wifi", "Setup in progress, holding the offline restart");
+            return;
+          }
+          id(gd_offline_minutes)++;
+          ESP_LOGW("wifi", "Offline for %d minute(s)", id(gd_offline_minutes));
+          if (id(gd_offline_minutes) >= 10) {
+            ESP_LOGW("wifi", "Ten minutes with no Wi-Fi, restarting");
+            id(gd_offline_minutes) = 0;
+            App.safe_reboot();
+          }
 
 captive_portal:
 
@@ -235,6 +328,25 @@ globals:
     type: std::string
     restore_value: no
     initial_value: '""'
+  # Minutes the panel has been off its saved network, counted only once it has
+  # been on that network at least once this boot. Not restored, and neither is
+  # gd_ever_connected: the panel that comes back from the offline restart has
+  # not connected this boot, so it waits and retries instead of restarting
+  # again. One restart per outage, which is what the CHANGELOG promises.
+  - id: gd_offline_minutes
+    type: int
+    restore_value: no
+    initial_value: '0'
+  # True once Wi-Fi has connected this boot (wifi: on_connect). Arms the
+  # restart above. Deliberately a second global rather than a read of
+  # boot_last_connected_ms in firmware/pages/boot.yaml: that one is maintained
+  # by the boot overlay's 500ms poll, which stops when the overlay hides, and
+  # the recovery restart should not depend on a display page being built into
+  # the image or on when that poll happens to be running.
+  - id: gd_ever_connected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
 
 # The device page talks to /gameday/state, /gameday/set and /gameday/action
 # (components/gameday). Only the entities worth having in Home Assistant stay.
@@ -432,6 +544,19 @@ sensor:
       #include "esp_heap_caps.h"
       return (float) heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024;
     disabled_by_default: true
+  # Not disabled_by_default, unlike the PSRAM one above: internal RAM is what
+  # ran out in v1.3.4, and Bluetooth coming back on a Wi-Fi drop is what can
+  # run it out again, so this one is visible without anyone enabling it.
+  - platform: template
+    name: "Free Heap (internal)"
+    device_class: data_size
+    state_class: measurement
+    entity_category: diagnostic
+    unit_of_measurement: "KiB"
+    update_interval: 30s
+    lambda: |-
+      #include "esp_heap_caps.h"
+      return (float) heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
   - platform: wifi_signal
     name: RSSI
     update_interval: 60s

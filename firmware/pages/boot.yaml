@@ -2,12 +2,19 @@
 # and has shown its connect hint for a while; the boot button brings the
 # full address back.
 #
-# Three states, driven by the real WiFi state every half second. Each is a
-# title plus up to four lines: small, big, small, small.
+# Four states, driven by the real WiFi state every half second. Each is a
+# title plus up to four lines: small, big, small, small. boot_refresh tests
+# them in this order: connected, wifi lost, hotspot up, connecting.
 #
+#   connected      GAME DAY APP / or visit / gameday-2f6a70
+#   wifi lost      Wi-Fi lost / open the / Game Day app
 #   hotspot up     On your phone, join WiFi / Game Day Scoreboard / a setup page will open
 #   connecting     Connecting to / <network name>
-#   connected      GAME DAY APP / or visit / gameday-2f6a70
+#
+# "wifi lost" means the panel has a saved network and is not on it, either
+# because it dropped or because it never came up this boot. It sits above the
+# hotspot state on purpose: an owner whose settings are fine should never be
+# told to re-provision the panel.
 #
 # A fresh panel keeps that hint up for 45 seconds, or until a team is
 # picked. A panel that already has a team flashes it for 3 seconds (or skips
@@ -28,6 +35,17 @@ globals:
     type: int
     initial_value: '0'
   - id: boot_button_press_ms
+    type: uint32_t
+    initial_value: '0'
+  - id: boot_hold_stage
+    type: int
+    initial_value: '0'
+  # millis() at the last moment the panel was seen on its saved network this
+  # boot, 0 if it has never been on it. Read by boot_refresh and boot_hide to
+  # work out whether Wi-Fi is lost; nothing latches that as a flag, because a
+  # flag does not survive the ten minute offline restart in gameday-common.yaml
+  # and never gets set at all on a boot that never connects.
+  - id: boot_last_connected_ms
     type: uint32_t
     initial_value: '0'
 
@@ -96,7 +114,28 @@ script:
       - lambda: |-
           auto *w = wifi::global_wifi_component;
           if (w == nullptr) return;
+          // Lost means: there is a real saved network and the panel is not on
+          // it. Derived from the live Wi-Fi state every time rather than
+          // latched, so it is still right after the ten minute offline restart
+          // and on a cold boot with the router already down.
+          //
+          // Two cases, deliberately different. Connected at some point this
+          // boot and not now is a drop: say so immediately, the owner is
+          // watching a board that just stopped updating. Never connected this
+          // boot could just be a panel still coming up, so wait out a grace
+          // period first. Association normally takes a few seconds, 30 leaves
+          // room for a scan and a retry without ever flashing the alarm on a
+          // healthy boot, and it is a full minute short of the 90s fallback AP
+          // so the message is up long before the hotspot text could appear.
+          //
+          // The blank-SSID half of have_creds is what keeps a panel out of
+          // here after "Reset Wi-Fi": that button saves an empty network, which
+          // still counts as has_sta(), and that panel is in setup, not in
+          // trouble. Mirrored in boot_hide below.
+          const bool have_creds = w->has_sta() && !w->get_sta().get_ssid().empty();
+          const bool lost = have_creds && (id(boot_last_connected_ms) != 0 || millis() > 30000);
           if (w->is_connected()) {
+            id(boot_last_connected_ms) = millis() == 0 ? 1 : millis();
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
             if (via_button) {
               // Boot button hold: always the full address, never the app hint.
@@ -118,9 +157,9 @@ script:
               // Normal connect: point at the Game Day app first, the
               // hostname is only a fallback for typing the address by hand.
               if (wide)
-                id(boot_set_lines).execute("GAME DAY APP", "or visit", id(gameday_ctl).hostname(), "", false);
+                id(boot_set_lines).execute("GAME DAY APP", "or visit", id(gameday_ctl).hostname() + ".local", "", false);
               else
-                id(boot_set_lines).execute("GAME DAY", "APP", id(gameday_ctl).hostname(), "", false);
+                id(boot_set_lines).execute("GAME DAY", "APP", id(gameday_ctl).hostname() + ".local", "", false);
             }
             if (id(boot_ip_shown_ms) == 0) {
               id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
@@ -131,6 +170,20 @@ script:
               else
                 id(boot_hide).execute();
             }
+          } else if (lost) {
+            // Tested before the hotspot branch below on purpose. The fallback AP
+            // starts 90 seconds into any outage, so that branch would otherwise
+            // take over for the rest of the outage and tell an owner whose
+            // settings are perfectly fine to go re-provision the panel.
+            //
+            // Wi-Fi we already had went away. Keep saying so rather than
+            // "Connecting to <network>", which reads like a first boot and
+            // does not tell the customer what to do about it.
+            const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+            if (wide)
+              id(boot_set_lines).execute("Wi-Fi lost", "open the", "Game Day app", "", true);
+            else
+              id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
           } else if (!w->has_sta() || w->is_ap_active()) {
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
             if (wide)
@@ -154,11 +207,30 @@ script:
 
   - id: boot_hide
     then:
-      - component.suspend: boot_check
-      - component.suspend: boot_anim
-      - lvgl.obj.update:
-          id: boot_overlay
-          hidden: true
+      - if:
+          condition:
+            lambda: |-
+              // Wi-Fi is still gone: the overlay is the only thing telling the
+              // owner why the scores stopped. Never hide it out from under
+              // them, whatever asked for the hide. Same derived test as
+              // boot_refresh above, so the two cannot disagree about whether
+              // the panel is in an outage.
+              auto *w = wifi::global_wifi_component;
+              if (w == nullptr || w->is_connected()) return false;
+              const bool have_creds = w->has_sta() && !w->get_sta().get_ssid().empty();
+              return have_creds && (id(boot_last_connected_ms) != 0 || millis() > 30000);
+          then:
+            - component.resume: boot_check
+            - component.resume: boot_anim
+            - script.execute:
+                id: boot_refresh
+                via_button: false
+          else:
+            - component.suspend: boot_check
+            - component.suspend: boot_anim
+            - lvgl.obj.update:
+                id: boot_overlay
+                hidden: true
 
   # Boot button: bring the address back for 20 seconds
   - id: boot_show_address
@@ -172,6 +244,84 @@ script:
           hidden: false
       - delay: 20s
       - script.execute: boot_hide
+
+  # Boot button held down: stage 1 shows the address, stage 2 warns that a
+  # reset is coming with a bar that fills from 5s to 10s, stage 3 resets.
+  # Timed from the press so the customer sees the warning before anything
+  # is erased.
+  - id: boot_hold_tick
+    then:
+      - lambda: |-
+          if (id(boot_button_press_ms) == 0) return;
+          const uint32_t held = millis() - id(boot_button_press_ms);
+          if (held >= 10000) {
+            if (id(boot_hold_stage) == 3) return;
+            id(boot_hold_stage) = 3;
+            id(boot_set_lines).execute("Wi-Fi reset", "restarting", "", "", false);
+            id(boot_button_press_ms) = 0;
+            id(reset_wifi).press();
+            return;
+          }
+          if (held >= 5000) {
+            if (id(boot_hold_stage) != 2) {
+              id(boot_hold_stage) = 2;
+              // component.suspend maps to stop_poller() on a PollingComponent;
+              // there is no suspend() method to call from a lambda.
+              id(boot_anim).stop_poller();
+              // boot_check repaints the overlay twice a second. On a panel
+              // whose overlay is still up (first boot, or the 45s setup hint)
+              // it would overwrite this warning as fast as we draw it. It is
+              // not resumed on release: boot_show_address ends in boot_hide,
+              // which suspends it anyway, so this is where it would land. The
+              // exception is an outage, where boot_hide resumes it instead of
+              // hiding, which is what keeps the Wi-Fi lost lines coming back.
+              id(boot_check).stop_poller();
+              id(boot_set_lines).execute("Keep holding", "to reset", "Wi-Fi", "", true);
+            }
+            int pct = (int) ((held - 5000) / 50);  // 5000ms span -> 0..100
+            if (pct > 100) pct = 100;
+            lv_bar_set_value(id(boot_bar), pct, LV_ANIM_OFF);
+            return;
+          }
+          if (held >= 1500 && id(boot_hold_stage) < 1) {
+            id(boot_hold_stage) = 1;
+            id(boot_show_address).execute();
+          }
+
+  # Wi-Fi went away. Undo boot_hide, cancel any pending hide, and say what
+  # happened instead of leaving a stale score on the board. Bluetooth is
+  # switched back on by the wifi: on_disconnect handler so the app can find
+  # the panel again, exactly as it does on a fresh unit.
+  - id: boot_wifi_lost
+    then:
+      # boot_refresh only arms the hide timer when boot_ip_shown_ms is 0, so
+      # clearing it lets the overlay hide itself again normally once Wi-Fi
+      # comes back. What keeps the lines below on the screen is boot_refresh
+      # deriving the same lost state from the Wi-Fi component on its next
+      # 500ms tick; this script only exists to paint them now instead of up to
+      # half a second from now.
+      - lambda: |-
+          id(boot_ip_shown_ms) = 0;
+      # Stage 2 is the "keep holding to reset Wi-Fi" warning, which owns both
+      # the lines and the bar and stopped boot_check for exactly this reason.
+      # Do not repaint over a warning that is about to erase the network.
+      # boot_refresh derives these same lines when it next runs.
+      - if:
+          condition:
+            lambda: 'return id(boot_hold_stage) < 2;'
+          then:
+            - component.resume: boot_check
+            - component.resume: boot_anim
+            - script.stop: boot_hide_later
+            - lvgl.obj.update:
+                id: boot_overlay
+                hidden: false
+            - lambda: |-
+                const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+                if (wide)
+                  id(boot_set_lines).execute("Wi-Fi lost", "open the", "Game Day app", "", true);
+                else
+                  id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
 
 interval:
   - interval: 500ms
@@ -188,6 +338,10 @@ interval:
           id(boot_bar_value) = (id(boot_bar_value) + 3) % 130;
           int v = id(boot_bar_value) > 100 ? 100 : id(boot_bar_value);
           lv_bar_set_value(id(boot_bar), v, LV_ANIM_OFF);
+  - interval: 100ms
+    id: boot_hold_check
+    then:
+      - script.execute: boot_hold_tick
 
 # Bluetooth setup (esp32_improv, configured in gameday-common.yaml) starts
 # advertising about a second after a boot with no saved network, and the
@@ -225,19 +379,24 @@ esp32_improv:
         id: boot_refresh
         via_button: false
 
-# Boot button: a short hold (>=1.5s) brings the address back, a long hold
-# (>=10s) resets WiFi instead. Timed by hand (millis() on press, compared on
-# release) rather than on_multi_click, so the two behaviors stay exclusive.
+# Boot button: the hold is timed from the press so the panel can warn before
+# it erases anything. 1.5s shows the address, 5s starts the "keep holding"
+# warning with a filling bar, 10s resets Wi-Fi. Releasing before 10s leaves
+# the address up for 20s as before and resets nothing.
 binary_sensor:
   - id: !extend power_button
     on_press:
-      - lambda: 'id(boot_button_press_ms) = millis();'
+      - lambda: |-
+          id(boot_button_press_ms) = millis() == 0 ? 1 : millis();
+          id(boot_hold_stage) = 0;
     on_release:
       - lambda: |-
-          uint32_t held = millis() - id(boot_button_press_ms);
-          if (held >= 10000) {
-            id(reset_wifi).press();
-          } else if (held >= 1500) {
+          const bool warned = id(boot_hold_stage) == 2;
+          id(boot_button_press_ms) = 0;
+          id(boot_hold_stage) = 0;
+          if (warned) {
+            // Back out of the warning: restore the address screen and its bar.
+            id(boot_anim).start_poller();
             id(boot_show_address).execute();
           }
 

@@ -85,7 +85,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     </div>
     <div class="teambar livebar" id="livebar" hidden>
       <div class="cur"><div><div class="name">Following a random game in progress</div><div class="lg">Moves on when it ends, or after the time below.</div></div></div>
-      <div class="stepper"><label for="rotate">Switch every</label><input type="number" id="rotate" min="2" max="30" step="1"><span>min</span></div>
+      <div class="stepper"><label for="rotate">Switch every</label><input type="number" id="rotate" min="1" max="30" step="1"><span>min</span></div>
     </div>
     <div class="teambar favbar" id="favbar" hidden>
       <div class="cur"><div><div class="name" id="favName">Cycling through your favorites</div><div class="lg">A favorite's game takes the panel near kickoff. Slot order decides who wins when two overlap.</div></div></div>
@@ -97,7 +97,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
         </select></div>
         <div class="stepper"><label for="collide">Two games at once</label><select id="collide">
           <option value="0">Stick with the higher team</option><option value="1">Alternate</option>
-        </select><input type="number" id="favrotate" min="2" max="30" step="1" hidden><span id="favrotateUnit" hidden>min</span></div>
+        </select><input type="number" id="favrotate" min="1" max="30" step="1" hidden><span id="favrotateUnit" hidden>min</span></div>
       </div>
     </div>
 
@@ -337,7 +337,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
   });
   const rotateInput = $("#rotate");
   rotateInput.onchange = () => {
-    const v = Math.min(30, Math.max(2, Number(rotateInput.value) || 5));
+    const v = Math.min(30, Math.max(1, Number(rotateInput.value) || 5));
     rotateInput.value = v;
     setGD({ rotate: v });
   };
@@ -362,7 +362,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     setGD({ collide: collideSelect.value });
   };
   favRotate.onchange = () => {
-    const v = Math.min(30, Math.max(2, Number(favRotate.value) || 5));
+    const v = Math.min(30, Math.max(1, Number(favRotate.value) || 5));
     favRotate.value = v;
     setGD({ rotate: v });
   };

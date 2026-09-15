@@ -107,6 +107,22 @@ const char *state_name(GameState s);
 // have no clock (Halftime, End of 3rd, Delayed).
 std::string clock_text(const GameSnapshot &s);
 
+// The team endpoint does not say which league answered, so a freshly parsed
+// Schedule carries league 0 (NFL). Favorites and the live modes choose the
+// follow-up scoreboard endpoint from Schedule::league, so it must be stamped
+// from the team the schedule was fetched for.
+inline void adopt_league(Schedule &s, League league) { s.league = (uint8_t) league; }
+
+// Does this cycle need to re-read the team endpoint, or only re-poll the game
+// it already knows about? `force` is the Refresh Now button. It has to be its
+// own flag: clearing the fetch timestamp does not force anything, because a
+// still valid schedule with a zero timestamp reads as "age = millis()", which
+// is under the interval for the first six hours after a restart. Unsigned
+// subtraction keeps the age right across the millis() wrap.
+inline bool schedule_due(bool have_schedule, bool force, uint32_t now, uint32_t fetched_ms, uint32_t interval) {
+  return force || !have_schedule || (now - fetched_ms) >= interval;
+}
+
 }  // namespace espn
 
 // Streaming entry points live in the header because they are templates on

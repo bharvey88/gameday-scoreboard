@@ -78,6 +78,15 @@ The parser and game logic have host tests: `make -C tests` (needs g++). To refre
 - Team logos are ESPN's and are fetched at runtime, not bundled.
 - Fetching runs on its own task, so the panel animation keeps going while a document downloads.
 
+### On your network
+
+The panel is a score display, and it treats your home network as trusted.
+Anyone already on your Wi-Fi can open its page and change the team, and
+updates are not password protected. That is a deliberate trade: it keeps
+setup to one tap in the app and keeps the panel working when your phone
+is the only thing that knows it exists. It is not designed to be exposed
+to the internet, so do not forward a port to it.
+
 ## Credits
 
 Built on hub75-studio's LVGL pages and controller packages, and on the attribute model of the ha-teamtracker integration. Thanks to both projects.

@@ -452,6 +452,59 @@ static void test_favorites() {
   CHECK_EQ(c.index, 0);
 }
 
+// A schedule parsed from the team endpoint does not know its own league, so
+// the caller has to stamp it. Without the stamp a college favorite polls the
+// NFL scoreboard and never finds its game.
+static void test_schedule_league() {
+  std::string json = slurp("fixtures/team_ncaa_bc.json");
+  Schedule s;
+  CHECK(parse_team_str(json, s));
+  CHECK(s.valid);
+  CHECK_EQ((int) s.league, 0);  // documents the gap: 0 is League::NFL
+
+  adopt_league(s, League::NCAA);
+  CHECK_EQ((int) s.league, (int) League::NCAA);
+
+  std::string url = scoreboard_url((League) s.league, s.group, s.kickoff_epoch);
+  CHECK(url.find("/college-football/") != std::string::npos);
+  CHECK(url.find("/nfl/") == std::string::npos);
+}
+
+// Refresh Now, and the six hour schedule cycle. SCHEDULE_INTERVAL is 6 hours;
+// the helper takes it as an argument so the test does not depend on the device
+// constant.
+static const uint32_t kSix = 6u * 60u * 60u * 1000u;
+
+static void test_schedule_due() {
+  // Nothing fetched yet: the panel has to read the team endpoint.
+  CHECK(schedule_due(false, false, 1000, 0, kSix));
+
+  // Fresh schedule, nothing asked for: poll the game we already know about.
+  CHECK(!schedule_due(true, false, kSix, kSix - 1000, kSix));
+
+  // Older than the cycle: read it again.
+  CHECK(schedule_due(true, false, 2 * kSix, kSix - 1000, kSix));
+  CHECK(schedule_due(true, false, kSix, 0, kSix));  // exactly due
+
+  // Refresh Now forces the re-read however fresh the schedule is, and whatever
+  // the uptime. The second case is the v1.3.x bug: zeroing the timestamp on a
+  // still valid schedule left the test as millis() >= 6 h, so Refresh Now did
+  // nothing for the first six hours after a restart.
+  CHECK(schedule_due(true, true, 1000, 500, kSix));
+  CHECK(schedule_due(true, true, 60u * 1000u, 0, kSix));
+
+  // Without the force flag that same state is not due: this is what made the
+  // old refresh_now() a no-op, and it stays true so the force flag is the only
+  // thing carrying Refresh Now.
+  CHECK(!schedule_due(true, false, 60u * 1000u, 0, kSix));
+
+  // millis() wraps every 49 days. Unsigned subtraction still gives the real
+  // age, so a wrap must not force a spurious re-read.
+  uint32_t before_wrap = 0xFFFFFFFFu - 1000u;
+  CHECK(!schedule_due(true, false, 2000, before_wrap, kSix));  // ~3 s old
+  CHECK(schedule_due(true, false, before_wrap + 1000u + kSix, before_wrap, kSix));
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -467,6 +520,8 @@ int main() {
   test_clock_text();
   test_color();
   test_favorites();
+  test_schedule_league();
+  test_schedule_due();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

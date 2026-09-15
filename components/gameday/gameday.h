@@ -245,6 +245,22 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   uint32_t interval_for_phase_() const;
   void emit_(const ::espn::Splash &splash);
   void reset_game_();
+  // A game poll came back clean: clear the miss count and start the clock over.
+  void mark_good_poll_() {
+    this->misses_ = 0;
+    this->last_good_ms_ = millis() == 0 ? 1 : millis();
+  }
+  // True once a poll has actually put game data on the board this boot.
+  bool ever_polled_good_() const { return this->last_good_ms_ != 0; }
+  // Seconds since the last good poll. With nothing ever polled, report the
+  // time since boot rather than 0: the board has had no update for its whole
+  // uptime, and 0 would read to the app as "fresh". Callers that need to
+  // phrase it for a person test ever_polled_good_() first.
+  uint32_t stale_seconds_() const {
+    if (this->last_good_ms_ == 0)
+      return millis() / 1000;
+    return (millis() - this->last_good_ms_) / 1000;
+  }
 
   http_request::HttpRequestComponent *http_{nullptr};
   time::RealTimeClock *time_{nullptr};
@@ -288,11 +304,19 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void start_fav_job_(uint32_t now);
   void apply_fav_job_(uint32_t now);
   uint32_t live_away_id_{0};      // the followed live game's away team
-  uint32_t live_started_ms_{0};   // when the current live game was picked
+  uint32_t live_started_ms_{0};   // when the current live game was picked,
+                                  // or, in the fallback, when the last scan ran
   bool live_none_{false};         // last scan found nothing in progress
+  // A live mode with nothing live: the board shows the saved team's card and
+  // keeps scanning. The mode the owner picked does not change.
+  bool live_fallback_{false};
 
   Schedule schedule_;
   uint32_t schedule_fetched_ms_{0};
+  // Refresh Now: re-read the team endpoint on the next cycle, whatever
+  // the timestamp says. Cleared once that read succeeds, so a refresh
+  // that fails on a flaky network is retried rather than dropped.
+  bool force_schedule_{false};
   std::vector<::espn::Upcoming> upcoming_;  // next games after the one on the board
   bool upcoming_due_{false};  // fetch the list on its own cycle, after the board has its game
   // demo playback
@@ -306,6 +330,9 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   uint32_t post_since_ms_{0};
   uint32_t next_fetch_ms_{0};
   uint8_t misses_{0};
+  uint32_t last_good_ms_{0};  // millis() of the last successful game poll, 0 = never
+  uint32_t busy_since_ms_{0};  // millis() when the worker task was started
+  uint32_t worker_seq_{0};     // bumped when a worker is abandoned
   Job job_;
   uint32_t generation_{0};
   bool busy_{false};
