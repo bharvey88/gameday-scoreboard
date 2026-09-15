@@ -141,13 +141,15 @@ script:
               else
                 id(boot_hide).execute();
             }
-          } else if (!w->has_sta() || w->is_ap_active()) {
-            const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
-            if (wide)
-              id(boot_set_lines).execute("On your phone, join WiFi", "Game Day Scoreboard", "a setup page will open", "", true);
-            else
-              id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
-          } else if (id(boot_wifi_was_lost)) {
+          } else if (id(boot_wifi_was_lost) && w->has_sta() && !w->get_sta().get_ssid().empty()) {
+            // Tested before the hotspot branch below on purpose. The fallback AP
+            // starts 90 seconds into any outage, so that branch would otherwise
+            // take over for the rest of the outage and tell an owner whose
+            // settings are perfectly fine to go re-provision the panel.
+            // The blank-SSID test is what keeps a genuinely unprovisioned panel
+            // out of here: "Reset Wi-Fi" saves an empty network, which still
+            // counts as has_sta(), and that panel is in setup, not in trouble.
+            //
             // Wi-Fi we already had went away. Keep saying so rather than
             // "Connecting to <network>", which reads like a first boot and
             // does not tell the customer what to do about it.
@@ -156,6 +158,12 @@ script:
               id(boot_set_lines).execute("Wi-Fi lost", "open the", "Game Day app", "", true);
             else
               id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
+          } else if (!w->has_sta() || w->is_ap_active()) {
+            const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+            if (wide)
+              id(boot_set_lines).execute("On your phone, join WiFi", "Game Day Scoreboard", "a setup page will open", "", true);
+            else
+              id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
           } else {
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
             char ssid[wifi::SSID_BUFFER_SIZE];
@@ -173,11 +181,26 @@ script:
 
   - id: boot_hide
     then:
-      - component.suspend: boot_check
-      - component.suspend: boot_anim
-      - lvgl.obj.update:
-          id: boot_overlay
-          hidden: true
+      - if:
+          condition:
+            lambda: |-
+              // Wi-Fi is still gone: the overlay is the only thing telling the
+              // owner why the scores stopped. Never hide it out from under
+              // them, whatever asked for the hide.
+              auto *w = wifi::global_wifi_component;
+              return w != nullptr && !w->is_connected() && id(boot_wifi_was_lost);
+          then:
+            - component.resume: boot_check
+            - component.resume: boot_anim
+            - script.execute:
+                id: boot_refresh
+                via_button: false
+          else:
+            - component.suspend: boot_check
+            - component.suspend: boot_anim
+            - lvgl.obj.update:
+                id: boot_overlay
+                hidden: true
 
   # Boot button: bring the address back for 20 seconds
   - id: boot_show_address
@@ -219,7 +242,9 @@ script:
               // whose overlay is still up (first boot, or the 45s setup hint)
               // it would overwrite this warning as fast as we draw it. It is
               // not resumed on release: boot_show_address ends in boot_hide,
-              // which suspends it anyway, so this is where it would land.
+              // which suspends it anyway, so this is where it would land. The
+              // exception is an outage, where boot_hide resumes it instead of
+              // hiding, which is what keeps the Wi-Fi lost lines coming back.
               id(boot_check).stop_poller();
               id(boot_set_lines).execute("Keep holding", "to reset", "Wi-Fi", "", true);
             }
