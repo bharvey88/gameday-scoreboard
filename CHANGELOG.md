@@ -17,6 +17,7 @@ owns the panel, not for the code.
 - "Switch every" can be set as low as 1 minute.
 - After a game ends the panel moves on to the next one instead of sitting on a final, even when ESPN keeps reporting the finished game.
 - The live modes show your team instead of an empty board when no game is on, and go back to live games the moment one starts.
+- Refresh Now re-reads the schedule instead of only re-polling the game already on the board, so a game that moved, was postponed or has finished shows up as soon as you press it. For the first six hours after a restart the button did nothing at all.
 
 ## v1.3.8
 

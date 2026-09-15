@@ -671,7 +671,10 @@ void GamedayComponent::select_timezone(const std::string &option) {
 }
 
 void GamedayComponent::refresh_now() {
-  this->schedule_fetched_ms_ = 0;
+  // Read the team endpoint again, do not just re-poll the game already on
+  // the board: the owner presses this when the board looks wrong, and a
+  // moved, postponed or finished game only shows up in that read.
+  this->force_schedule_ = true;
   this->schedule_next_(0);
 }
 
@@ -724,6 +727,7 @@ void GamedayComponent::reset_game_() {
   this->live_fallback_ = false;
   this->schedule_ = Schedule{};
   this->schedule_fetched_ms_ = 0;
+  this->force_schedule_ = false;
   this->upcoming_.clear();
   this->upcoming_due_ = false;
   this->game_ = GameSnapshot{};
@@ -898,7 +902,8 @@ void GamedayComponent::start_job_() {
     // path below, so the card is fetched and polled by that code and not by
     // a copy of it.
   }
-  j.need_schedule = !this->schedule_.valid || (now - this->schedule_fetched_ms_) >= SCHEDULE_INTERVAL;
+  j.need_schedule = ::espn::schedule_due(this->schedule_.valid, this->force_schedule_, now,
+                                         this->schedule_fetched_ms_, SCHEDULE_INTERVAL);
   // The season schedule is ~200KB; it is fetched on a cycle of its own right
   // after the board has its game, never in front of it.
   if (this->upcoming_due_ && !j.need_schedule && this->schedule_.valid) {
@@ -1100,6 +1105,7 @@ void GamedayComponent::apply_job_() {
     }
     this->schedule_ = j.schedule;
     this->schedule_fetched_ms_ = now;
+    this->force_schedule_ = false;
     this->upcoming_due_ = true;  // refreshed on the next cycle, once the board is drawn
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");

@@ -309,6 +309,10 @@ class GamedayComponent : public Component, public AsyncWebHandler {
 
   Schedule schedule_;
   uint32_t schedule_fetched_ms_{0};
+  // Refresh Now: re-read the team endpoint on the next cycle, whatever
+  // the timestamp says. Cleared once that read succeeds, so a refresh
+  // that fails on a flaky network is retried rather than dropped.
+  bool force_schedule_{false};
   std::vector<::espn::Upcoming> upcoming_;  // next games after the one on the board
   bool upcoming_due_{false};  // fetch the list on its own cycle, after the board has its game
   // demo playback
