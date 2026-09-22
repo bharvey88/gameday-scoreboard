@@ -52,8 +52,9 @@ esphome:
     # once the display is up, or the panel lights at the wrong brightness.
     # The Power switch is ALWAYS_ON now, so there is no saved off state to
     # restore; the ternary stays because the switch can be turned off in the
-    # moment it takes to get here. Repaint too: whatever LVGL drew before the
-    # driver had a brightness went nowhere (see the gd_repaint script).
+    # moment it takes to get here. The repaint is belt and braces: nothing has
+    # rendered this early and HUB75Display::setup leaves the driver enabled,
+    # so on this path there should be nothing dropped to redraw.
     - priority: 300.0
       then:
         - hub75.set_brightness:
@@ -351,6 +352,12 @@ image:
       - lvgl.image.update:
           id: gd_team_logo_img
           src: gd_team_logo
+      # Remember the URL only once it has actually arrived. Recording it when
+      # the request went out was a latch: online_image drops a request made
+      # while it is still decoding (a WARN, neither callback), and the board
+      # update that follows saw a logo it thought it already had.
+      - lambda: 'id(gd_last_team_logo) = id(gd_team_logo_url);'
+      - script.stop: gd_team_logo_retry
     on_error:
       - logger.log:
           level: WARN
@@ -372,6 +379,8 @@ image:
       - lvgl.image.update:
           id: gd_opp_logo_img
           src: gd_opp_logo
+      - lambda: 'id(gd_last_opp_logo) = id(gd_opp_logo_url);'
+      - script.stop: gd_opp_logo_retry
     on_error:
       - logger.log:
           level: WARN
@@ -385,6 +394,11 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  # Two URLs per logo: gd_last_* is what actually arrived, set from
+  # on_download_finished, and gd_*_logo_url is what it was last asked for.
+  # The board update below re-asks whenever they differ, which covers a
+  # request online_image dropped as well as a failed one. A failure clears
+  # gd_last_* but not the wanted URL, which is what the retry scripts resend.
   - id: gd_last_team_logo
     type: std::string
     restore_value: no
@@ -393,9 +407,6 @@ globals:
     type: std::string
     restore_value: no
     initial_value: '""'
-  # The URL each image was last asked for, kept for the retry scripts. The
-  # gd_last_* pair above is cleared on a failure so the next update re-asks;
-  # these two are not, or the retry would have nothing to retry with.
   - id: gd_team_logo_url
     type: std::string
     restore_value: no
@@ -473,13 +484,16 @@ gameday:
         opponent_record: !lambda 'return x.opponent_record;'
         splash_text: !lambda 'return x.splash_text;'
         splash_color: !lambda 'return (int) x.splash_color;'
+    # is_decoding() keeps a second request off a download already running:
+    # online_image would drop it, and set_url would have pointed the image at
+    # the new URL on the way. The next board update asks again.
     - if:
         condition:
-          lambda: 'return !x.team_logo.empty() && x.team_logo != id(gd_last_team_logo);'
+          lambda: |-
+            return !x.team_logo.empty() && x.team_logo != id(gd_last_team_logo) &&
+                   !id(gd_team_logo)->is_decoding();
         then:
-          - lambda: |-
-              id(gd_last_team_logo) = x.team_logo;
-              id(gd_team_logo_url) = x.team_logo;
+          - lambda: 'id(gd_team_logo_url) = x.team_logo;'
           - online_image.set_url:
               id: gd_team_logo
               url: !lambda 'return x.team_logo;'
@@ -493,11 +507,11 @@ gameday:
               id(gd_opp_logo_url) = "";  // no opponent on this card, nothing to retry
     - if:
         condition:
-          lambda: 'return !x.opponent_logo.empty() && x.opponent_logo != id(gd_last_opp_logo);'
+          lambda: |-
+            return !x.opponent_logo.empty() && x.opponent_logo != id(gd_last_opp_logo) &&
+                   !id(gd_opp_logo)->is_decoding();
         then:
-          - lambda: |-
-              id(gd_last_opp_logo) = x.opponent_logo;
-              id(gd_opp_logo_url) = x.opponent_logo;
+          - lambda: 'id(gd_opp_logo_url) = x.opponent_logo;'
           - online_image.set_url:
               id: gd_opp_logo
               url: !lambda 'return x.opponent_logo;'

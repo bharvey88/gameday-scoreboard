@@ -65,15 +65,22 @@ script:
                       call.set_value(std::min(255.0f, current + step));
                       call.perform();
       - if:
+          # Dimmer does nothing on a panel that is off. Otherwise mashing it in
+          # the dark walks the saved level down to 1, and the next power on
+          # comes back as good as invisible.
           condition:
             lambda: 'return button == 8;'
           then:
-            - lambda: |-
-                float current = id(brightness).state;
-                float step = std::max((float) ${WIZMOTE_BRIGHTNESS_MIN_STEP}, 255.0f * ${WIZMOTE_BRIGHTNESS_STEP} / 100.0f);
-                auto call = id(brightness).make_call();
-                call.set_value(std::max(1.0f, current - step));
-                call.perform();
+            - if:
+                condition:
+                  switch.is_on: power
+                then:
+                  - lambda: |-
+                      float current = id(brightness).state;
+                      float step = std::max((float) ${WIZMOTE_BRIGHTNESS_MIN_STEP}, 255.0f * ${WIZMOTE_BRIGHTNESS_STEP} / 100.0f);
+                      auto call = id(brightness).make_call();
+                      call.set_value(std::max(1.0f, current - step));
+                      call.perform();
       - if:
           condition:
             lambda: 'return button == 3;'

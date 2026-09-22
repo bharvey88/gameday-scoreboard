@@ -12,7 +12,8 @@ owns the panel, not for the code.
 
 - The panel lights up whenever it has power. It no longer comes back dark because it happened to be off when the power went out.
 - Turning the panel back on redraws the whole board. It used to return with only the ticker moving and the score, logos and clock still black.
-- Changing the team or the mode turns the panel on, from the page, the app or Home Assistant. So do the four favorite buttons and the brightness and night buttons on the remote.
+- Changing the team or the mode turns the panel on, from the page, the app or Home Assistant. So do the four favorite buttons, and brightness up and night, on the remote.
+- One consequence of always lighting up: a panel you switched off comes back on after a firmware update, and after the restart it does when it cannot find its Wi-Fi.
 - A team logo that fails to download is asked for again a few seconds later, instead of leaving an empty square until you change teams.
 
 ## v1.4.0
