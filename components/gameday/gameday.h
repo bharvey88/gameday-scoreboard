@@ -151,6 +151,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
 
  protected:
   void apply_team_(const ::espn::Team &t);
+  void fire_action_(const std::string &name);
   void set_favorite_(uint8_t slot, uint8_t league, uint32_t id);
   void handle_set_(AsyncWebServerRequest *request);
   void apply_set_(const std::vector<std::pair<std::string, std::string>> &kv);

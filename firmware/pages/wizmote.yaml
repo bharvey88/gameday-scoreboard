@@ -28,6 +28,12 @@ script:
           condition:
             lambda: 'return button >= 16 && button <= 19;'
           then:
+            # A favorite on a dark panel is somebody asking to see that team.
+            - if:
+                condition:
+                  switch.is_off: power
+                then:
+                  - switch.turn_on: power
             - lambda: 'id(gameday_ctl).press_favorite(button - 15);'
       - if:
           condition:
@@ -40,15 +46,24 @@ script:
           then:
             - switch.turn_off: power
       - if:
+          # Brighter on a panel that is off means turn it on. The first press
+          # brings back the brightness it was set to; stepping up as well
+          # would jump straight past it.
           condition:
             lambda: 'return button == 9;'
           then:
-            - lambda: |-
-                float current = id(brightness).state;
-                float step = std::max((float) ${WIZMOTE_BRIGHTNESS_MIN_STEP}, 255.0f * ${WIZMOTE_BRIGHTNESS_STEP} / 100.0f);
-                auto call = id(brightness).make_call();
-                call.set_value(std::min(255.0f, current + step));
-                call.perform();
+            - if:
+                condition:
+                  switch.is_off: power
+                then:
+                  - switch.turn_on: power
+                else:
+                  - lambda: |-
+                      float current = id(brightness).state;
+                      float step = std::max((float) ${WIZMOTE_BRIGHTNESS_MIN_STEP}, 255.0f * ${WIZMOTE_BRIGHTNESS_STEP} / 100.0f);
+                      auto call = id(brightness).make_call();
+                      call.set_value(std::min(255.0f, current + step));
+                      call.perform();
       - if:
           condition:
             lambda: 'return button == 8;'
@@ -63,6 +78,13 @@ script:
           condition:
             lambda: 'return button == 3;'
           then:
+            # NIGHT on a dark panel turns it on at the night level: power
+            # first, then the number, which the switch then lets through.
+            - if:
+                condition:
+                  switch.is_off: power
+                then:
+                  - switch.turn_on: power
             - lambda: |-
                 auto call = id(brightness).make_call();
                 call.set_value(${WIZMOTE_BRIGHTNESS_NIGHT});

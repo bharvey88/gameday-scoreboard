@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.4.0"
+  version: "1.4.1"
   variant: "m1"
 
   display_panel_width: "64"
@@ -46,16 +46,24 @@ esphome:
     name: bharvey88.gameday-scoreboard
     version: "${version}"
   on_boot:
-    # The Power switch and Brightness number restore their saved state before
-    # the HUB75 driver exists (template entities set up at priority ~800, the
-    # display at 400), and the driver starts at its config default. Apply the
-    # restored values once the display is up, or a panel saved as off boots
-    # lit and the page shows it off.
+    # The Brightness number restores its saved value before the HUB75 driver
+    # exists (template entities set up at priority ~800, the display at 400),
+    # and the driver starts at its config default instead. Apply the number
+    # once the display is up, or the panel lights at the wrong brightness.
+    # The Power switch is ALWAYS_ON now, so there is no saved off state to
+    # restore; the ternary stays because the switch can be turned off in the
+    # moment it takes to get here. Repaint too: whatever LVGL drew before the
+    # driver had a brightness went nowhere (see the gd_repaint script).
     - priority: 300.0
       then:
         - hub75.set_brightness:
             id: matrix
             brightness: !lambda 'return id(power).state ? (uint8_t) id(brightness).state : 0;'
+        - if:
+            condition:
+              switch.is_on: power
+            then:
+              - script.execute: gd_repaint
     # After "Reset Wi-Fi" the saved network name is blank. ESPHome still counts it
     # as a configured network and would wait a minute before the hotspot and
     # Bluetooth setup appear. Cut both waits to a second in that one case.
@@ -161,6 +169,51 @@ wifi:
                  (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
 script:
+  # The HUB75 driver turns itself off at brightness 0 and drops every pixel
+  # write while it is off, LVGL's flushes included. LVGL has no idea: it marks
+  # those areas clean, so when the panel comes back only what is invalidated
+  # afterwards (the ticker) is redrawn and the rest of the board stays black.
+  # Mark the whole screen dirty so the next flush sends all of it.
+  - id: gd_repaint
+    then:
+      - lambda: |-
+          lv_obj_t *screen = lv_screen_active();
+          if (screen != nullptr)
+            lv_obj_invalidate(screen);
+          lv_obj_t *top = lv_layer_top();
+          if (top != nullptr)
+            lv_obj_invalidate(top);
+
+  # A logo download that fails leaves a blank square until the team changes,
+  # because the dispatch below only asks for a URL it has not asked for yet.
+  # Ask again for the same one after 15s. mode: restart means a second
+  # failure moves the one pending retry instead of stacking another, so a
+  # logo ESPN keeps refusing is retried every 15s and never piles up.
+  - id: gd_team_logo_retry
+    mode: restart
+    then:
+      - delay: 15s
+      - if:
+          condition:
+            lambda: 'return !id(gd_team_logo_url).empty();'
+          then:
+            - online_image.set_url:
+                id: gd_team_logo
+                url: !lambda 'return id(gd_team_logo_url);'
+                update: true
+  - id: gd_opp_logo_retry
+    mode: restart
+    then:
+      - delay: 15s
+      - if:
+          condition:
+            lambda: 'return !id(gd_opp_logo_url).empty();'
+          then:
+            - online_image.set_url:
+                id: gd_opp_logo
+                url: !lambda 'return id(gd_opp_logo_url);'
+                update: true
+
   # Bluetooth back on, but not for every two second blip. Bringing Bluedroid
   # up and down is a large internal-RAM alloc and free each time, and that
   # churn is the v1.3.4 territory this release is stepping back into, so do
@@ -299,7 +352,14 @@ image:
           id: gd_team_logo_img
           src: gd_team_logo
     on_error:
-      - logger.log: "Team logo download failed"
+      - logger.log:
+          level: WARN
+          format: "Team logo download failed: %s"
+          args: ['id(gd_team_logo_url).c_str()']
+      # Forget it, so the next board update asks for it again even though the
+      # team has not changed, and retry on our own in case no update comes.
+      - lambda: 'id(gd_last_team_logo) = "";'
+      - script.execute: gd_team_logo_retry
   - platform: online_image
     id: gd_opp_logo
     url: https://a.espncdn.com/i/teamlogos/nfl/500-dark/phi.png
@@ -313,7 +373,12 @@ image:
           id: gd_opp_logo_img
           src: gd_opp_logo
     on_error:
-      - logger.log: "Opponent logo download failed"
+      - logger.log:
+          level: WARN
+          format: "Opponent logo download failed: %s"
+          args: ['id(gd_opp_logo_url).c_str()']
+      - lambda: 'id(gd_last_opp_logo) = "";'
+      - script.execute: gd_opp_logo_retry
 
 globals:
   - id: gd_update_checked
@@ -325,6 +390,17 @@ globals:
     restore_value: no
     initial_value: '""'
   - id: gd_last_opp_logo
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  # The URL each image was last asked for, kept for the retry scripts. The
+  # gd_last_* pair above is cleared on a failure so the next update re-asks;
+  # these two are not, or the retry would have nothing to retry with.
+  - id: gd_team_logo_url
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: gd_opp_logo_url
     type: std::string
     restore_value: no
     initial_value: '""'
@@ -361,6 +437,15 @@ gameday:
           lambda: 'return x == "team_picked";'
         then:
           - script.execute: boot_hide
+    # Picking a team or a mode is somebody standing in front of a dark panel
+    # wondering why nothing happened. Light it back up.
+    - if:
+        condition:
+          and:
+            - lambda: 'return x == "user_pick";'
+            - switch.is_off: power
+        then:
+          - switch.turn_on: power
   on_update:
     - text_sensor.template.publish:
         id: gd_status_sensor
@@ -392,7 +477,9 @@ gameday:
         condition:
           lambda: 'return !x.team_logo.empty() && x.team_logo != id(gd_last_team_logo);'
         then:
-          - lambda: 'id(gd_last_team_logo) = x.team_logo;'
+          - lambda: |-
+              id(gd_last_team_logo) = x.team_logo;
+              id(gd_team_logo_url) = x.team_logo;
           - online_image.set_url:
               id: gd_team_logo
               url: !lambda 'return x.team_logo;'
@@ -401,12 +488,16 @@ gameday:
         condition:
           lambda: 'return x.opponent_logo.empty();'
         then:
-          - lambda: 'id(gd_last_opp_logo) = "";'
+          - lambda: |-
+              id(gd_last_opp_logo) = "";
+              id(gd_opp_logo_url) = "";  // no opponent on this card, nothing to retry
     - if:
         condition:
           lambda: 'return !x.opponent_logo.empty() && x.opponent_logo != id(gd_last_opp_logo);'
         then:
-          - lambda: 'id(gd_last_opp_logo) = x.opponent_logo;'
+          - lambda: |-
+              id(gd_last_opp_logo) = x.opponent_logo;
+              id(gd_opp_logo_url) = x.opponent_logo;
           - online_image.set_url:
               id: gd_opp_logo
               url: !lambda 'return x.opponent_logo;'
@@ -442,12 +533,13 @@ switch:
     name: "Power"
     id: power
     icon: "mdi:power"
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_mode: ALWAYS_ON
     optimistic: true
     turn_on_action:
       - hub75.set_brightness:
           id: matrix
           brightness: !lambda return id(brightness).state;
+      - script.execute: gd_repaint
     turn_off_action:
       - hub75.set_brightness:
           id: matrix

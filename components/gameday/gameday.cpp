@@ -288,6 +288,8 @@ void GamedayComponent::select_mode(const std::string &option) {
     this->generation_++;
     this->emit_({});  // clear the board while the next fetch runs
     this->schedule_next_(0);
+    // Somebody asked for a different mode, so they are looking at the panel.
+    this->fire_action_("user_pick");
     return;
   }
   ESP_LOGW(TAG, "Unknown mode '%s'", option.c_str());
@@ -631,6 +633,11 @@ void GamedayComponent::select_team_id(League league, uint32_t id) {
   ESP_LOGW(TAG, "Unknown team %s %u", league == League::NFL ? "nfl" : "ncaa", (unsigned) id);
 }
 
+void GamedayComponent::fire_action_(const std::string &name) {
+  for (auto &cb : this->action_callbacks_)
+    cb(name);
+}
+
 void GamedayComponent::apply_team_(const ::espn::Team &t) {
   if ((uint8_t) t.league == this->prefs_.league && t.espn_id == this->prefs_.team_id)
     return;
@@ -646,8 +653,10 @@ void GamedayComponent::apply_team_(const ::espn::Team &t) {
   if (this->team_select_ != nullptr)
     this->team_select_->publish_state(this->team_option_());
   if (first_pick)
-    for (auto &cb : this->action_callbacks_)
-      cb("team_picked");  // the setup screen listens for this
+    this->fire_action_("team_picked");  // the setup screen listens for this
+  // The select, the page and the app all land here, and only on a real
+  // change, so this is the one place that knows a person picked a team.
+  this->fire_action_("user_pick");
   this->reset_game_();
   this->generation_++;  // a fetch already in flight belongs to the old team
   // Show the new team right away; the game data follows in a second or two.

@@ -8,6 +8,13 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.4.1
+
+- The panel lights up whenever it has power. It no longer comes back dark because it happened to be off when the power went out.
+- Turning the panel back on redraws the whole board. It used to return with only the ticker moving and the score, logos and clock still black.
+- Changing the team or the mode turns the panel on, from the page, the app or Home Assistant. So do the four favorite buttons and the brightness and night buttons on the remote.
+- A team logo that fails to download is asked for again a few seconds later, instead of leaving an empty square until you change teams.
+
 ## v1.4.0
 
 - The panel now says "Wi-Fi lost, open the Game Day app" instead of leaving an old score on the screen, and Bluetooth switches back on so the app can hand it a new password. A panel that cannot get back on Wi-Fi restarts itself after ten minutes.
