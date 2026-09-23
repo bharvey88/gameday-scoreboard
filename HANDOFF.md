@@ -19,12 +19,15 @@ Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
    clear_sta(), and the restart in gameday-common.yaml bails when there is no
    network in memory. Check whether ESPHome falls back to the saved network by
    itself; if not, the panel sits offline until power-cycled.
-3. **Wi-Fi network list in the app needs firmware:** ESPHome 2026.8.2
-   esp32_improv answers Improv Get WiFi Networks (0x04) with unknown command
-   (improv_serial supports it). Needs a local esp32_improv copy under
-   firmware/components/ (or upstream PR): one result per unique SSID, sent one
-   at a time, then an empty terminator; fresh scan results in setup mode.
-   Brandon wants this; not started.
+3. **Bench PR #16 (v1.4.5, Improv Wi-Fi scan over BLE, stacked on #14).**
+   Local esp32_improv override in components/esp32_improv (upstream 2026.8.2
+   copy in its own commit, changes between GAMEDAY begin/end markers). Wire
+   format follows improv_serial, not the published BLE spec: one RPC result
+   per network [04, SSID, RSSI, YES/NO], paced 100 ms, then empty `04 00 04`
+   terminator, max 20, deduped, strongest first. The published BLE spec
+   packs all networks into one result (about 8 to 10 max) with auth type
+   strings; settle this before any upstream PR. App side matches (iOS PR #3).
+   Bench: scripts/improv_scan.py in the worktree, then provision from the app.
 4. Panels on 1.4.2 or older need one USB reinstall (Brandon's gameday-2f6a70
    included).
 
