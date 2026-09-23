@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support - Game Day Scoreboard</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0f14; color: #e6edf3; }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1 { font-size: 2rem; margin: 0 0 4px; }
+    .sub { color: #9da7b3; margin: 0 0 32px; }
+    .card { background: #151b23; border: 1px solid #262e38; border-radius: 12px; padding: 20px 24px; margin: 0 0 20px; }
+    .card h2 { margin: 0 0 6px; font-size: 1.2rem; }
+    .card p { margin: 0 0 14px; color: #c3ccd6; }
+    code { background: #1f2731; padding: 1px 6px; border-radius: 4px; }
+    .note { font-size: 0.9rem; color: #9da7b3; }
+    a { color: #7cc4ff; }
+    footer { margin-top: 40px; font-size: 0.85rem; color: #6f7a86; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Support</h1>
+  <p class="sub">Common fixes, and how to reach us for anything else.</p>
+
+  <div class="card">
+    <h2>The app can't find my panel</h2>
+    <p>Add it by address instead. Open the panel's own page at <code>gameday-xxxxxx.local</code> (the name it shows on screen), or the numeric address underneath if your phone can't resolve <code>.local</code> names, and enter that in the app.</p>
+  </div>
+
+  <div class="card">
+    <h2>I need to reset Wi-Fi</h2>
+    <p>Hold the M-1's boot button for 10 seconds. The screen warns you first, with 5 seconds to let go if you didn't mean to. Once it resets, the panel forgets its network and restarts into setup mode; your team, favorites and other settings stay as they were.</p>
+    <p class="note">A shorter hold (about 1.5 seconds) just shows the panel's address again, without resetting anything.</p>
+  </div>
+
+  <div class="card">
+    <h2>Updating the firmware</h2>
+    <p>The panel checks for updates every six hours on its own. To check right away, open its page and use Check for Updates; an Install button appears there when a newer version is out and the update runs over Wi-Fi.</p>
+  </div>
+
+  <div class="card">
+    <h2>Something else</h2>
+    <p>Open an issue on GitHub: <a href="https://github.com/bharvey88/gameday-scoreboard/issues">github.com/bharvey88/gameday-scoreboard/issues</a>. Include what the panel or app was doing, and its firmware version if you have it (shown on the device page).</p>
+  </div>
+
+  <footer>
+    <a href="/">Game Day Scoreboard</a>
+  </footer>
+</main>
+</body>
+</html>
