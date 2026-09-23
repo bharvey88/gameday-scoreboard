@@ -71,9 +71,9 @@ appear.
 - After Wi-Fi setup the app goes straight to "Pick your team", with Skip.
 - If skipped, the panel's home screen shows a "Pick a team" strip until a
   team or mode is picked.
-- Open question for Brandon: when exactly one panel is saved (the app opens
-  straight to it), show a "New panel nearby, tap to set up" strip on that
-  screen while a new panel is advertising for setup?
+- When exactly one panel is saved (the app opens straight to it), a "New
+  panel nearby, tap to set up" strip shows on that screen while a new panel
+  is advertising for setup. Approved by Brandon; built in iOS PR #3.
 
 ## Releases
 
