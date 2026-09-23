@@ -127,6 +127,13 @@ jobs:
           mkdir -p release
           f=$(ls artifacts/moonhub75/*.factory.bin | head -1)
           cp "$f" "release/gameday-scoreboard-${GITHUB_REF_NAME}.factory.bin"
+          # Also zip the whole moonhub75 manifest folder (manifest.json plus
+          # the OTA and factory bins it references, with relative paths that
+          # resolve the same wherever the folder lands) so site.yml can
+          # rebuild site/firmware/moonhub75/ from a release asset instead of
+          # a Build artifact, which expires after 90 days.
+          (cd artifacts && zip -r "../release/firmware-moonhub75.zip" moonhub75)
+          ASSETS="release/gameday-scoreboard-${GITHUB_REF_NAME}.factory.bin release/firmware-moonhub75.zip"
           PREV=$(gh release list --exclude-drafts --limit 20 --json tagName --jq "[.[].tagName | select(. != \"${GITHUB_REF_NAME}\")][0]")
           {
             cat notes/notes.md
@@ -137,5 +144,5 @@ jobs:
               echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${GITHUB_REF_NAME}"
             fi
           } > release/body.md
-          gh release create "$GITHUB_REF_NAME" release/*.bin --title "$GITHUB_REF_NAME" --notes-file release/body.md || \
-          { gh release upload "$GITHUB_REF_NAME" release/*.bin --clobber; gh release edit "$GITHUB_REF_NAME" --notes-file release/body.md; }
+          gh release create "$GITHUB_REF_NAME" $ASSETS --title "$GITHUB_REF_NAME" --notes-file release/body.md || \
+          { gh release upload "$GITHUB_REF_NAME" $ASSETS --clobber; gh release edit "$GITHUB_REF_NAME" --notes-file release/body.md; }

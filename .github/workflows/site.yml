@@ -1,8 +1,11 @@
 name: Site
 
 # Republish gamedayscoreboard.app when only docs/site changed, without a
-# firmware release. The firmware files come from the Build run of the latest
-# release tag, so panels see the same manifest and binaries they saw before.
+# firmware release. The firmware files come from the latest release tag's
+# firmware-moonhub75.zip asset, so panels see the same manifest and binaries
+# they saw before. Falls back to the tag's Build artifact for a release that
+# predates that asset (v1.4.3 and earlier); Build artifacts expire after 90
+# days, so that fallback is only good for 90 days after such a release.
 #
 # Manual only. Pages keys deployments by commit sha, so deploying a commit
 # here and then tagging that same commit makes the tag's deploy a silent
@@ -37,11 +40,19 @@ jobs:
         run: |
           set -euo pipefail
           TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
-          RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch "$TAG" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-          echo "release $TAG, build run $RUN"
+          echo "release $TAG"
           mkdir -p site/firmware
           cp -r docs/site/. site/
-          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n firmware-moonhub75 -D site/firmware
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx firmware-moonhub75.zip; then
+            echo "firmware from the $TAG release asset firmware-moonhub75.zip"
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p firmware-moonhub75.zip -O /tmp/firmware-moonhub75.zip
+            unzip -o /tmp/firmware-moonhub75.zip -d site/firmware
+          else
+            echo "no firmware-moonhub75.zip asset on $TAG, falling back to its Build artifact"
+            RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch "$TAG" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+            echo "build run $RUN"
+            gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n firmware-moonhub75 -D site/firmware
+          fi
           test -f site/firmware/moonhub75/manifest.json
           sed -i "s/__VERSION__/${TAG}/g" site/index.html
           ls -laR site
