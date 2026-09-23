@@ -5,8 +5,8 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.4.2"
-  variant: "m1"
+  version: "1.4.3"
+  variant: "moonhub75"
 
   display_panel_width: "64"
   display_panel_height: "64"
@@ -302,8 +302,7 @@ http_request:
   buffer_size_rx: 2048
 
 # Over-the-air updates from the release manifest. Checked every 6 hours and
-# on demand from the device page. (Releases before v0.6.0 polled 64x64/ and
-# 128x64/ manifests; the workflow still publishes copies there.)
+# on demand from the device page.
 update:
   - platform: http_request
     id: gd_firmware_update

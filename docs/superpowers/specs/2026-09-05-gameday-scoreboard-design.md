@@ -4,7 +4,7 @@ Date: 2026-09-05. Status: approved.
 
 ## Goal
 
-A standalone football scoreboard for HUB75 matrices on the Apollo M-1. No Home
+A standalone football scoreboard for HUB75 matrices on a MoonHub75-pinout controller. No Home
 Assistant, no blueprint. A person flashes a prebuilt binary from a browser,
 joins the device to WiFi with Improv, opens the device's web page, picks a
 league and team, and the panel tracks that team's games from ESPN by itself.
@@ -22,7 +22,7 @@ celebration output stay out. Matrix plus NFL and college football only.
 | Logos | ESPHome online_image decodes the ESPN dark-background PNG on device, resized to 32x32 |
 | Firmware base | ESPHome on the hub75-studio packages (fork branch gameday until upstream merges) |
 | Install | GitHub Pages flasher (ESP Web Tools + Improv), then the device web page |
-| Hardware | Apollo M-1 only, two bins: one 64x64 panel, two panels wide (128x64) |
+| Hardware | MoonHub75-pinout ESP32-S3 controllers only, two bins: one 64x64 panel, two panels wide (128x64) |
 | Repo | New public repo bharvey88/gameday-scoreboard |
 | Idle screen | Next-game card |
 | Game logic | Score splashes, opponent splashes (switchable), victory splash, composable ticker |
@@ -57,8 +57,8 @@ gameday-scoreboard/
 
 ## Firmware configuration
 
-`gameday-common.yaml` carries what the current example M-1 config carries,
-minus the media proxy: esphome-version, the M-1 rev6 controller package,
+`gameday-common.yaml` carries what the current example controller config carries,
+minus the media proxy: esphome-version, the controller package,
 utils, theme, bios page, clock page, plus the local live page and the local
 external component. WiFi uses `ap:` plus `captive_portal:` and `improv_serial:`
 so the flasher can provision credentials. `web_server: version: 3` gives the
@@ -213,7 +213,7 @@ committed, so a build never needs network access.
   variants without publishing.
 - `docs/index.html`: two install buttons (one per layout), Improv WiFi
   provisioning built into ESP Web Tools, then a short "open the device page
-  and pick your team" walkthrough. Layout follows the apollo-installer page.
+  and pick your team" walkthrough. Layout: one card per step.
 - README: what it does, hardware needed, the three install steps, how to add
   the device to Home Assistant if wanted, how to build from YAML.
 
@@ -231,4 +231,4 @@ committed, so a build never needs network access.
 ## Out of scope
 
 Lights and celebrations beyond the matrix, other sports, win probability,
-multi-team priority, controllers other than the M-1, a wiki tutorial.
+multi-team priority, controllers on other pinouts, a wiki tutorial.

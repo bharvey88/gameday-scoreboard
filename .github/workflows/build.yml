@@ -41,9 +41,9 @@ jobs:
           path: notes.md
 
   build:
-    # One firmware for every panel count since v0.6.0; the "m1" name is the
-    # manifest folder on the flasher site.
-    name: Build m1
+    # One firmware for every panel count since v0.6.0; "moonhub75" names the
+    # controller pinout and is the manifest folder on the flasher site.
+    name: Build moonhub75
     needs: notes
     runs-on: ubuntu-latest
     steps:
@@ -60,17 +60,17 @@ jobs:
       - name: Stage output under a stable folder name
         run: |
           mkdir -p out
-          cp -r "${{ steps.esphome.outputs.name }}" out/m1
+          cp -r "${{ steps.esphome.outputs.name }}" out/moonhub75
           ls -R out
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-m1
+          name: firmware-moonhub75
           path: out
 
   build-beta:
     # Early warning: the next ESPHome, allowed to fail. Nothing is published
     # from this job.
-    name: Build m1 (ESPHome beta)
+    name: Build moonhub75 (ESPHome beta)
     needs: notes
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -112,9 +112,6 @@ jobs:
           mkdir -p site/firmware
           cp -r docs/site/* site/
           cp -r artifacts/* site/firmware/
-          # Panels flashed before v0.6.0 poll these two manifests for updates.
-          cp -r site/firmware/m1 site/firmware/64x64
-          cp -r site/firmware/m1 site/firmware/128x64
           sed -i "s/__VERSION__/${GITHUB_REF_NAME}/g" site/index.html
           ls -R site
       - uses: actions/upload-pages-artifact@v3
@@ -127,7 +124,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p release
-          f=$(ls artifacts/m1/*.factory.bin | head -1)
+          f=$(ls artifacts/moonhub75/*.factory.bin | head -1)
           cp "$f" "release/gameday-scoreboard-${GITHUB_REF_NAME}.factory.bin"
           PREV=$(gh release list --exclude-drafts --limit 20 --json tagName --jq "[.[].tagName | select(. != \"${GITHUB_REF_NAME}\")][0]")
           {

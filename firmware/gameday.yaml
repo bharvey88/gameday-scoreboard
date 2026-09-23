@@ -2,7 +2,7 @@
 # for one 64x64 panel or two side by side: the panel count is picked on the
 # device page and applied at boot (components/panel_layout).
 substitutions:
-  variant: "m1"
+  variant: "moonhub75"
 
 packages:
   common: !include gameday-common.yaml

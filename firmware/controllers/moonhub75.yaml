@@ -30,7 +30,7 @@ i2s_audio:
 # 24-bit samples left-justified in 32-bit words; low 8 bits are padding.
 microphone:
   - platform: i2s_audio
-    id: m1_mic
+    id: mic
     adc_type: external
     i2s_din_pin: GPIO10
     sample_rate: 16000
@@ -84,11 +84,11 @@ switch:
     icon: "mdi:microphone"
     restore_mode: ALWAYS_ON
     lambda: |-
-      return !id(m1_mic).get_mute_state();
+      return !id(mic).get_mute_state();
     turn_on_action:
-      - microphone.unmute: m1_mic
+      - microphone.unmute: mic
     turn_off_action:
-      - microphone.mute: m1_mic
+      - microphone.mute: mic
 
 # Boot button (GPIO0) as power toggle. GPIO0 is a strapping pin; it is safe
 # as an input after boot, so the build-time warning is suppressed on purpose.
