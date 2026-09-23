@@ -37,7 +37,9 @@ static const uint32_t IN_INTERVAL = 5 * 1000;
 static const uint32_t POST_INTERVAL = MINUTE;
 static const uint32_t POST_LINGER = 30 * MINUTE;
 static const uint32_t RETRY_INTERVAL = MINUTE;
-static const uint32_t NOT_READY_INTERVAL = 5 * 1000;
+// Wi-Fi and the clock are re-checked this often at boot: every second waited
+// here is a second of boot screen.
+static const uint32_t NOT_READY_INTERVAL = 500;
 static const int64_t PRE_NEAR_SECONDS = 60 * 60;
 static const uint32_t NO_LIVE_RESCAN = 2 * MINUTE;
 // A final never changes: one poll for the card, then only the rescan.
@@ -169,6 +171,7 @@ void GamedayComponent::setup() {
     this->prefs5_.idle_rotate_s = 60;
   }
   this->prefs5_.wx_grid[sizeof(this->prefs5_.wx_grid) - 1] = '\0';
+  this->pref6_ = global_preferences->make_preference<Prefs6>(fnv1_hash("gameday_prefs6_v1"));
   this->rebuild_favorites_(false);
   this->apply_timezone_();
   this->publish_selects_();
@@ -799,6 +802,7 @@ void GamedayComponent::reset_game_() {
   this->force_schedule_ = false;
   this->upcoming_.clear();
   this->upcoming_due_ = false;
+  this->upcoming_after_poll_ = false;
   this->game_ = GameSnapshot{};
   this->prev_ = GameSnapshot{};
   this->post_since_ms_ = 0;
@@ -870,7 +874,7 @@ bool GamedayComponent::fetch_scan_(League league, Job &j) {
     return false;
   ContainerReader reader(container);
   ::espn::ScanResult scan;
-  bool ok = ::espn::parse_scan(reader, scan);
+  bool ok = ::espn::parse_scan(reader, scan, (int64_t) this->time_->timestamp_now());
   container->end();
   for (auto &g : scan.live) {
     g.league = (uint8_t) league;
@@ -885,9 +889,9 @@ bool GamedayComponent::fetch_scan_(League league, Job &j) {
     if (j.later.state != GameState::PRE || scan.later.kickoff_epoch < j.later.kickoff_epoch)
       j.later = scan.later;
   }
-  ESP_LOGI(TAG, "Scan: %u live, %u final, next %s (%u events, %u bytes)", (unsigned) scan.live.size(),
+  ESP_LOGI(TAG, "Scan: %u live, %u final, next %s (%u events, %u bytes%s)", (unsigned) scan.live.size(),
            (unsigned) scan.finals.size(), scan.later.state == GameState::PRE ? scan.later.event_id.c_str() : "-",
-           (unsigned) scan.events, (unsigned) reader.total());
+           (unsigned) scan.events, (unsigned) reader.total(), scan.stopped ? ", stopped early" : "");
   return ok;
 }
 
@@ -904,7 +908,7 @@ bool GamedayComponent::fetch_next_(League league, ::espn::LiveGame &out) {
       return false;
     ContainerReader reader(container);
     ::espn::ScanResult scan;
-    bool ok = ::espn::parse_scan(reader, scan);
+    bool ok = ::espn::parse_scan(reader, scan, (int64_t) this->time_->timestamp_now());
     container->end();
     if (!ok)
       return false;
@@ -1053,6 +1057,15 @@ void GamedayComponent::start_job_() {
     // In the my_team fallback with the rescan not due: fall through to the
     // My team path below, so the card is fetched and polled by that code and
     // not by a copy of it.
+  }
+  if (!this->schedule_.valid && !this->team_cache_tried_) {
+    this->team_cache_tried_ = true;
+    if (this->load_team_cache_(j.team)) {
+      this->schedule_fetched_ms_ = now == 0 ? 1 : now;
+      // Not upcoming_due_ yet: that would put the season download in front
+      // of the scoreboard, which is what the cache is here to skip.
+      this->upcoming_after_poll_ = true;
+    }
   }
   j.need_schedule = ::espn::schedule_due(this->schedule_.valid, this->force_schedule_, now,
                                          this->schedule_fetched_ms_, SCHEDULE_INTERVAL);
@@ -1254,6 +1267,7 @@ void GamedayComponent::apply_job_() {
     this->schedule_fetched_ms_ = now;
     this->force_schedule_ = false;
     this->upcoming_due_ = true;  // refreshed on the next cycle, once the board is drawn
+    this->save_team_cache_(j.team);
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
@@ -1275,6 +1289,10 @@ void GamedayComponent::apply_job_() {
   this->prev_ = this->game_;
   this->game_ = j.game;
   this->mark_good_poll_();
+  if (this->upcoming_after_poll_) {
+    this->upcoming_after_poll_ = false;
+    this->upcoming_due_ = true;
+  }
   ::espn::Splash splash =
       ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(),
                             this->live_mode_() && !this->team_fallback_);
@@ -1758,6 +1776,8 @@ void GamedayComponent::render_idle_(bool show) {
   // left to show, that is the clock.
   uint8_t ok = this->prefs5_.idle_screens & this->idle_available_();
   bool keep = ok != 0 ? (ok & (1u << this->idle_screen_)) != 0 : this->idle_screen_ == idle::CLOCK;
+  if (!this->content_seen_)
+    keep = true;  // clock first
   if (!keep) {
     this->idle_screen_ = idle::next_screen(this->prefs5_.idle_screens, this->idle_available_(), this->idle_screen_);
     this->idle_screen_ms_ = millis();
@@ -1783,18 +1803,29 @@ void GamedayComponent::idle_tick_() {
     return;
   this->idle_tick_ms_ = now;
   bool time_ok = this->time_ != nullptr && this->time_->now().is_valid();
-  bool want = time_ok && this->idle_wanted_();
+  bool nothing = this->idle_wanted_();
+  // The mode has decided (a board, or nothing to show): clock first is over.
+  if (!this->content_seen_ && (this->ever_polled_good_() || nothing)) {
+    this->content_seen_ = true;
+    ESP_LOGI(TAG, "First content after %u ms", (unsigned) now);
+  }
+  // Clock first: from the clock sync until the first fetch lands, the idle
+  // clock stands in for the old "Loading" board.
+  bool want = time_ok && !this->demo_active_ && (nothing || !this->content_seen_);
   if (want != this->idle_) {
     this->idle_ = want;
     this->idle_key_.clear();
     if (want) {
-      ESP_LOGI(TAG, "Nothing to show: idle screens");
+      ESP_LOGI(TAG, "%s", this->content_seen_ ? "Nothing to show: idle screens" : "Clock until the first fetch lands");
       this->idle_since_ms_ = now;
       this->idle_woke_ms_ = now;
-      this->idle_screen_ = idle::next_screen(this->prefs5_.idle_screens, this->idle_available_(), -1);
+      this->idle_screen_ = this->content_seen_
+                               ? idle::next_screen(this->prefs5_.idle_screens, this->idle_available_(), -1)
+                               : (int) idle::CLOCK;
       this->idle_screen_ms_ = now;
       this->idle_job_check_ms_ = 0;
       this->render_idle_(true);
+      this->mark_content_ready_();
     } else {
       ESP_LOGI(TAG, "Back to the scoreboard");
       this->idle_screen_ = -1;
@@ -1810,8 +1841,15 @@ void GamedayComponent::idle_tick_() {
     this->rebuild_state_(&this->last_fields_);
     return;
   }
-  if (!this->idle_)
+  if (!this->idle_) {
+    if (this->content_seen_)
+      this->mark_content_ready_();  // the scoreboard took the first fetch
     return;
+  }
+  if (!this->content_seen_) {
+    this->render_idle_(false);  // clock only: no rotation, no off timer yet
+    return;
+  }
   if (now - this->idle_screen_ms_ >= (uint32_t) this->prefs5_.idle_rotate_s * 1000) {
     int next = idle::next_screen(this->prefs5_.idle_screens, this->idle_available_(), this->idle_screen_);
     this->idle_screen_ms_ = now;
@@ -1834,7 +1872,7 @@ void GamedayComponent::idle_tick_() {
 // (countdown, record, standings group), the standings once a day, the
 // weather every half hour. One request per job, never next to a game fetch.
 bool GamedayComponent::start_idle_job_(uint32_t now) {
-  if (!this->idle_ || this->busy_)
+  if (!this->idle_ || !this->content_seen_ || this->busy_)
     return false;
   const ::espn::Team *t = this->current_team_();
   if (t == nullptr)
@@ -1961,6 +1999,58 @@ bool GamedayComponent::fetch_weather_(const std::string &grid, ::nws::Weather &o
   ESP_LOGI(TAG, "Weather: %d%s %s, high %d low %d (%u bytes)", out.temp, out.unit.c_str(), out.condition.c_str(),
            out.high, out.low, (unsigned) reader.total());
   return ok;
+}
+
+void GamedayComponent::mark_content_ready_() {
+  if (this->content_ready_)
+    return;
+  this->content_ready_ = true;
+  ESP_LOGI(TAG, "Content ready after %u ms", (unsigned) millis());
+  this->fire_action_("content_ready");  // the boot overlay waits for this
+}
+
+// ---- team info cache ------------------------------------------------------------
+
+// Used only while it can still be right: saved in the last day, for this
+// team, and for a game that has not been over for hours.
+bool GamedayComponent::load_team_cache_(const ::espn::Team *team) {
+  Prefs6 c{};
+  if (team == nullptr || !this->pref6_.load(&c))
+    return false;
+  c.event_id[sizeof(c.event_id) - 1] = '\0';
+  c.color[sizeof(c.color) - 1] = '\0';
+  c.record[sizeof(c.record) - 1] = '\0';
+  int64_t tnow = (int64_t) this->time_->timestamp_now();
+  if (c.league != (uint8_t) team->league || c.team_id != team->espn_id || c.event_id[0] == '\0' ||
+      tnow - c.saved_epoch > 24 * 3600 || tnow - c.saved_epoch < 0 || c.kickoff_epoch < tnow - 4 * 3600)
+    return false;
+  Schedule s;
+  s.valid = true;
+  s.event_id = c.event_id;
+  s.kickoff_epoch = c.kickoff_epoch;
+  s.group = c.group;
+  s.team_color = c.color;
+  s.team_record = c.record;
+  ::espn::adopt_league(s, team->league);
+  this->schedule_ = s;
+  ESP_LOGI(TAG, "Team info from cache: event %s", c.event_id);
+  return true;
+}
+
+void GamedayComponent::save_team_cache_(const ::espn::Team *team) {
+  if (team == nullptr || !this->schedule_.valid || this->schedule_.event_id.empty() ||
+      this->schedule_.event_id.size() >= sizeof(Prefs6::event_id))
+    return;
+  Prefs6 c{};
+  c.league = (uint8_t) team->league;
+  c.team_id = team->espn_id;
+  strncpy(c.event_id, this->schedule_.event_id.c_str(), sizeof(c.event_id) - 1);
+  c.kickoff_epoch = this->schedule_.kickoff_epoch;
+  c.group = this->schedule_.group;
+  strncpy(c.color, this->schedule_.team_color.c_str(), sizeof(c.color) - 1);
+  strncpy(c.record, this->schedule_.team_record.c_str(), sizeof(c.record) - 1);
+  c.saved_epoch = (int64_t) this->time_->timestamp_now();
+  this->pref6_.save(&c);
 }
 
 // ---- demo ---------------------------------------------------------------------
@@ -2122,6 +2212,7 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   doc["fallback"] = this->team_fallback_;
   doc["fallback_mode"] = this->fallback_my_team() ? "my_team" : "next_game";
   doc["idle"] = this->idle_;
+  doc["ready"] = this->content_ready_;
   doc["idle_screen"] = this->idle_ ? idle::screen_name(this->idle_screen_) : "";
   doc["idle_screens"] = this->prefs5_.idle_screens;
   doc["idle_rotate"] = this->prefs5_.idle_rotate_s;

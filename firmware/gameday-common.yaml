@@ -496,6 +496,11 @@ gameday:
           lambda: 'return x == "team_picked";'
         then:
           - script.execute: boot_hide
+    - if:
+        condition:
+          lambda: 'return x == "content_ready" && id(boot_hide_waiting);'
+        then:
+          - script.execute: boot_hide
     # Picking a team or a mode is somebody standing in front of a dark panel
     # wondering why nothing happened. Light it back up.
     - if:

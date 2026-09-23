@@ -356,7 +356,7 @@ lvgl:
                   y: 33
                   width: 32
                   text_align: CENTER
-                  text: "----"
+                  text: ""
                   styles: ["tt_st_team_text"]
 
               - label:
@@ -365,7 +365,7 @@ lvgl:
                   y: 33
                   width: 32
                   text_align: CENTER
-                  text: "----"
+                  text: ""
                   styles: ["tt_st_team_text"]
 
               - label:
@@ -374,7 +374,7 @@ lvgl:
                   y: 42
                   width: 32
                   text_align: CENTER
-                  text: "-"
+                  text: ""
                   styles: ["tt_st_score_text"]
 
               - label:
@@ -383,7 +383,7 @@ lvgl:
                   y: 42
                   width: 32
                   text_align: CENTER
-                  text: "-"
+                  text: ""
                   styles: ["tt_st_score_text"]
 
               - label:
@@ -503,7 +503,7 @@ lvgl:
                   width: 64
                   text_align: CENTER
                   long_mode: SCROLL_CIRCULAR
-                  text: "Loading"
+                  text: ""
                   styles: ["tt_st_status_text"]
 
         # Full-screen score splash (TOUCHDOWN! etc), shown briefly on scores

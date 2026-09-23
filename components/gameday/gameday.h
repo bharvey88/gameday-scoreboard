@@ -147,6 +147,9 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void set_idle_off_minutes(int minutes);
   void set_weather_location(bool set, float lat, float lon);
   bool idle() const { return this->idle_; }
+  // Something true is on the screen: a board from a real fetch, or an idle
+  // screen. The boot overlay holds until then.
+  bool content_ready() const { return this->content_ready_; }
   // The Power switch turned on, by anyone: the off-after-idle timer restarts.
   void on_power_on();
   void refresh_now();
@@ -237,6 +240,23 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     float wx_lon;
     char wx_grid[24];  // NWS office/cell for that location; "" = not looked up, "-" = outside the US
   } __attribute__((packed));
+  // The team endpoint's answer for the saved team, so a boot can go straight
+  // to the scoreboard instead of waiting on a 23 KB team read first.
+  struct Prefs6 {
+    uint8_t league;
+    uint32_t team_id;
+    char event_id[16];
+    int64_t kickoff_epoch;
+    uint32_t group;
+    char color[8];
+    char record[12];
+    int64_t saved_epoch;
+  } __attribute__((packed));
+  ESPPreferenceObject pref6_;
+  bool team_cache_tried_{false};
+  bool upcoming_after_poll_{false};  // booted from the cache: season list after the first board
+  bool load_team_cache_(const ::espn::Team *team);
+  void save_team_cache_(const ::espn::Team *team);
 
   bool flag_(uint8_t f) const { return (this->prefs_.flags & f) != 0; }
   void set_flag_(uint8_t f, bool on);
@@ -408,6 +428,9 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   uint32_t idle_tick_ms_{0};
   uint32_t idle_job_check_ms_{0};
   bool idle_dark_{false};       // the off timer switched the panel off
+  // Boot: until the first real content, the clock stands in (clock first).
+  bool content_seen_{false};
+  bool content_ready_{false};
   std::string idle_key_;        // what was last rendered, to skip repeats
   // The saved team's season schedule, whatever the mode: the countdown,
   // record and standings group come from it.
@@ -428,6 +451,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   bool start_idle_job_(uint32_t now);
   void apply_idle_job_(uint32_t now);
   void save_prefs5_() { this->pref5_.save(&this->prefs5_); }
+  void mark_content_ready_();
   bool league_wanted_(League league) const;
   ::espn::NextState next_state_(int64_t now_epoch) const;
   void decide_live_(uint32_t now, const std::vector<::espn::LiveGame> &live);

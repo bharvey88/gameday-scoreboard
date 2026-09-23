@@ -461,7 +461,15 @@ template<typename TInput> bool parse_standings(TInput &input, size_t max, Standi
 // Walks a scoreboard document event by event and sorts the games into
 // in progress, final, and the earliest one not started. Works for a day's
 // scoreboard (dates=) and for a week view (no date).
-template<typename TInput> bool parse_scan(TInput &input, ScanResult &out) {
+//
+// With now_epoch set, reading stops at the first unstarted game that kicks
+// off more than SCAN_STOP_MARGIN from now. ESPN lists a game day in
+// progress first, then finals, then games to come, each group by kickoff;
+// on a quiet day the list is simply by kickoff. Either way nothing after that
+// game has started, so the rest (most of a 1.3 MB Saturday) is never read.
+// The margin keeps a game that is a few minutes late starting from ending
+// the read before a game with the same kickoff that did start.
+template<typename TInput> bool parse_scan(TInput &input, ScanResult &out, int64_t now_epoch = 0) {
   out = ScanResult{};
   std::string week;
   detail::Capture caps[] = {{"\"week\":{\"number\":", &week, true}};
@@ -497,6 +505,10 @@ template<typename TInput> bool parse_scan(TInput &input, ScanResult &out) {
       out.finals.push_back(g);
     else if (out.later.state != GameState::PRE || g.kickoff_epoch < out.later.kickoff_epoch)
       out.later = g;
+    if (now_epoch != 0 && g.state == GameState::PRE && g.kickoff_epoch > now_epoch + SCAN_STOP_MARGIN) {
+      out.stopped = true;
+      return false;
+    }
     return true;
   });
   out.week = atoi(week.c_str());

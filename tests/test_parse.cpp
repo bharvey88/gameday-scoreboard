@@ -767,6 +767,51 @@ static void test_idle() {
   CHECK_EQ(standings_page(17, 4, 100, 20), (size_t) 0);  // five pages, wraps
 }
 
+static void test_scan_early_stop() {
+  // Saturday 5 PM Eastern: the fixture lists the games in progress, then the
+  // day's finals, then the evening kickoffs (23:00Z onwards), then last
+  // week's games. Nothing after the first evening kickoff can have started.
+  std::string json = slurp("fixtures/scoreboard_ncaa_live.json");
+  int64_t now = parse_iso8601_z("2026-09-05T22:00Z");
+  StringReader r(json);
+  ScanResult scan;
+  CHECK(parse_scan(r, scan, now));
+  CHECK(scan.stopped);
+  CHECK_EQ(scan.live.size(), (size_t) 18);
+  CHECK_EQ(finals_today(scan.finals, now, -5 * 3600).size(), (size_t) 18);  // every final of the day
+  CHECK_EQ(scan.later.event_id, std::string("401856668"));
+  CHECK_EQ(scan.events, (size_t) 37);
+  CHECK(r.total() < json.size() / 2);
+
+  // A game a few minutes late to start does not end the read: 22:45Z is
+  // inside the margin of the 23:00Z kickoffs, so those are read on to the
+  // first one past 23:15Z.
+  StringReader r2(json);
+  ScanResult late;
+  CHECK(parse_scan(r2, late, parse_iso8601_z("2026-09-05T22:45Z")));
+  CHECK(late.stopped);
+  CHECK(late.events > 37);
+  CHECK_EQ(late.live.size(), (size_t) 18);
+  CHECK_EQ(late.later.event_id, std::string("401856668"));
+
+  // No clock given: the whole document, as before.
+  StringReader r3(json);
+  ScanResult all;
+  CHECK(parse_scan(r3, all));
+  CHECK(!all.stopped);
+  CHECK_EQ(all.events, (size_t) 99);
+
+  // A week view where every game is ahead: the first one ends the read.
+  std::string nfl = slurp("fixtures/scoreboard_nfl.json");
+  StringReader rn(nfl);
+  ScanResult week;
+  CHECK(parse_scan(rn, week, parse_iso8601_z("2026-09-08T12:00Z")));
+  CHECK(week.stopped);
+  CHECK_EQ(week.events, (size_t) 1);
+  CHECK_EQ(week.later.event_id, std::string(kNflEvent));
+  CHECK_EQ(week.week, 1);
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -789,6 +834,7 @@ int main() {
   test_standings();
   test_weather();
   test_idle();
+  test_scan_early_stop();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

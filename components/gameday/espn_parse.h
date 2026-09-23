@@ -112,7 +112,12 @@ struct ScanResult {
   LiveGame later;           // valid when later.state == PRE
   int week{0};              // the scoreboard's "week.number", 0 when absent
   size_t events{0};         // events read
+  bool stopped{false};      // read stopped early (see parse_scan)
 };
+
+// parse_scan stops at the first unstarted game kicking off this long after
+// `now`. Anything before it that has started is either in progress or final.
+static const int64_t SCAN_STOP_MARGIN = 30 * 60;
 
 // Live modes with nothing in progress: what the board shows instead, in
 // order of precedence (see live_precedence).
