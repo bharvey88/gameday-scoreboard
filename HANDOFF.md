@@ -3,6 +3,29 @@
 Companion app handoff: ~/development/gameday-scoreboard-ios/HANDOFF.md.
 Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
 
+## NEXT UP (from the 2026-09-23 close, pick one per session)
+
+1. **www.gamedayscoreboard.app has no TLS cert.** GitHub's cert covers the
+   apex only, because the www CNAME had not propagated when it was issued
+   (checked 2026-09-23: `gh api repos/bharvey88/gameday-scoreboard/pages
+   --jq .https_certificate.domains` lists only gamedayscoreboard.app).
+   Re-trigger issuance by removing and re-adding the Pages custom domain.
+   That briefly drops HTTPS on the apex, which panels poll every 6 h, so do
+   it deliberately and re-verify /firmware/moonhub75/manifest.json and
+   /.well-known/apple-app-site-association afterwards.
+2. **Privacy page review** (docs/site/privacy/index.html): a draft Brandon
+   has not read; TestFlight and the App Store will link to it.
+3. **site.yml has a 90-day fuse:** it pulls firmware from the latest tag's
+   Build artifact (90-day retention). Past that, a site-only deploy fails.
+   Option: have the tag's publish job also attach the manifest and OTA bin
+   to the GitHub release, and let site.yml pull from release assets.
+4. **QR code on the panel's setup screen** pointing at
+   https://gamedayscoreboard.app/setup: researched below ("QR code to get the
+   app"), now unblocked because the universal link works (verified on
+   Brandon's iPhone 2026-09-23).
+5. Panels on 1.4.2 or older need one USB reinstall to reach the moonhub75
+   manifest (Brandon's own panel included).
+
 ## 2026-09-23
 
 - v1.4.2 shipped 2026-09-22: panels now poll gamedayscoreboard.app, and
