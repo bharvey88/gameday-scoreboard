@@ -1,7 +1,7 @@
 # Game Day Scoreboard firmware
 
-ESPHome firmware for a standalone football scoreboard on the Apollo M-1 HUB75
-matrix. Sibling repo: the iOS companion app at
+ESPHome firmware for a standalone football scoreboard on an ESP32-S3 HUB75
+controller (MoonHub75 pinout). Sibling repo: the iOS companion app at
 ~/development/gameday-scoreboard-ios (github.com/bharvey88/gameday-scoreboard-ios).
 
 ## Hard rules

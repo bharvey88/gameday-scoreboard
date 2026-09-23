@@ -43,6 +43,32 @@ Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
   crash under "LIVE CRASH SEEN 2026-09-14" was not reproduced or explained
   as of this update; treat it as still open.
 
+## No vendor branding (2026-09-23), branch `no-vendor-branding`
+
+- Brandon's ask: remove every Apollo / M-1 mention, say the firmware runs on
+  "an ESP32-S3 HUB75 controller on the MoonHub75 pinout" (his wording, chosen
+  over "any HUB75 controller", which is untrue: the binary hardcodes that pin
+  map, 16MB flash, octal PSRAM, the I2S mic on IO10/11/12 and a GPIO0 button;
+  MatrixPortal S3 and Waveshare use other pins, the Trinity is not an S3).
+- The pin map is the Apollo M-1 rev6 map, verified pin for pin against
+  MoonModules/Hardware MOONHUB75 and projectMM's Hub75Driver.h. M-1 rev4 is
+  the MatrixPortal S3 map, so rev4 boards cannot run this bin.
+- Firmware: the hub75-studio controller package is no longer pulled. Its
+  contents live in firmware/controllers/moonhub75.yaml with the 14 pins
+  written out (no `board:` preset), included from gameday-common.yaml as the
+  `controller` package. `esphome config` output diffed against main: only the
+  `board:` key is gone, nothing else resolved differently.
+- Docs: README (hardware section carries the 14-pin table, kept outside the
+  list on purpose, a table under a `- ` item renders unreliably), installer
+  page (new requirement note in the Install card, do not delete it), setup
+  and support pages, CHANGELOG lines, this repo's CLAUDE.md.
+- Left alone on purpose: docs/superpowers/ design docs (history),
+  `variant: "m1"`, the `m1_mic` id, the firmware/m1/ manifest path (renaming
+  breaks OTA discovery for existing panels).
+- Making "any HUB75 controller" literally true is a feature, not a docs edit:
+  a controller substitution, one package per board, a CI build matrix,
+  per-board manifests and a picker on the installer page.
+
 ## Still open, from the audit and from the sections below
 
 - The 2026-09-14 crash (LoadProhibited fault in the Wi-Fi driver, possibly
