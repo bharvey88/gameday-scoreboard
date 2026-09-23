@@ -110,7 +110,8 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p site/firmware
-          cp -r docs/site/* site/
+          # docs/site/. (not docs/site/*) so .well-known/ is copied too.
+          cp -r docs/site/. site/
           cp -r artifacts/* site/firmware/
           # Panels flashed before v0.6.0 poll these two manifests for updates.
           cp -r site/firmware/m1 site/firmware/64x64

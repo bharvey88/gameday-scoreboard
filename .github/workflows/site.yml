@@ -1,0 +1,53 @@
+name: Site
+
+# Republish gamedayscoreboard.app when only docs/site changed, without a
+# firmware release. The firmware files are copied from the live site as-is,
+# so panels see the same manifests and binaries they saw before.
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/site/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish site only
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble site from docs/site and the live firmware files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          BASE=https://gamedayscoreboard.app/firmware
+          mkdir -p site/firmware/m1
+          cp -r docs/site/. site/
+          curl -fsS "$BASE/m1/manifest.json" -o site/firmware/m1/manifest.json
+          for f in $(jq -r '.builds[] | (.ota.path, .parts[].path)' site/firmware/m1/manifest.json | sort -u); do
+            curl -fsS "$BASE/m1/$f" -o "site/firmware/m1/$f"
+          done
+          # Panels flashed before v0.6.0 poll these two manifests for updates.
+          cp -r site/firmware/m1 site/firmware/64x64
+          cp -r site/firmware/m1 site/firmware/128x64
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          sed -i "s/__VERSION__/${TAG}/g" site/index.html
+          ls -laR site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

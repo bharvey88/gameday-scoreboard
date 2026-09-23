@@ -1,7 +1,23 @@
-# HANDOFF: Game Day Scoreboard firmware, updated 2026-09-22
+# HANDOFF: Game Day Scoreboard firmware, updated 2026-09-23
 
 Companion app handoff: ~/development/gameday-scoreboard-ios/HANDOFF.md.
 Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
+
+## 2026-09-23
+
+- v1.4.2 shipped 2026-09-22: panels now poll gamedayscoreboard.app, and
+  /setup, /privacy, /support are live. The domain is a Cloudflare zone
+  (Bharvey88@gmail.com account), apex A/AAAA and www CNAME to GitHub Pages,
+  all DNS-only on purpose: panels verify TLS with the ESP-IDF bundle, and
+  GitHub's Let's Encrypt cert is known-good; Cloudflare proxy certs rotate CAs.
+- Universal links: docs/site/.well-known/apple-app-site-association lists
+  3NRQ7L5FUW.app.gamedayscoreboard.scoreboard for /setup and /setup/*.
+  build.yml now copies docs/site/. (the old docs/site/* glob skipped
+  dot-directories).
+- New .github/workflows/site.yml republishes the site when docs/site changes
+  on main (or by hand), copying the live firmware manifests and binaries
+  unchanged, so site edits no longer need a firmware tag. Both workflows
+  deploy to the same Pages site; a tag release rebuilds everything anyway.
 
 ## Where things stand (2026-09-22)
 
