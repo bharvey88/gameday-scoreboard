@@ -11,6 +11,7 @@ owns the panel, not for the code.
 ## v1.4.5
 
 - During Bluetooth setup the panel can now tell the Game Day app which Wi-Fi networks it can see, strongest first, so you can pick yours from a list instead of typing its name. The list needs an app version that asks for it; setup works the same as before either way.
+- A panel that is not set up yet now says "Pick a team in the Game Day app or at" its address, instead of telling you to open its web page on your phone. Picking a mode or a favorite now counts as setting it up too, as does picking the team it already shows (Dallas out of the box), so the prompt goes away from the app, the page or Home Assistant.
 
 ## v1.4.4
 

@@ -199,6 +199,7 @@ void GamedayComponent::set_favorite_(uint8_t slot, uint8_t league, uint32_t id) 
   this->prefs3_.fav_league[slot - 1] = league;
   this->prefs3_.fav_id[slot - 1] = id;
   this->pref3_.save(&this->prefs3_);
+  bool first_pick = id != 0 && this->mark_setup_done_();
   ESP_LOGI(TAG, "Favorite %u: %s", (unsigned) slot, this->favorite_option_(slot).c_str());
   if (this->favorite_selects_[slot - 1] != nullptr)
     this->favorite_selects_[slot - 1]->publish_state(this->favorite_option_(slot));
@@ -214,7 +215,10 @@ void GamedayComponent::set_favorite_(uint8_t slot, uint8_t league, uint32_t id) 
     this->schedule_next_(0);
     return;
   }
-  this->rebuild_state_(&this->last_fields_);
+  if (first_pick)
+    this->emit_({});  // redraw the ticker without the setup prompt
+  else
+    this->rebuild_state_(&this->last_fields_);
 }
 
 void GamedayComponent::press_favorite(uint8_t slot) {
@@ -277,11 +281,15 @@ void GamedayComponent::select_mode(const std::string &option) {
   for (uint8_t i = 0; i <= (uint8_t) Mode::FAVORITES; i++) {
     if (option != MODE_OPTIONS[i])
       continue;
-    if (i == this->prefs2_.mode)
+    if (i == this->prefs2_.mode) {
+      if (this->mark_setup_done_())
+        this->emit_({});  // redraw the ticker without the setup prompt
       return;
+    }
     this->prefs2_.mode = i;
     this->pref2_.save(&this->prefs2_);
     ESP_LOGI(TAG, "Mode: %s", option.c_str());
+    this->mark_setup_done_();
     if (this->mode_select_ != nullptr)
       this->mode_select_->publish_state(option);
     this->reset_game_();
@@ -638,22 +646,33 @@ void GamedayComponent::fire_action_(const std::string &name) {
     cb(name);
 }
 
+// The first team, mode or favorite picked from the page, the app or Home
+// Assistant ends setup: the setup ticker goes and the boot screen hides.
+// Returns true when this call is the one that ended it.
+bool GamedayComponent::mark_setup_done_() {
+  if (this->flag_(FLAG_SETUP))
+    return false;
+  this->prefs_.flags |= FLAG_SETUP;
+  this->save_prefs_();
+  this->fire_action_("team_picked");  // the setup screen listens for this
+  return true;
+}
+
 void GamedayComponent::apply_team_(const ::espn::Team &t) {
-  if ((uint8_t) t.league == this->prefs_.league && t.espn_id == this->prefs_.team_id)
+  if ((uint8_t) t.league == this->prefs_.league && t.espn_id == this->prefs_.team_id) {
+    // Picking the team the panel already had (Dallas, the factory default)
+    // is still a pick.
+    if (this->mark_setup_done_())
+      this->emit_({});  // redraw the ticker without the setup prompt
     return;
+  }
   this->prefs_.league = (uint8_t) t.league;
   this->prefs_.team_id = t.espn_id;
   this->save_prefs_();
   ESP_LOGI(TAG, "Team changed to %s", t.name);
-  bool first_pick = !this->flag_(FLAG_SETUP);
-  if (first_pick) {
-    this->prefs_.flags |= FLAG_SETUP;
-    this->save_prefs_();
-  }
   if (this->team_select_ != nullptr)
     this->team_select_->publish_state(this->team_option_());
-  if (first_pick)
-    this->fire_action_("team_picked");  // the setup screen listens for this
+  this->mark_setup_done_();
   // The select, the page and the app all land here, and only on a real
   // change, so this is the one place that knows a person picked a team.
   this->fire_action_("user_pick");
@@ -1242,7 +1261,9 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
       f.status_text += " | no update for " + std::to_string(mins) + " min";
     }
   }
-  // Until a team has been picked once, the ticker says where the setup page is.
+  // Until a team, mode or favorite has been picked once, the ticker asks for
+  // one. The app comes first; the address is for setting up without an
+  // iPhone, over the hotspot and the device page.
   if (!this->flag_(FLAG_SETUP) && network::is_connected()) {
     std::string ip;
     for (auto &a : network::get_ip_addresses()) {
@@ -1254,7 +1275,7 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
       }
     }
     if (!ip.empty())
-      f.status_text = "Setup: open " + this->hostname() + ".local or " + ip + " on your phone | " + f.status_text;
+      f.status_text = "Pick a team in the Game Day app or at " + ip + " | " + f.status_text;
   }
 
   if (!f.splash_text.empty())

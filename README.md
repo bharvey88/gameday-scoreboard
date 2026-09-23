@@ -35,7 +35,7 @@ The pinout, under the names ESPHome uses (that board's README calls the upper ha
 
 1. Open the [installer page](https://gamedayscoreboard.app/), plug the controller in over USB, and click Install.
 2. Enter your WiFi details in the dialog that follows the install.
-3. Once it's on WiFi the panel says where to go: open the `gameday-xxxxxx.local` name it shows on your phone, or the address underneath if your phone can't resolve `.local` names. Pick your team on that page. The ticker repeats the address until you've chosen a team, and holding the controller's boot button for 1.5 seconds shows it again any time.
+3. Once it's on WiFi the panel says where to go: open the `gameday-xxxxxx.local` name it shows on your phone, or the address underneath if your phone can't resolve `.local` names. Pick your team on that page. Until you pick a team or a mode, from that page, the Game Day app or Home Assistant, the ticker asks you to and repeats the address, and holding the controller's boot button for 1.5 seconds shows it again any time.
 
 Team changes take effect immediately and survive reboots. Two panels side by side? Click the two-panel picture in the Setup card. Nothing needs reflashing to change teams or layouts.
 
