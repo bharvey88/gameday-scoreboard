@@ -12,6 +12,9 @@ owns the panel, not for the code.
 
 - While the panel is waiting to be set up, or has lost its Wi-Fi, it now takes turns showing its message and a QR code. Point your iPhone camera at the code: it opens the Game Day app if you have it, or the setup page at gamedayscoreboard.app if you do not.
 - A panel waiting to be set up says SETUP and points you at the Game Day app again, instead of switching to the hotspot instructions half a second later. The hotspot instructions still come round in turn, for setting it up without an iPhone.
+- On two chained panels the QR code sits on the left with the words beside it, so nothing has to take turns.
+- Once the panel joins your Wi-Fi it shows the QR code for the app instead of a fast-scrolling address. The address still takes a turn when "Show address at boot" is on, split over two lines so it stays still, and holding the boot button still shows the full address.
+- Text on the setup screens no longer scrolls fast. The few lines that are too long to fit, like a long Wi-Fi name, now scroll slowly enough to read.
 
 ## v1.4.3
 
