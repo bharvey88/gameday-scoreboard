@@ -257,4 +257,4 @@ owns the panel, not for the code.
 
 ## v0.1.0
 
-- First release. Standalone football scoreboard for the Apollo M-1: flash from the browser, join WiFi, pick a team on the device page, and the panel follows the game from ESPN with no Home Assistant needed.
+- First release. Standalone football scoreboard for HUB75 LED matrix panels: flash from the browser, join WiFi, pick a team on the device page, and the panel follows the game from ESPN with no Home Assistant needed.

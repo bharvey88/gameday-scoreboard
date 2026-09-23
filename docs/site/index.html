@@ -31,22 +31,23 @@
 <body>
 <main>
   <h1>Game Day Scoreboard</h1>
-  <p class="sub">Football scoreboard for the Apollo M-1 HUB75 matrix. Version __VERSION__.</p>
+  <p class="sub">Football scoreboard for HUB75 LED matrix panels. Version __VERSION__.</p>
 
   <video class="demo" src="media/demo.mp4" autoplay muted loop playsinline preload="metadata"></video>
   <p class="note demo-note">What it looks like during a game. This is the panel's built-in demo mode: a scripted game with the real celebrations.</p>
 
   <div class="card">
     <h2>1. Install</h2>
-    <p>Plug the M-1 into this computer over USB and click Install. One firmware covers a single 64x64 panel and two panels side by side; you pick which on the device page afterwards.</p>
+    <p>Plug the controller into this computer over USB and click Install. One firmware covers a single 64x64 panel and two panels side by side; you pick which on the device page afterwards.</p>
     <p>
       <esp-web-install-button manifest="firmware/m1/manifest.json">
         <button slot="activate">Install Game Day Scoreboard</button>
-        <span slot="unsupported">This browser cannot talk to the M-1 over USB. Try a desktop browser.</span>
+        <span slot="unsupported">This browser cannot talk to the controller over USB. Try a desktop browser.</span>
         <span slot="not-allowed">Open this page over HTTPS to install.</span>
       </esp-web-install-button>
     </p>
-    <p class="note">Installing erases whatever firmware was on the M-1. Your WiFi details and team choice are asked for afterwards.</p>
+    <p class="note">Needs an ESP32-S3 HUB75 controller on the <a href="https://github.com/MoonModules/Hardware/tree/main/MOONHUB75">MoonHub75</a> pinout, with 16MB flash and octal PSRAM.</p>
+    <p class="note">Installing erases whatever firmware was on the controller. Your WiFi details and team choice are asked for afterwards.</p>
   </div>
 
   <div class="card">
