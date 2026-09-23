@@ -599,6 +599,8 @@ switch:
       - hub75.set_brightness:
           id: matrix
           brightness: 0
+      # Off by hand cancels the idle wake; the component tells its own off apart.
+      - lambda: 'id(gameday_ctl).on_power_off();'
 number:
   - platform: template
     name: "Brightness"

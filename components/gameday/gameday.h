@@ -152,6 +152,14 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   bool content_ready() const { return this->content_ready_; }
   // The Power switch turned on, by anyone: the off-after-idle timer restarts.
   void on_power_on();
+  // The Power switch turned off. By hand, it cancels the idle wake: the
+  // panel stays off until someone turns it on.
+  void on_power_off();
+  // Tells off-after-idle whether the panel is lit (the Power switch).
+  void set_power_state(std::function<bool()> &&f) { this->power_state_ = std::move(f); }
+  // Which page LVGL shows: "clock", "countdown", "standings", "record",
+  // "weather", "scoreboard" or "other". Polled from YAML once a second.
+  void set_active_page(const char *page);
   void refresh_now();
   // Plays a scripted game through the real splash and render path, for
   // showing the panel off without a live game. Real data resumes after.
@@ -413,6 +421,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   // The league's next game this week, per league (index = League).
   struct NextCache {
     uint32_t fetched_ms{0};  // 0 = never
+    uint32_t valid_ms{0};    // how long this answer stands
     bool found{false};
     ::espn::LiveGame game;
   };
@@ -428,6 +437,21 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   uint32_t idle_tick_ms_{0};
   uint32_t idle_job_check_ms_{0};
   bool idle_dark_{false};       // the off timer switched the panel off
+  bool idle_turning_off_{false};  // inside our own idle_off: not a manual off
+  std::function<bool()> power_state_;
+  // The owner picked a page by hand during idle: no rotation until the next
+  // time idle is entered.
+  bool idle_manual_{false};
+  uint32_t idle_shown_ms_{0};   // when the rotation last switched pages
+  std::string active_page_;
+  std::string page_key_;        // last render of a page shown outside idle
+  // Worker abandoned at WORKER_DEADLINE: no new worker of any kind before this.
+  uint32_t worker_cooldown_until_{0};
+  bool worker_cooling_() const { return (int32_t) (millis() - this->worker_cooldown_until_) < 0; }
+  // Booted from the team cache and not yet confirmed by a game poll.
+  bool cache_unconfirmed_{false};
+  uint32_t wifi_no_clock_ms_{0};  // Wi-Fi up, clock not set, since when
+  bool waiting_clock_{false};
   // Boot: until the first real content, the clock stands in (clock first).
   bool content_seen_{false};
   bool content_ready_{false};

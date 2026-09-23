@@ -50,10 +50,12 @@ std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch)
   return url;
 }
 
-std::string scan_url(League league, int64_t now_epoch) {
+std::string scan_url(League league, int64_t now_epoch, int32_t utc_offset_s) {
   std::string url = std::string(kSite) + league_path(league) + "/scoreboard";
   int y, m, d;
-  civil_from_epoch(now_epoch - 5 * 3600, y, m, d);
+  // The local date, not Eastern: from 9 PM Pacific the Eastern date is
+  // already tomorrow, which dropped tonight's late games and finals.
+  civil_from_epoch(now_epoch + utc_offset_s, y, m, d);
   char buf[64];
   if (league == League::NCAA)
     snprintf(buf, sizeof(buf), "?groups=80&limit=300&dates=%04d%02d%02d", y, m, d);

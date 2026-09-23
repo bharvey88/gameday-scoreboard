@@ -248,6 +248,9 @@ script:
       - lambda: |-
           // Toggle between the game layout and the "no game" layout
           if (game_state == "NOT_FOUND" || game_state == "BYE" || game_state == "") {
+            // No clock yet (NTP not answering): say that, not "No upcoming game".
+            const bool clockless = status_text.rfind("Waiting for the clock", 0) == 0;
+            lv_label_set_text(id(tt_no_game_msg_lbl), clockless ? "Waiting for the clock" : "No upcoming game");
             lv_obj_add_flag(id(tt_game_container), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(tt_no_game_container), LV_OBJ_FLAG_HIDDEN);
           } else {

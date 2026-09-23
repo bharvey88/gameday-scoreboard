@@ -379,8 +379,16 @@ static void test_live_games() {
   CHECK_EQ(week_url(League::NFL, 4), std::string("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=4"));
   CHECK_EQ(week_url(League::NCAA, 0), std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80"));
   CHECK_EQ(week_url(League::NCAA, 5), std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&week=5"));
-  CHECK(scan_url(League::NFL, parse_iso8601_z("2026-09-14T01:00Z")).find("dates=20260913") != std::string::npos);
-  CHECK(scan_url(League::NCAA, 0).find("groups=80") != std::string::npos);
+  // Sunday 9 PM Eastern (EDT, -4 h) is still Sunday the 13th.
+  CHECK(scan_url(League::NFL, parse_iso8601_z("2026-09-14T01:00Z"), -4 * 3600).find("dates=20260913") != std::string::npos);
+  CHECK(scan_url(League::NCAA, 0, 0).find("groups=80") != std::string::npos);
+  // Saturday 10:30 PM Pacific (PDT, -7 h) is 05:30Z Sunday and already
+  // Sunday in the East: the scan must still ask for Saturday's games.
+  int64_t late_west = parse_iso8601_z("2026-09-06T05:30Z");
+  CHECK(scan_url(League::NCAA, late_west, -7 * 3600).find("dates=20260905") != std::string::npos);
+  CHECK(scan_url(League::NCAA, late_west, -4 * 3600).find("dates=20260906") != std::string::npos);
+  // Past midnight in Europe it is the local date too.
+  CHECK(scan_url(League::NFL, parse_iso8601_z("2026-09-13T22:30Z"), 2 * 3600).find("dates=20260914") != std::string::npos);
   // neutral splashes name both sides
   CHECK_EQ(decide_splash(live(0, 0), live(6, 0), true, true).text, std::string("DAL TOUCHDOWN"));
   CHECK_EQ(decide_splash(live(0, 0), live(0, 3), true, true).text, std::string("PHI FIELD GOAL"));

@@ -14,7 +14,10 @@ owns the panel, not for the code.
 - Showing your own team when nothing is live (new in v1.4.0) is now a setting, off by default: "Show my team when nothing is live" under Setup on the device page.
 - When there is no game to show at all, the panel rotates through screens you choose on the device page under "When nothing is on": a clock, a countdown to your team's next game, your division or conference standings, your team's record and last result, and the weather. Clock and countdown are on to start with.
 - Weather needs a location, typed in under Setup or sent from the Game Day app. It comes from the National Weather Service, so it only works in the US.
-- The panel can turn itself off after 15, 30, 60 or 120 minutes with nothing to show, and turns back on when a game comes up or when you use the remote, the page or the app.
+- The panel can turn itself off after 15, 30, 60 or 120 minutes with nothing to show, and turns back on when a game comes up or when you use the remote, the page or the app. If you switched it off yourself, it stays off.
+- Pick a screen yourself (Select Page on the device page or in Home Assistant) while the panel is idle and it stays on that screen until the next time there is nothing on. The Clock and Countdown screens keep ticking when you pick them during a game, too.
+- Late games on the West Coast stay on the board: the live modes look up games by your own date, not the East Coast one, so after 9 PM Pacific the panel no longer skips ahead to tomorrow.
+- If scores cannot be fetched while the clock is up, the clock says so. If the panel is on Wi-Fi but cannot get the time for a minute, the boot screen gives way to "Waiting for the clock".
 - Startup is quicker: the clock shows as soon as the panel knows the time, the scoreboard follows the moment the first scores arrive, and the "----" and "Loading" board is gone. The boot screen stays up until there is something real behind it. These timings have not been measured on a panel yet.
 
 ## v1.4.3

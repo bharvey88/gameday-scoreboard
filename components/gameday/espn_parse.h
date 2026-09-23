@@ -195,7 +195,9 @@ const char *league_path(League league);
 std::string team_url(League league, uint32_t espn_id);
 std::string schedule_url(League league, uint32_t espn_id);  // the season's games, ~200KB
 std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch);
-std::string scan_url(League league, int64_t now_epoch);  // every game of the day for one league
+// Every game of the owner's local day for one league. utc_offset_s is the
+// local offset (ESPTime::timezone_offset()); ESPN keys a game day by date.
+std::string scan_url(League league, int64_t now_epoch, int32_t utc_offset_s);
 // The league's current week, or `week` when it is not 0 (next-game lookup).
 std::string week_url(League league, int week);
 std::string standings_url(League league, uint32_t group);

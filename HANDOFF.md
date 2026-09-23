@@ -83,16 +83,64 @@ Other deviations, all deliberate:
   waits for the next team read.
 - The owner's boot log (spec section 3) was not captured, before or after;
   the changelog says the timings were not measured.
+- Also on the panel: pick Clock from Select Page during a game (it ticks);
+  pick Standings during idle (it stays); turn Power off by hand during
+  idle (it stays off when a game comes up); block NTP (the overlay gives
+  way after a minute); a late Pacific game after 9 PM in Live college.
 
 Build and test on Windows (this session): host tests `mingw32-make -C tests`
-from Git Bash with the WinLibs bin on PATH, 349 checks, 0 failures. Page
+from Git Bash with the WinLibs bin on PATH, 352 checks, 0 failures (after the review fixes). Page
 tests are new in this repo: `cd tests/web && npm install && npx playwright
 install chromium --only-shell && npx playwright test` (9 tests), against
 tests/web/mock_device.py on port 8791 (MOCK_PORT overrides; PYTHON picks the
 interpreter). The mock was adapted from the iOS repo's tools/mock_device.py.
 Firmware: `esphome config` and `esphome compile firmware/gameday.yaml`
-green after commits 1, 2, 3 and 4; RAM 43.2%, Flash 24.6% (v1.4.3 was
+green after commits 1, 2, 3 and 4; RAM 43.3%, Flash 24.6% after the review fixes (v1.4.3 was
 42.6% / 24.3%).
+
+Review fixes (one commit after v1.5.0, same day):
+
+1. Off season in a live mode no longer leaves idle once an hour. A
+   next-game lookup started from IDLE runs in the background and the show
+   stays IDLE; a failed lookup is cached as "none" for 5 minutes
+   (NextCache.valid_ms) instead of leaving a blank FETCH_NEXT board that
+   retried every minute. Before this, the hourly re-check flashed the
+   board, fired idle_wake (Power on) and restarted the off timer.
+2. Off after idle only arms when Power is on (YAML hands the component a
+   `power_state` getter at boot). Power's turn_off_action calls
+   `on_power_off()`, which clears the pending wake unless the off came from
+   the component's own `idle_off` (`idle_turning_off_`).
+3. After a worker is abandoned at WORKER_DEADLINE no idle job starts for
+   RETRY_INTERVAL (`worker_cooldown_until_`), same as the fetch loop.
+4. `scan_url` takes the local UTC offset and asks for the local date
+   (was now minus 5 h, which from 9 PM Pacific asked for tomorrow). Only
+   the local date is scanned; an East Coast owner after midnight still
+   loses a West Coast game running past midnight Eastern (as before).
+   Host tests: 10:30 PM PDT Saturday, 9 PM EDT, and a European date.
+5. A 1 s YAML interval reports the active LVGL page (`set_active_page`).
+   Outside idle a Clock or Countdown page picked by hand is re-rendered
+   (without logos, which belong to the board's game). During idle, a page
+   that is not the one the rotation showed (after a 2 s grace for the
+   page load) pauses the rotation until idle is next entered; state key
+   `idle_manual`. Changelog bullets added.
+6. After a boot from the team cache, the first failed game poll forces a
+   team read at once (`cache_unconfirmed_`).
+7. The clock page has a third line (orange) with "Scores: no update yet" /
+   "no update for N min" once misses reach 3. On Wi-Fi 60 s without a
+   clock, `waiting_clock_` emits "Waiting for the clock" (also on the
+   scoreboard's no-game label) and marks content ready so the overlay
+   hides.
+8. `fetch_next_`: a non-200 on the week+1 request means no game (cached
+   as none), not a failed lookup.
+
+Known, not fixed (review items 9 and 10):
+
+- A NWS 404 is stored as "-" permanently for that location; if NWS was
+  briefly wrong, the owner has to re-save the location to retry.
+- The idle pages share the scoreboard's two online_image logos. Idle
+  screens repoint them (wide panels only); leaving idle, the board's next
+  update asks for its own logos again, so the board can show the idle
+  logos until that update and its download land.
 
 Still to test on the panel (owner):
 

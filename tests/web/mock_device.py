@@ -26,7 +26,7 @@ INITIAL = {
     "tz": 1, "tz_name": "Central", "tz_auto": True,
     "down": True, "play": True, "odds": True, "opp": True, "bootaddr": True, "misses": 0, "stale_s": 4,
     "fallback": False, "fallback_mode": "next_game",
-    "ready": True, "idle": False, "idle_screen": "", "idle_screens": 3, "idle_rotate": 60, "idle_off": 0,
+    "ready": True, "idle": False, "idle_manual": False, "idle_screen": "", "idle_screens": 3, "idle_rotate": 60, "idle_off": 0,
     "wx_lat": None, "wx_lon": None, "wx_grid": "",
     "status": "DAL vs PHI | Sun 3:25 PM | on FOX",
     "splash": "", "splash_color": "000000",

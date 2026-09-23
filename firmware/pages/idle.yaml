@@ -39,6 +39,23 @@ esphome:
     - priority: -100.0
       then:
         - script.execute: gd_idle_layout
+        - lambda: 'id(gameday_ctl).set_power_state([]() { return id(power).state; });'
+
+# Tells the component which page is up: a clock picked by hand keeps ticking
+# outside idle, and a page picked by hand during idle stops the rotation.
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          lv_obj_t *a = lv_screen_active();
+          const char *p = a == id(gd_idle_clock)->obj       ? "clock"
+                          : a == id(gd_idle_countdown)->obj ? "countdown"
+                          : a == id(gd_idle_standings)->obj ? "standings"
+                          : a == id(gd_idle_record)->obj    ? "record"
+                          : a == id(gd_idle_weather)->obj   ? "weather"
+                          : a == id(gameday_live)->obj      ? "scoreboard"
+                                                            : "other";
+          id(gameday_ctl).set_active_page(p);
 
 script:
   - id: gd_idle_layout
@@ -56,6 +73,7 @@ script:
           place(id(gd_ck_big), 0, 2, W);
           place(id(gd_ck_l1), mx, wide ? 34 : 30, mw);
           place(id(gd_ck_l2), mx, wide ? 44 : 40, mw);
+          place(id(gd_ck_l3), 0, 56, W);
           place(id(gd_cd_big), 0, 2, W);
           place(id(gd_cd_l1), mx, wide ? 32 : 30, mw);
           place(id(gd_cd_l2), mx, wide ? 42 : 40, mw);
@@ -130,6 +148,7 @@ gameday:
           lv_obj_set_style_text_color(id(gd_ck_big), bright(x.color), 0);
           set(id(gd_ck_l1), x.line1);
           set(id(gd_ck_l2), x.line2);
+          set(id(gd_ck_l3), x.line3);
           logo(id(gd_ck_tlogo), x.team_logo);
           logo(id(gd_ck_ologo), x.opp_logo);
           page = "gd_idle_clock";
@@ -213,6 +232,13 @@ lvgl:
             id: gd_ck_l2
             long_mode: SCROLL_CIRCULAR
             styles: [gd_idle_small]
+            text: ""
+        # Only when scores are not coming through.
+        - label:
+            id: gd_ck_l3
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text_color: 0xFF8040
             text: ""
 
     - id: gd_idle_countdown
