@@ -25,12 +25,7 @@ Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
    firmware/components/ (or upstream PR): one result per unique SSID, sent one
    at a time, then an empty terminator; fresh scan results in setup mode.
    Brandon wants this; not started.
-4. **Auto-publish the site** on pushes to main touching docs/site: design is a
-   gate job that skips while firmware/gameday-common.yaml's version has no
-   release tag yet (a pending release's tag deploy publishes docs anyway; a
-   version already tagged can't be tagged again, so no sha collision). Edit
-   was blocked by the permission classifier; needs Brandon's OK.
-5. Panels on 1.4.2 or older need one USB reinstall (Brandon's gameday-2f6a70
+4. Panels on 1.4.2 or older need one USB reinstall (Brandon's gameday-2f6a70
    included).
 
 ## 2026-09-23 afternoon
@@ -46,7 +41,12 @@ Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
   on the panel, ESPN/GitHub see request IPs). Published via site.yml.
 - PR #12 merged: tag builds attach firmware-moonhub75.zip to the release and
   site.yml reads it (falls back to the Build artifact for v1.4.3, good until
-  about 2026-12-22). site.yml is still manual dispatch only.
+  about 2026-12-22).
+- PR #15 merged: site.yml also runs by itself on pushes to main touching
+  docs/site. A gate job skips while firmware/gameday-common.yaml's version
+  has no release tag yet (the tag deploy publishes docs then), which avoids
+  the sha collision. Manual dispatch skips the gate: still never dispatch it
+  on a commit that is about to be tagged.
 - PR #14 open (v1.4.4): QR for https://gamedayscoreboard.app/setup on the
   setup, Wi-Fi lost and new-panel connected screens. 64 px: text/QR take
   turns; 128 px: QR left, static text right. Setup mode leads with "SETUP /
