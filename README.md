@@ -2,7 +2,7 @@
 
 ![Touchdown fireworks on the panel](docs/site/media/touchdown.gif)
 
-A standalone football scoreboard for the [Apollo Automation M-1](https://wiki.apolloautomation.com/) HUB75 matrix. Install it from your browser, join it to WiFi, pick your NFL or college team on the panel's own web page, and it follows the game from ESPN by itself. Nothing else to run.
+A standalone football scoreboard for HUB75 LED matrix panels. Install it from your browser, join it to WiFi, pick your NFL or college team on the panel's own web page, and it follows the game from ESPN by itself. Nothing else to run.
 
 Watch the [full demo](https://gamedayscoreboard.app/) on the installer page.
 
@@ -22,20 +22,26 @@ If you already use Home Assistant and want room lighting to celebrate too, [game
 
 ## Hardware
 
-- Apollo M-1 (rev 6) controller
+- An ESP32-S3 HUB75 controller on the [MoonHub75](https://github.com/MoonModules/Hardware/tree/main/MOONHUB75) pinout, with 16MB flash, octal PSRAM, and a button on GPIO0
 - One 64x64 HUB75 panel, or two side by side for a 128x64 display (one firmware; pick the count on the device page)
+
+The pinout, under the names ESPHome uses (that board's README calls the upper half R0/G0/B0):
+
+| R1 | G1 | B1 | R2 | G2 | B2 | A | B | C | D | E | LAT | OE | CLK |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 5 | 6 | 7 | 13 | 9 | 16 | 48 | 47 | 21 | 38 | 8 | 4 | 18 |
 
 ## Install
 
-1. Open the [installer page](https://gamedayscoreboard.app/), plug the M-1 in over USB, and click Install.
+1. Open the [installer page](https://gamedayscoreboard.app/), plug the controller in over USB, and click Install.
 2. Enter your WiFi details in the dialog that follows the install.
-3. Once it's on WiFi the panel says where to go: open the `gameday-xxxxxx.local` name it shows on your phone, or the address underneath if your phone can't resolve `.local` names. Pick your team on that page. The ticker repeats the address until you've chosen a team, and holding the M-1's boot button for 1.5 seconds shows it again any time.
+3. Once it's on WiFi the panel says where to go: open the `gameday-xxxxxx.local` name it shows on your phone, or the address underneath if your phone can't resolve `.local` names. Pick your team on that page. The ticker repeats the address until you've chosen a team, and holding the controller's boot button for 1.5 seconds shows it again any time.
 
 Team changes take effect immediately and survive reboots. Two panels side by side? Click the two-panel picture in the Setup card. Nothing needs reflashing to change teams or layouts.
 
 ## The device page
 
-The M-1 serves its own page: a live board that mirrors the panel (logos, score, clock, down and distance, timeout pips, last play), a team chooser with logos and search plus an "On now" tab listing today's NFL and FBS games straight from ESPN (tap the side you want to follow), and the settings grouped in plain language. It is plain HTML and JavaScript embedded in the firmware, so it works with no internet beyond the logos. The page reads one JSON document from the device (`GET /gameday/state`) and writes settings back to `POST /gameday/set`, so it is not limited to what an ESPHome entity can carry.
+The device serves its own page: a live board that mirrors the panel (logos, score, clock, down and distance, timeout pips, last play), a team chooser with logos and search plus an "On now" tab listing today's NFL and FBS games straight from ESPN (tap the side you want to follow), and the settings grouped in plain language. It is plain HTML and JavaScript embedded in the firmware, so it works with no internet beyond the logos. The page reads one JSON document from the device (`GET /gameday/state`) and writes settings back to `POST /gameday/set`, so it is not limited to what an ESPHome entity can carry.
 
 | Setting | What it does |
 | --- | --- |

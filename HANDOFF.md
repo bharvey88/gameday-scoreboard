@@ -59,6 +59,38 @@ Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
   crash under "LIVE CRASH SEEN 2026-09-14" was not reproduced or explained
   as of this update; treat it as still open.
 
+## No vendor branding (2026-09-23), branch `no-vendor-branding`
+
+- Brandon's ask: remove every Apollo and M-1 mention, say the firmware runs
+  on "an ESP32-S3 HUB75 controller on the MoonHub75 pinout" (his wording, chosen
+  over "any HUB75 controller", which is untrue: the binary hardcodes that pin
+  map, 16MB flash, octal PSRAM, the I2S mic on IO10/11/12 and a GPIO0 button;
+  MatrixPortal S3 and Waveshare use other pins, the Trinity is not an S3).
+- The pin map is the Apollo M-1 rev6 map, verified pin for pin against
+  MoonModules/Hardware MOONHUB75 and projectMM's Hub75Driver.h. M-1 rev4 is
+  the MatrixPortal S3 map, so rev4 boards cannot run this bin.
+- Firmware: the hub75-studio controller package is no longer pulled. Its
+  contents live in firmware/controllers/moonhub75.yaml with the 14 pins
+  written out (no `board:` preset), included from gameday-common.yaml as the
+  `controller` package. `esphome config` output diffed against main: only the
+  `board:` key is gone, nothing else resolved differently.
+- Docs: README (hardware section carries the 14-pin table, kept outside the
+  list on purpose, a table under a `- ` item renders unreliably), installer
+  page (new requirement note in the Install card, do not delete it), setup
+  and support pages, CHANGELOG lines, this repo's CLAUDE.md.
+- Second pass, same day: Brandon then dropped the "m1" name entirely.
+  `variant: "moonhub75"` (manifest folder firmware/moonhub75/, build dir,
+  CI job and artifact names), mic id `mic`, design docs de-branded too.
+  No compatibility copy at firmware/m1/ ("alpha project"): panels on v1.4.2
+  or older stop seeing updates and need one USB install from the site. The
+  64x64/ and 128x64/ copies for pre-0.6.0 panels went at the same time.
+  Version bumped to 1.4.3 with a CHANGELOG entry saying so. The only Apollo
+  mention left is the rule line in CLAUDE.md that says the product is not
+  an Apollo one.
+- Making "any HUB75 controller" literally true is a feature, not a docs edit:
+  a controller substitution, one package per board, a CI build matrix,
+  per-board manifests and a picker on the installer page.
+
 ## Still open, from the audit and from the sections below
 
 - The 2026-09-14 crash (LoadProhibited fault in the Wi-Fi driver, possibly

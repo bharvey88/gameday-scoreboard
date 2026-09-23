@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.4.3
+
+- The firmware no longer names a specific controller board. It runs on any ESP32-S3 HUB75 controller wired to the MoonHub75 pinout, and the update manifest moved to firmware/moonhub75/. Panels on v1.4.2 or older will not see this update by themselves: install once over USB from gamedayscoreboard.app and updates resume from there.
+
 ## v1.4.2
 
 - The panel now checks gamedayscoreboard.app for firmware updates instead of the old GitHub Pages address.
@@ -182,7 +186,7 @@ owns the panel, not for the code.
 - Check for updates now answers. The button reads "Checking" for a few seconds and then the page says "You're up to date" or "Update available", instead of quietly doing nothing when there's no newer version.
 - A real setup screen at boot. It says "Join WiFi: Game Day Scoreboard" while the hotspot is up, "Connecting" with the network name once credentials are saved, and "Open http://<address> to pick your team" for 30 seconds once it's on WiFi, with a progress bar while it works.
 - Until a team has been picked once, the ticker starts with "Setup: http://<address>" so a new panel tells you where its page is.
-- Hold the M-1's boot button for 1.5 seconds and the address screen comes back for 15 seconds.
+- Hold the controller's boot button for 1.5 seconds and the address screen comes back for 15 seconds.
 
 ## v0.4.3
 
@@ -262,4 +266,4 @@ owns the panel, not for the code.
 
 ## v0.1.0
 
-- First release. Standalone football scoreboard for the Apollo M-1: flash from the browser, join WiFi, pick a team on the device page, and the panel follows the game from ESPN with no Home Assistant needed.
+- First release. Standalone football scoreboard for HUB75 LED matrix panels: flash from the browser, join WiFi, pick a team on the device page, and the panel follows the game from ESPN with no Home Assistant needed.

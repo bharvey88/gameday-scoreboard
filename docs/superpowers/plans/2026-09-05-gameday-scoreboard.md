@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Standalone ESPHome firmware for the Apollo M-1 that shows a football scoreboard for one chosen NFL or FBS team, fed directly from ESPN, with a browser flasher for installation.
+**Goal:** Standalone ESPHome firmware for a MoonHub75-pinout HUB75 controller that shows a football scoreboard for one chosen NFL or FBS team, fed directly from ESPN, with a browser flasher for installation.
 
 **Architecture:** A C++ ESPHome external component (`gameday`) polls ESPN through `http_request`, streams the JSON through an ArduinoJson filter into a small snapshot struct, runs the pre/in/post state machine and splash logic, and fires a 15-field callback. A copied hub75-studio LVGL page renders those fields; two `online_image` components fetch the logos. Template entities in YAML give a web-page UI (team, timezone, ticker toggles) with the component holding the persisted preferences.
 
@@ -14,7 +14,7 @@
 
 - Public repo bharvey88/gameday-scoreboard, MIT license. No Claude credit anywhere. Commit email `8107750+bharvey88@users.noreply.github.com`.
 - No em dashes in any text. Markdown hyperlinks, never raw URLs, in prose.
-- Hardware only: Apollo M-1 rev6. Two variants: `gameday-64x64` (cols 1) and `gameday-128x64` (cols 2).
+- Hardware only: ESP32-S3 controllers on the MoonHub75 pinout. Two variants: `gameday-64x64` (cols 1) and `gameday-128x64` (cols 2).
 - Logo URLs rewritten `/500/` to `/500-dark/`.
 - Poll cadence: schedule 6h; pre_far 15m; pre_near (kickoff within 60m) 60s; in 20s; post 60s for 30m.
 - Splash deltas: 6/7/8 TOUCHDOWN!, 3 FIELD GOAL!, 1 EXTRA POINT!, 2 2-POINT!, other positive SCORE!. Opponent form: "{OPP} TOUCHDOWN" etc. Victory: "{ABBR} WINS!". Deltas only between two IN snapshots.
@@ -251,7 +251,7 @@ Emit: build `UpdateFields` (status_text via `status_text()` with `kickoff_label(
 - `substitutions`: name `gameday-scoreboard`, friendly_name `Game Day Scoreboard`, panel dims, `display_layout_cols: "1"` default (variant files override), DISPLAY_W/H.
 - `esphome`: name, friendly_name, `name_add_mac_suffix: true`, `project: {name: bharvey88.gameday-scoreboard, version: "0.1.0"}`, `min_version` comes from the package.
 - `external_components: - source: {type: local, path: ../components}` (relative to the YAML), `components: [gameday]`.
-- `packages` from `https://github.com/bharvey88/hub75-studio` ref `gameday`: esphome-version, apollo-automation-m1-rev6 (with panel vars), utils, theme, bios, clock. Plus local `pages/gameday-live.yaml` via `!include`.
+- `packages` from `https://github.com/bharvey88/hub75-studio` ref `gameday`: esphome-version, the controller package (with panel vars), utils, theme, bios, clock. Plus local `pages/gameday-live.yaml` via `!include`.
 - `logger`, `api` (no key), `ota` esphome, `wifi` with `ap:` and `power_save_mode: none`, `captive_portal`, `improv_serial`, `web_server: version: 3`, `http_request: {id: http_client, timeout: 20s, watchdog_timeout: 30s, verify_ssl: false, buffer_size_rx: 2048}` (ESPN's CDN certificate chain is not in the default esp-idf bundle on every build, and verify_ssl false keeps the flasher build small; document this in the README), `time: - platform: sntp, id: sntp_time`.
 - `online_image` x2: `id: gd_team_logo` / `gd_opp_logo`, `url: https://a.espncdn.com/i/teamlogos/nfl/500-dark/dal.png` placeholder, `type: RGB565`, `format: PNG`, `resize: 32x32`, `transparency: alpha_channel`, `update_interval: never`, `buffer_size: 4096`, `on_download_finished` calls `lvgl.image.update` for the matching widget.
 - `select` template x2: `gd_team` (name "Team", `optimistic: true`, `options: ["Loading"]`, `on_value: lambda id(gameday).select_team(x)`), `gd_timezone` (name "Timezone", options listed inline matching the component table, `initial_option: "US Central"`, `on_value: id(gameday).select_timezone(x)`).
@@ -276,7 +276,7 @@ Emit: build `UpdateFields` (status_text via `status_text()` with `kickoff_label(
 
 `build.yml`: triggers `pull_request` and `push: tags: v*`. Job `build` matrix over `[gameday-64x64, gameday-128x64]`: checkout, `esphome/build-action@v7` with `yaml-file: firmware/${{ matrix.variant }}.yaml`, `version: 2026.8.1`, `complete-manifest: true`, `release-summary`, `release-url` set from the tag. Upload artifact. Job `publish` (tags only): download both artifacts into `site/firmware/<variant>/`, copy `docs/*` into `site/`, `sed` VERSION into the manifests, `actions/upload-pages-artifact` + `actions/deploy-pages`. Also create a GitHub Release with the two `.factory.bin` files attached.
 
-`docs/index.html`: ESP Web Tools from cdnjs is not available; use `https://unpkg.com/esp-web-tools@10/dist/web/install-button.js` as a module script (this page runs on GitHub Pages, not in an artifact, so no CSP restriction). Two `<esp-web-install-button manifest="manifest-64x64.json">` buttons with a short three-step walkthrough: connect USB and install, join WiFi in the dialog, open `http://gameday-scoreboard-xxxxxx.local` (or the IP the dialog shows) and choose your team. Note the Chrome/Edge requirement. Style modeled on the apollo-installer page (read `C:\Users\bharv\development\apollo-installer\index.html` and `css/` for tone, do not copy Apollo branding).
+`docs/index.html`: ESP Web Tools from cdnjs is not available; use `https://unpkg.com/esp-web-tools@10/dist/web/install-button.js` as a module script (this page runs on GitHub Pages, not in an artifact, so no CSP restriction). Two `<esp-web-install-button manifest="manifest-64x64.json">` buttons with a short three-step walkthrough: connect USB and install, join WiFi in the dialog, open `http://gameday-scoreboard-xxxxxx.local` (or the IP the dialog shows) and choose your team. Note the Chrome/Edge requirement. Style: plain, one card per step, no vendor branding.
 
 - [ ] **Step 1:** Write the workflow, manifests, page.
 - [ ] **Step 2:** Validate the workflow with `gh workflow view` after push (Task 8) or `actionlint` if installed; at minimum `python -c "import yaml; yaml.safe_load(open('.github/workflows/build.yml'))"`.
@@ -289,7 +289,7 @@ Emit: build `UpdateFields` (status_text via `status_text()` with `kickoff_label(
 **Files:**
 - Modify: `README.md`
 
-Sections: What it does (bullets from the spec goal), Hardware (M-1 + one or two 64x64 panels), Install (three steps, link to the Pages flasher), Pick your team (web page walkthrough, list of the controls), Home Assistant (optional: it shows up as an ESPHome device; the same controls appear as entities), Build it yourself (clone, `esphome run firmware/gameday-128x64.yaml`, where to change substitutions), How it works (ESPN polling cadence, one paragraph), Notes (verify_ssl off and why, ESPN is unofficial, logos are ESPN's), Credits (hub75-studio project and Team Tracker for the attribute model, by project name not person name), License.
+Sections: What it does (bullets from the spec goal), Hardware (controller + one or two 64x64 panels), Install (three steps, link to the Pages flasher), Pick your team (web page walkthrough, list of the controls), Home Assistant (optional: it shows up as an ESPHome device; the same controls appear as entities), Build it yourself (clone, `esphome run firmware/gameday-128x64.yaml`, where to change substitutions), How it works (ESPN polling cadence, one paragraph), Notes (verify_ssl off and why, ESPN is unofficial, logos are ESPN's), Credits (hub75-studio project and Team Tracker for the attribute model, by project name not person name), License.
 
 - [ ] **Step 1:** Write it, no em dashes, markdown links only.
 - [ ] **Step 2:** Commit: `git commit -m "README"`.

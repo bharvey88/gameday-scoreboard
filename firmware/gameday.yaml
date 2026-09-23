@@ -1,8 +1,8 @@
-# Game Day Scoreboard for an Apollo M-1. One firmware for one 64x64 panel or
-# two side by side: the panel count is picked on the device page and applied
-# at boot (components/panel_layout).
+# Game Day Scoreboard for a HUB75 matrix on the MoonHub75 pinout. One firmware
+# for one 64x64 panel or two side by side: the panel count is picked on the
+# device page and applied at boot (components/panel_layout).
 substitutions:
-  variant: "m1"
+  variant: "moonhub75"
 
 packages:
   common: !include gameday-common.yaml
