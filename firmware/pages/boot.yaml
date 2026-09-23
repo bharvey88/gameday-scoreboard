@@ -26,6 +26,13 @@
 # the WiFi poll, since that's how the Game Day app actually provisions a
 # panel: SETUP / open the / Game Day app while advertising, JOINING / Wi-Fi
 # once the app hands over credentials. See the esp32_improv block below.
+#
+# While the panel is off Wi-Fi and wants the app (wifi lost, or the hotspot
+# and Bluetooth setup state), the text takes turns with a QR code for
+# https://gamedayscoreboard.app/setup: 5 seconds of text, then 8 seconds of
+# code. That URL is a universal link, so the iPhone Camera opens the app when
+# it is installed and the setup web page when it is not. The two
+# cannot share a 64 px panel: see boot_qr_box below for the sizing.
 
 globals:
   - id: boot_ip_shown_ms
@@ -46,6 +53,11 @@ globals:
   # flag does not survive the ten minute offline restart in gameday-common.yaml
   # and never gets set at all on a boot that never connects.
   - id: boot_last_connected_ms
+    type: uint32_t
+    initial_value: '0'
+  # millis() when the current run of text/QR turns started, 0 while the QR
+  # is not wanted. Restarting from 0 means every run opens on the text.
+  - id: boot_qr_since_ms
     type: uint32_t
     initial_value: '0'
 
@@ -107,6 +119,26 @@ script:
           if (busy) lv_obj_clear_flag(id(boot_bar), LV_OBJ_FLAG_HIDDEN);
           else lv_obj_add_flag(id(boot_bar), LV_OBJ_FLAG_HIDDEN);
 
+  # Take turns between the setup text and the QR code. Called with want
+  # false wherever the QR must not be up (connected, connecting, the reset
+  # warning, the app handing over credentials), which also resets the turns.
+  - id: boot_qr_cycle
+    parameters:
+      want: bool
+    then:
+      - lambda: |-
+          static const uint32_t TEXT_MS = 5000, QR_MS = 8000;
+          bool show = false;
+          if (!want) {
+            id(boot_qr_since_ms) = 0;
+          } else {
+            if (id(boot_qr_since_ms) == 0)
+              id(boot_qr_since_ms) = millis() == 0 ? 1 : millis();
+            show = (millis() - id(boot_qr_since_ms)) % (TEXT_MS + QR_MS) >= TEXT_MS;
+          }
+          if (show) lv_obj_clear_flag(id(boot_qr_box), LV_OBJ_FLAG_HIDDEN);
+          else lv_obj_add_flag(id(boot_qr_box), LV_OBJ_FLAG_HIDDEN);
+
   - id: boot_refresh
     parameters:
       via_button: bool
@@ -114,6 +146,9 @@ script:
       - lambda: |-
           auto *w = wifi::global_wifi_component;
           if (w == nullptr) return;
+          // Set in the two states where the customer needs the app; see
+          // boot_qr_cycle. Never while the app is mid-handover.
+          bool want_qr = false;
           // Lost means: there is a real saved network and the panel is not on
           // it. Derived from the live Wi-Fi state every time rather than
           // latched, so it is still right after the ten minute offline restart
@@ -184,17 +219,24 @@ script:
               id(boot_set_lines).execute("Wi-Fi lost", "open the", "Game Day app", "", true);
             else
               id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
+            want_qr = true;
           } else if (!w->has_sta() || w->is_ap_active()) {
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
             if (wide)
               id(boot_set_lines).execute("On your phone, join WiFi", "Game Day Scoreboard", "a setup page will open", "", true);
             else
               id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
+            want_qr = true;
           } else {
             const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
             char ssid[wifi::SSID_BUFFER_SIZE];
             id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", w->wifi_ssid_to(ssid), "", "", true);
           }
+          if (esp32_improv::global_improv_component != nullptr &&
+              esp32_improv::global_improv_component->get_improv_state() ==
+                  improv::STATE_PROVISIONING)
+            want_qr = false;
+          id(boot_qr_cycle).execute(want_qr);
 
   # Keep the address up for a while after connecting, then clear the overlay
   - id: boot_hide_later
@@ -228,6 +270,9 @@ script:
           else:
             - component.suspend: boot_check
             - component.suspend: boot_anim
+            - script.execute:
+                id: boot_qr_cycle
+                want: false
             - lvgl.obj.update:
                 id: boot_overlay
                 hidden: true
@@ -276,6 +321,9 @@ script:
               // exception is an outage, where boot_hide resumes it instead of
               // hiding, which is what keeps the Wi-Fi lost lines coming back.
               id(boot_check).stop_poller();
+              // The QR would cover the warning, and with boot_check stopped
+              // nothing else would take it down.
+              id(boot_qr_cycle).execute(false);
               id(boot_set_lines).execute("Keep holding", "to reset", "Wi-Fi", "", true);
             }
             int pct = (int) ((held - 5000) / 50);  // 5000ms span -> 0..100
@@ -370,7 +418,9 @@ esp32_improv:
         else
           id(boot_set_lines).execute("SETUP", "Game Day", "app", "", true);
   on_provisioning:
-    - lambda: 'id(boot_set_lines).execute("JOINING", "Wi-Fi", "", "", true);'
+    - lambda: |-
+        id(boot_qr_cycle).execute(false);
+        id(boot_set_lines).execute("JOINING", "Wi-Fi", "", "", true);
   on_provisioned:
     # Credentials worked; nudge boot_check's 500ms poll now instead of
     # waiting up to half a second for it to notice and repaint the
@@ -490,6 +540,44 @@ lvgl:
                 indicator:
                   bg_opa: COVER
                   bg_color: 0xFFD000
+            # QR code for the app, shown in turns with the text by
+            # boot_qr_cycle. Listed last so it draws over the lines and bar;
+            # the black box hides the text either side on a wide chain.
+            #
+            # LVGL encodes it in byte mode at error correction M and picks the
+            # smallest version that fits: the 35 character URL is version 3,
+            # 29x29 modules (Q does not fit at version 3, so M is the
+            # strongest that keeps modules this big). At 64 px that is 2 px
+            # per module, 58 px, with a 3 px lit border as the quiet zone,
+            # which is all that is left on a 64 px panel. Apple's barcode
+            # reader decodes that offline with a dark frame right against
+            # the border; bench it with a real phone before release.
+            #
+            # A QR wants dark modules on a light background, so the light
+            # modules and the border are the lit ones. They are grey, not
+            # white: most of the panel is lit on this screen, and full white
+            # at a high Brightness setting blooms on camera and pulls far more
+            # current than any other screen.
+            - obj:
+                id: boot_qr_box
+                x: 0
+                y: 0
+                width: 100%
+                height: 100%
+                bg_opa: COVER
+                bg_color: 0x000000
+                radius: 0
+                pad_all: 0
+                border_width: 0
+                hidden: true
+                widgets:
+                  - qrcode:
+                      id: boot_qr
+                      align: CENTER
+                      size: 64
+                      light_color: 0xA0A0A0
+                      dark_color: 0x000000
+                      text: "https://gamedayscoreboard.app/setup"
 
 esphome:
   on_boot:

@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.4.4
+
+- While the panel is waiting to be set up, or has lost its Wi-Fi, it now takes turns showing its message and a QR code. Point your iPhone camera at the code: it opens the Game Day app if you have it, or the setup page at gamedayscoreboard.app if you do not.
+
 ## v1.4.3
 
 - The firmware no longer names a specific controller board. It runs on any ESP32-S3 HUB75 controller wired to the MoonHub75 pinout, and the update manifest moved to firmware/moonhub75/. Panels on v1.4.2 or older will not see this update by themselves: install once over USB from gamedayscoreboard.app and updates resume from there.
