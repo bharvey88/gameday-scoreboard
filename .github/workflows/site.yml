@@ -7,12 +7,19 @@ name: Site
 # predates that asset (v1.4.3 and earlier); Build artifacts expire after 90
 # days, so that fallback is only good for 90 days after such a release.
 #
-# Manual only. Pages keys deployments by commit sha, so deploying a commit
-# here and then tagging that same commit makes the tag's deploy a silent
-# no-op (v1.4.3, 2026-09-23). Run this only for a commit that will not be
-# tagged, or after the tag's deploy has gone live.
+# Runs by itself on a push to main that touches docs/site, and by hand.
+# Pages keys deployments by commit sha, so deploying a commit here and then
+# tagging that same commit makes the tag's deploy a silent no-op (v1.4.3,
+# 2026-09-23). A push therefore skips the deploy while a release is pending:
+# when the version in firmware/gameday-common.yaml has no release yet, the
+# next tag's deploy publishes docs/site anyway. A commit whose version is
+# already released can never be tagged again, so deploying it is safe.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/site/**"
   workflow_dispatch:
 
 permissions:
@@ -26,8 +33,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate:
+    name: Skip while a release is pending
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.check.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^  version: "\(.*\)"$/\1/p' firmware/gameday-common.yaml | head -n1)
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          echo "source version $VERSION, latest release $TAG"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "v$VERSION" = "$TAG" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$VERSION is not released yet; its tag deploy will publish the site"
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
     name: Publish site only
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
