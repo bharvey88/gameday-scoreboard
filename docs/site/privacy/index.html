@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy - Game Day Scoreboard</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0f14; color: #e6edf3; }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1 { font-size: 2rem; margin: 0 0 4px; }
+    .sub { color: #9da7b3; margin: 0 0 32px; }
+    .card { background: #151b23; border: 1px solid #262e38; border-radius: 12px; padding: 20px 24px; margin: 0 0 20px; }
+    .card h2 { margin: 0 0 6px; font-size: 1.2rem; }
+    .card p { margin: 0 0 14px; color: #c3ccd6; }
+    .note { font-size: 0.9rem; color: #9da7b3; }
+    a { color: #7cc4ff; }
+    footer { margin-top: 40px; font-size: 0.85rem; color: #6f7a86; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Privacy</h1>
+  <p class="sub">Effective 2026-09-22. Plain-language draft, not legal advice; see the note at the bottom.</p>
+
+  <div class="card">
+    <h2>The short version</h2>
+    <p>There's no account, no cloud service, and nothing tracking you. The app and the panel talk to each other over your home network, and the panel talks to ESPN for scores and to GitHub for firmware updates. That's the whole picture.</p>
+  </div>
+
+  <div class="card">
+    <h2>What the panel does</h2>
+    <p>The panel asks ESPN's public site for your team's schedule and scores, and downloads team logos from ESPN's image servers. It checks this site for firmware updates every six hours, and its own web page can look up release notes from GitHub. None of that carries any information about you, only the team you picked and a request for the current schedule.</p>
+  </div>
+
+  <div class="card">
+    <h2>What the app does</h2>
+    <p>The app finds and talks to panels on your home Wi-Fi network only, using Bonjour to discover them and HTTP to read scores and send settings. First-time Wi-Fi setup happens over Bluetooth, directly between your phone and the panel. The app also fetches team logos from ESPN's image servers so you can see them while picking a team. The app has no server of its own, no account or sign-in, and does not collect analytics or usage data.</p>
+  </div>
+
+  <div class="card">
+    <h2>What we don't do</h2>
+    <p>No accounts. No analytics or crash reporting. No advertising. No data sold or shared with anyone, because none is collected in the first place.</p>
+  </div>
+
+  <div class="card">
+    <h2>Questions</h2>
+    <p>Reach out through the <a href="/support/">support page</a>.</p>
+  </div>
+
+  <p class="note">This page is a draft written for Brandon's review, not reviewed by a lawyer. Treat it as a starting point, not a final policy.</p>
+
+  <footer>
+    <a href="/">Game Day Scoreboard</a>
+  </footer>
+</main>
+</body>
+</html>

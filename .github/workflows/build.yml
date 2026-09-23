@@ -133,7 +133,7 @@ jobs:
           {
             cat notes/notes.md
             echo
-            echo "Install or update from the [flasher page](https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/), or let a panel already running v0.2.2 or later update itself from its device page."
+            echo "Install or update from the [flasher page](https://gamedayscoreboard.app/), or let a panel already running v0.2.2 or later update itself from its device page."
             if [ -n "$PREV" ]; then
               echo
               echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${GITHUB_REF_NAME}"

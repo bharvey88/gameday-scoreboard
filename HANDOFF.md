@@ -8,6 +8,16 @@ Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
 - main is at v1.4.1 (bc7fab8), fast-forwarded from origin. Both v1.4.0 and
   v1.4.1 have shipped since the "Where things stand" section below was
   written; that section is now history, kept for the reasoning it documents.
+- 2026-09-22: PR opened from worktree ~/development/gameday-scoreboard-domain
+  (branch `custom-domain`) moving the public web presence to
+  gamedayscoreboard.app: firmware update source, the flasher-page link in the
+  release workflow, and user-facing links in README/index.html now point
+  there, and CHANGELOG bumped to v1.4.2 for it. New pages at
+  docs/site/{setup,privacy,support}/index.html, linked from the index
+  footer. Brandon is pointing DNS and setting the Pages custom domain
+  separately; the PR says not to merge until
+  https://gamedayscoreboard.app/firmware/m1/manifest.json actually resolves.
+  The privacy page is a draft for his review, not legal advice.
 - **v1.4.0** (panel-tells-whats-wrong, PR #9, tag v1.4.0): the panel says
   "Wi-Fi lost, open the Game Day app" instead of freezing on an old score,
   and Bluetooth switches back on so the app can hand it a new password; a
