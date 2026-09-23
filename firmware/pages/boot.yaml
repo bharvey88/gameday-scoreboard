@@ -38,8 +38,10 @@
 # controls, since it is how someone who set the panel up through the
 # hotspot finds it again; with the setting off a fresh panel shows only the
 # QR. A panel that already has a team shows just the address for 3 seconds
-# at boot, or nothing with the setting off. A boot button hold always shows
-# the full address and IP, full width, with no QR.
+# at boot (full width, no QR, on a chain too), or nothing with the setting
+# off. A boot button hold always shows the full address and IP, full
+# width, with no QR, for 20 seconds. Off Wi-Fi the overlay never hides, so
+# the button cannot blank a panel that is in setup or has lost its network.
 #
 # Nothing here should scroll. Lines are kept to 12 characters (60 px of
 # Spleen 5x8) on a 64 px column, the hostname is split at its dash to fit,
@@ -79,6 +81,20 @@ globals:
   - id: boot_qr_since_ms
     type: uint32_t
     initial_value: '0'
+  # Who owns the current run of turns (see boot_qr_cycle), so a change of
+  # state or of its extra turn starts the run again from the first frame.
+  - id: boot_qr_key
+    type: int
+    initial_value: '0'
+  # True once the panel has had a real saved network this boot. A failed
+  # handover from the app calls clear_sta(), which makes has_sta() false
+  # while the panel is still in an outage; this keeps it in the Wi-Fi lost
+  # state instead of dropping to the setup lines. "Reset Wi-Fi" is the only
+  # deliberate way to lose the network and it restarts the panel, which
+  # clears this.
+  - id: boot_had_creds
+    type: bool
+    initial_value: 'false'
   # The turn boot_qr_cycle picked: 0 the state's own text, 1 the QR code,
   # 2 the hotspot text. boot_refresh reads it to choose the lines.
   - id: boot_qr_frame
@@ -108,9 +124,6 @@ script:
           for (auto *l : lines) {
             lv_obj_set_width(l, cw - 4);
             lv_obj_set_x(l, x0 + 2);
-            // A line that does not fit scrolls at 12 px/s, about two and a
-            // half characters a second, not the 40 px/s LVGL default.
-            lv_obj_set_style_anim_duration(l, lv_anim_speed(12), 0);
           }
           lv_obj_set_width(id(boot_title), cw);
           lv_obj_set_width(id(boot_rule), cw - 8);
@@ -152,7 +165,12 @@ script:
           if (qr) lv_obj_clear_flag(id(boot_qr_box), LV_OBJ_FLAG_HIDDEN);
           else lv_obj_add_flag(id(boot_qr_box), LV_OBJ_FLAG_HIDDEN);
 
-  # Write the four lines. A line wider than its column scrolls, slowly.
+  # Write the four lines. A line wider than its column scrolls at 12 px/s,
+  # about two and a half characters a second, not LVGL's 40 px/s default.
+  # The duration is worked out per line from its width, because LVGL's own
+  # speed setting rounds to 10 px/s and caps a pass at 10 s, which speeds
+  # long lines up. One pass is the text plus the three space gap LVGL puts
+  # before it comes round again.
   - id: boot_set_lines
     parameters:
       la: string
@@ -163,6 +181,14 @@ script:
     then:
       - lambda: |-
           auto put = [](lv_obj_t *l, const std::string &t) {
+            const lv_font_t *font = lv_obj_get_style_text_font(l, LV_PART_MAIN);
+            lv_point_t sz;
+            lv_text_get_size(&sz, t.c_str(), font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+            const int32_t px = sz.x + 3 * lv_font_get_glyph_width(font, ' ', ' ');
+            const uint32_t ms = px > 0 ? (uint32_t) px * 1000 / 12 : 1000;
+            // Only when it changes: setting a style restarts the scroll.
+            if (lv_obj_get_style_anim_duration(l, LV_PART_MAIN) != ms)
+              lv_obj_set_style_anim_duration(l, ms, 0);
             const char *cur = lv_label_get_text(l);
             if (cur == nullptr || t != cur)
               lv_label_set_text(l, t.c_str());
@@ -176,25 +202,29 @@ script:
 
   # The timing for states that take turns. Sets boot_qr_frame: 0 for the
   # first 5 s, 1 for the next 8 s, then 2 for 5 s when extra is true, round
-  # and round. boot_refresh decides what each frame shows. Called with want
-  # false to reset, so the next run starts again at frame 0.
+  # and round. boot_refresh decides what each frame shows. owner says whose
+  # run it is (1 connected, 2 wifi lost, 3 setup, 0 none): a new owner, or
+  # the same one gaining or losing its extra turn, starts again at frame 0,
+  # so a run never opens partway through. 0 stops the turns.
   - id: boot_qr_cycle
     parameters:
-      want: bool
+      owner: int
       extra: bool
     then:
       - lambda: |-
           static const uint32_t TEXT_MS = 5000, QR_MS = 8000, EXTRA_MS = 5000;
           int frame = 0;
-          if (!want) {
+          const int key = owner == 0 ? 0 : owner * 2 + (extra ? 1 : 0);
+          if (key == 0) {
             id(boot_qr_since_ms) = 0;
           } else {
-            if (id(boot_qr_since_ms) == 0)
+            if (key != id(boot_qr_key) || id(boot_qr_since_ms) == 0)
               id(boot_qr_since_ms) = millis() == 0 ? 1 : millis();
             const uint32_t period = TEXT_MS + QR_MS + (extra ? EXTRA_MS : 0);
             const uint32_t t = (millis() - id(boot_qr_since_ms)) % period;
             frame = t < TEXT_MS ? 0 : t < TEXT_MS + QR_MS ? 1 : 2;
           }
+          id(boot_qr_key) = key;
           id(boot_qr_frame) = frame;
 
   - id: boot_refresh
@@ -226,9 +256,11 @@ script:
           // The blank-SSID half of have_creds is what keeps a panel out of
           // here after "Reset Wi-Fi": that button saves an empty network, which
           // still counts as has_sta(), and that panel is in setup, not in
-          // trouble. Mirrored in boot_hide below.
+          // trouble. boot_had_creds carries a real network through a failed
+          // handover from the app, which clears the one in memory.
           const bool have_creds = w->has_sta() && !w->get_sta().get_ssid().empty();
-          const bool lost = have_creds && (id(boot_last_connected_ms) != 0 || millis() > 30000);
+          if (have_creds) id(boot_had_creds) = true;
+          const bool lost = id(boot_had_creds) && (id(boot_last_connected_ms) != 0 || millis() > 30000);
           const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
           // The address as up to two lines of 12 characters, split after the
           // dash in gameday-2f6a70.local. A name that will not split that way
@@ -244,7 +276,9 @@ script:
           }
           if (w->is_connected()) {
             id(boot_last_connected_ms) = millis() == 0 ? 1 : millis();
-            if (via_button) {
+            // boot_show_address keeps the button's address up for 20 s, and
+            // boot_check's twice a second polls must not swap it back.
+            if (via_button || id(boot_show_address).is_running()) {
               // Boot button hold: always the full address and IP, never the
               // QR, full width.
               std::string ip;
@@ -256,7 +290,7 @@ script:
                   break;
                 }
               }
-              id(boot_qr_cycle).execute(false, false);
+              id(boot_qr_cycle).execute(0, false);
               id(boot_view).execute(false, false);
               if (wide)
                 id(boot_set_lines).execute("On your phone, open", host, "or " + ip, "then pick your team", false);
@@ -268,17 +302,21 @@ script:
               // Normal connect. A fresh panel shows the QR for the app, with
               // the address taking a turn when "Show address at boot" is on.
               // A panel that already has a team only gets here with that
-              // setting on (see the hide timers below) and shows the address.
+              // setting on (see the hide timers below) and shows just the
+              // address, no QR: it has been set up, it needs no app link.
               const bool fresh = !id(gameday_ctl).setup_done();
               bool addr = true;
               if (fresh) {
-                id(boot_qr_cycle).execute(true, id(gameday_ctl).show_boot_address());
+                id(boot_qr_cycle).execute(1, id(gameday_ctl).show_boot_address());
                 addr = id(boot_qr_frame) == 2;
               } else {
-                id(boot_qr_cycle).execute(false, false);
+                id(boot_qr_cycle).execute(0, false);
               }
-              id(boot_view).execute(wide, wide || !addr);
-              if (addr)
+              const bool side = wide && fresh;
+              id(boot_view).execute(side, side || !addr);
+              if (addr && wide && !side)
+                id(boot_set_lines).execute("Open", host, "", "", false);
+              else if (addr)
                 id(boot_set_lines).execute("Open", h1, h2, "", false);
               else if (wide)
                 id(boot_set_lines).execute("Scan for", "Game Day", "app", "", false);
@@ -304,7 +342,7 @@ script:
             // "Connecting to <network>", which reads like a first boot and
             // does not tell the customer what to do about it. No hotspot turn
             // here, even once the fallback AP is up, for the same reason.
-            id(boot_qr_cycle).execute(!provisioning, false);
+            id(boot_qr_cycle).execute(provisioning ? 0 : 2, false);
             id(boot_view).execute(wide && !provisioning,
                                   !provisioning && (wide || id(boot_qr_frame) == 1));
             if (provisioning)
@@ -317,7 +355,7 @@ script:
             // iPhone. The hotspot turn waits until the AP is really up, so it
             // never points at a network that is not there yet. On a 128 px
             // chain the QR stays up throughout; on 64 it is frame 1.
-            id(boot_qr_cycle).execute(!provisioning, w->is_ap_active());
+            id(boot_qr_cycle).execute(provisioning ? 0 : 3, w->is_ap_active());
             const int frame = id(boot_qr_frame);
             id(boot_view).execute(wide && !provisioning,
                                   !provisioning && (wide || frame == 1));
@@ -328,7 +366,7 @@ script:
             else
               id(boot_set_lines).execute("SETUP", "Game Day", "app", "", true);
           } else {
-            id(boot_qr_cycle).execute(false, false);
+            id(boot_qr_cycle).execute(0, false);
             id(boot_view).execute(false, false);
             char ssid[wifi::SSID_BUFFER_SIZE];
             id(boot_set_lines).execute(wide ? "Connecting to" : "Connecting", w->wifi_ssid_to(ssid), "", "", true);
@@ -348,15 +386,13 @@ script:
       - if:
           condition:
             lambda: |-
-              // Wi-Fi is still gone: the overlay is the only thing telling the
-              // owner why the scores stopped. Never hide it out from under
-              // them, whatever asked for the hide. Same derived test as
-              // boot_refresh above, so the two cannot disagree about whether
-              // the panel is in an outage.
+              // Not on Wi-Fi: the overlay is the only thing telling the owner
+              // what to do, whether the panel lost its network or was never
+              // set up. Never hide it out from under them, whatever asked
+              // for the hide (the boot button's 20 s timer, for one, which
+              // used to blank a panel in setup until a restart).
               auto *w = wifi::global_wifi_component;
-              if (w == nullptr || w->is_connected()) return false;
-              const bool have_creds = w->has_sta() && !w->get_sta().get_ssid().empty();
-              return have_creds && (id(boot_last_connected_ms) != 0 || millis() > 30000);
+              return w != nullptr && !w->is_connected();
           then:
             - component.resume: boot_check
             - component.resume: boot_anim
@@ -368,7 +404,7 @@ script:
             - component.suspend: boot_anim
             - script.execute:
                 id: boot_qr_cycle
-                want: false
+                owner: 0
                 extra: false
             - lvgl.obj.update:
                 id: boot_overlay
@@ -421,7 +457,7 @@ script:
               // The QR would cover the warning, and with boot_check stopped
               // nothing else would take it down. Full width, so the warning
               // is not squeezed into half a chain.
-              id(boot_qr_cycle).execute(false, false);
+              id(boot_qr_cycle).execute(0, false);
               id(boot_view).execute(false, false);
               id(boot_set_lines).execute("Keep holding", "to reset", "Wi-Fi", "", true);
             }
@@ -467,7 +503,7 @@ script:
                 // Same lines and layout as boot_refresh's lost branch, on
                 // its first frame: text on 64, QR beside the text on 128.
                 const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
-                id(boot_qr_cycle).execute(false, false);
+                id(boot_qr_cycle).execute(0, false);
                 id(boot_view).execute(wide, wide);
                 id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
 
@@ -519,7 +555,7 @@ esp32_improv:
         via_button: false
   on_provisioning:
     - lambda: |-
-        id(boot_qr_cycle).execute(false, false);
+        id(boot_qr_cycle).execute(0, false);
         id(boot_view).execute(false, false);
         id(boot_set_lines).execute("JOINING", "Wi-Fi", "", "", true);
   on_provisioned:
