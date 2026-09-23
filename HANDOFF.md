@@ -91,6 +91,26 @@ Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
   a controller substitution, one package per board, a CI build matrix,
   per-board manifests and a picker on the installer page.
 
+## v1.4.3 release and the Pages sha collision (2026-09-23)
+
+- v1.4.3 tagged (eb9c89f) and released; Build run 35888705419 green. Its
+  Pages deploy reported success but changed nothing: site.yml (added by the
+  Mac session that day, push-triggered on docs/site) had already deployed
+  the same sha at 16:19, and Pages keys deployments by GITHUB_SHA, so the
+  tag's deploy at 16:32 was a silent no-op. Live site kept v1.4.2 and the
+  Install button failed with "failed to download manifest".
+- Setting GITHUB_SHA in a step's `env:` does NOT override it for
+  deploy-pages (runner sets it afterwards; log showed the bare sha). What
+  worked: a new commit on main (b281326) + `gh workflow run site.yml`.
+- site.yml now: manual dispatch only, fetches firmware from the latest
+  release tag's Build artifact (`firmware-moonhub75`, 90-day retention)
+  instead of copying firmware/m1 from the live site. Rule: never dispatch
+  it on a commit that is about to be tagged.
+- Live and verified 16:38: firmware/moonhub75/manifest.json = 1.4.3,
+  index says v1.4.3. Brandon installs from the local build over OTA
+  (`esphome upload firmware/gameday.yaml --device gameday-2f6a70.local`) or
+  from the site; either keeps settings.
+
 ## Still open, from the audit and from the sections below
 
 - The 2026-09-14 crash (LoadProhibited fault in the Wi-Fi driver, possibly

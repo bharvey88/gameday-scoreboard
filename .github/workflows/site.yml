@@ -3,11 +3,13 @@ name: Site
 # Republish gamedayscoreboard.app when only docs/site changed, without a
 # firmware release. The firmware files come from the Build run of the latest
 # release tag, so panels see the same manifest and binaries they saw before.
+#
+# Manual only. Pages keys deployments by commit sha, so deploying a commit
+# here and then tagging that same commit makes the tag's deploy a silent
+# no-op (v1.4.3, 2026-09-23). Run this only for a commit that will not be
+# tagged, or after the tag's deploy has gone live.
 
 on:
-  push:
-    branches: [main]
-    paths: ["docs/site/**"]
   workflow_dispatch:
 
 permissions:
@@ -48,7 +50,3 @@ jobs:
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
-        env:
-          # Pages keys deployments by this value. Two workflows deploying the
-          # same commit (a docs push, then its tag) must not collide.
-          GITHUB_SHA: ${{ github.sha }}-${{ github.run_id }}
