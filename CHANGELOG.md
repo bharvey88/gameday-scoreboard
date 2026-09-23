@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.4.2
+
+- The panel now checks gamedayscoreboard.app for firmware updates instead of the old GitHub Pages address.
+- New setup, privacy and support pages at gamedayscoreboard.app.
+
 ## v1.4.1
 
 - The panel lights up whenever it has power. It no longer comes back dark because it happened to be off when the power went out.

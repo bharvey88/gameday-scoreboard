@@ -4,7 +4,7 @@
 
 A standalone football scoreboard for HUB75 LED matrix panels. Install it from your browser, join it to WiFi, pick your NFL or college team on the panel's own web page, and it follows the game from ESPN by itself. Nothing else to run.
 
-Watch the [full demo](https://bharvey88.github.io/gameday-scoreboard/) on the installer page.
+Watch the [full demo](https://gamedayscoreboard.app/) on the installer page.
 
 If you already use Home Assistant and want room lighting to celebrate too, [gameday-matrix](https://github.com/bharvey88/gameday-matrix) does the same thing through a blueprint.
 
@@ -33,7 +33,7 @@ The pinout, under the names ESPHome uses (that board's README calls the upper ha
 
 ## Install
 
-1. Open the [installer page](https://bharvey88.github.io/gameday-scoreboard/), plug the controller in over USB, and click Install.
+1. Open the [installer page](https://gamedayscoreboard.app/), plug the controller in over USB, and click Install.
 2. Enter your WiFi details in the dialog that follows the install.
 3. Once it's on WiFi the panel says where to go: open the `gameday-xxxxxx.local` name it shows on your phone, or the address underneath if your phone can't resolve `.local` names. Pick your team on that page. The ticker repeats the address until you've chosen a team, and holding the controller's boot button for 1.5 seconds shows it again any time.
 
