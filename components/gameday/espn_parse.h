@@ -64,10 +64,83 @@ struct Upcoming {
 struct LiveGame {
   uint8_t league{0};
   std::string event_id;
+  GameState state{GameState::NOT_FOUND};
+  int64_t kickoff_epoch{0};
   uint32_t group{0};        // home team's conference, for the follow-up polls
   uint32_t away_id{0};      // shown on the left, like a broadcast
+  uint32_t home_id{0};
   std::string away_abbr, home_abbr;
 };
+
+// What one league's scoreboard says for the live modes: the games in
+// progress, the finals, and the earliest game that has not started.
+struct ScanResult {
+  std::vector<LiveGame> live;
+  std::vector<LiveGame> finals;
+  LiveGame later;           // valid when later.state == PRE
+  int week{0};              // the scoreboard's "week.number", 0 when absent
+  size_t events{0};         // events read
+};
+
+// Live modes with nothing in progress: what the board shows instead, in
+// order of precedence (see live_precedence).
+enum class LiveShow : uint8_t {
+  NONE,         // no scan has landed yet
+  LIVE,         // following a game in progress
+  LATER_TODAY,  // the league's next kickoff today
+  FINAL_TODAY,  // today's finals, one at a time
+  NEXT_GAME,    // the league's next game this week
+  FETCH_NEXT,   // the next game is not known yet: fetch it first
+  IDLE,         // nothing at all (off season)
+  MY_TEAM,      // the owner chose to see their own team instead
+};
+
+// Next game this week, per league: unknown until fetched, then found or not.
+enum class NextState : uint8_t { UNKNOWN, NONE, FOUND };
+
+struct LiveInputs {
+  bool any_live{false};
+  bool later_today{false};
+  size_t finals_today{0};
+  NextState next{NextState::UNKNOWN};
+  bool my_team_fallback{false};  // the "my_team" setting, with a saved team
+};
+
+inline LiveShow live_precedence(const LiveInputs &in) {
+  if (in.any_live)
+    return LiveShow::LIVE;
+  if (in.my_team_fallback)
+    return LiveShow::MY_TEAM;
+  if (in.later_today)
+    return LiveShow::LATER_TODAY;
+  if (in.finals_today > 0)
+    return LiveShow::FINAL_TODAY;
+  switch (in.next) {
+    case NextState::FOUND:
+      return LiveShow::NEXT_GAME;
+    case NextState::UNKNOWN:
+      return LiveShow::FETCH_NEXT;
+    default:
+      return LiveShow::IDLE;
+  }
+}
+
+// Day number in local time, for "until midnight" tests. offset_s is the
+// local UTC offset in seconds (negative west of Greenwich).
+inline int64_t local_day(int64_t epoch, int32_t offset_s) {
+  int64_t t = epoch + offset_s;
+  return t >= 0 ? t / 86400 : (t - 86399) / 86400;
+}
+
+// Keeps the finals that kicked off on the same local day as `now`.
+inline std::vector<LiveGame> finals_today(const std::vector<LiveGame> &finals, int64_t now, int32_t offset_s) {
+  std::vector<LiveGame> out;
+  int64_t today = local_day(now, offset_s);
+  for (const auto &g : finals)
+    if (g.kickoff_epoch != 0 && local_day(g.kickoff_epoch, offset_s) == today)
+      out.push_back(g);
+  return out;
+}
 
 struct TickerOptions {
   bool clock{true};
@@ -86,6 +159,8 @@ std::string team_url(League league, uint32_t espn_id);
 std::string schedule_url(League league, uint32_t espn_id);  // the season's games, ~200KB
 std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch);
 std::string scan_url(League league, int64_t now_epoch);  // every game of the day for one league
+// The league's current week, or `week` when it is not 0 (next-game lookup).
+std::string week_url(League league, int week);
 std::string dark_logo(const std::string &url);
 std::string team_logo_url(League league, uint32_t espn_id, const char *abbr);  // for a team with no game loaded yet
 
@@ -99,6 +174,10 @@ bool parse_scoreboard_str(const std::string &json, const std::string &event_id, 
 Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral = false);
 uint32_t parse_color(const std::string &hex);
 std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local);
+// Ticker for a live mode's board. league_word is "college ", "NFL " or "".
+// kickoff_local is kickoff_label()'s text; base is status_text()'s.
+std::string live_ticker(LiveShow show, const std::string &league_word, const GameSnapshot &s, const TickerOptions &o,
+                        const std::string &kickoff_local, const std::string &base);
 std::string kickoff_label(const struct tm &kick_local, const struct tm &now_local);
 int64_t parse_iso8601_z(const std::string &s);
 const char *state_name(GameState s);

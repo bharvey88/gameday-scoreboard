@@ -81,7 +81,7 @@
       <button class="btn primary" id="pick">Change team</button>
     </div>
     <div class="teambar livebar" id="livebar" hidden>
-      <div class="cur"><div><div class="name">Following a random game in progress</div><div class="lg">Moves on when it ends, or after the time below.</div></div></div>
+      <div class="cur"><div><div class="name">Following a random game in progress</div><div class="lg" id="liveHint">Moves on when it ends, or after the time below.</div></div></div>
       <div class="stepper"><label for="rotate">Switch every</label><input type="number" id="rotate" min="1" max="30" step="1"><span>min</span></div>
     </div>
     <div class="teambar favbar" id="favbar" hidden>
@@ -154,6 +154,11 @@
         <div class="sub">Time</div>
         <div class="tzline" id="tzline">Timezone not known yet</div>
         <div class="ctl" id="tzpick" hidden><label>Timezone</label><select id="tzsel"></select></div>
+        <div class="sub">Live modes</div>
+        <div class="ctl">
+          <label>Show my team when nothing is live<small>Off: the panel shows the league's next kickoff, today's finals, or the next game this week. On: it shows your own team's game until a live one starts.</small></label>
+          <button class="sw" id="fallbackSw" aria-label="Show my team when nothing is live"></button>
+        </div>
         <div class="sub">Startup</div>
         <div class="ctl">
           <label>Show how to connect when the panel starts<small>For 3 seconds after it connects: the Game Day app, or the page address. Hold the boot button any time to show the address again.</small></label>
@@ -298,7 +303,7 @@
       st.classList.remove("live");
       msg.hidden = false;
       const liveMode = S && S.mode;
-      msg.textContent = !g ? "Waiting for the first fetch" : liveMode ? "No live games right now" : "No upcoming game for this team";
+      msg.textContent = !g ? "Waiting for the first fetch" : liveMode ? (S.status || "No live games right now") : "No upcoming game for this team";
       $("#clock").innerHTML = "&nbsp;";
       $("#down").textContent = "";
       return;
@@ -399,6 +404,13 @@
       setGD({ [sw.dataset.set]: on ? 1 : 0 });
     };
   });
+  // Live modes with nothing live: the league's next thing, or the saved team.
+  const fallbackSw = $("#fallbackSw");
+  fallbackSw.onclick = () => {
+    const mine = !fallbackSw.classList.contains("on");
+    fallbackSw.classList.toggle("on", mine);
+    setGD({ fallback: mine ? "my_team" : "next_game" });
+  };
   const favSelects = Array.from(document.querySelectorAll("select[data-fav]"));
   favSelects.forEach((fs) => {
     const none = el("option", null, "None");
@@ -428,6 +440,10 @@
   const renderSettings = () => {
     if (!S) return;
     document.querySelectorAll(".sw[data-set]").forEach((sw) => sw.classList.toggle("on", !!S[sw.dataset.set]));
+    fallbackSw.classList.toggle("on", S.fallback_mode === "my_team");
+    $("#liveHint").textContent = S.fallback_mode === "my_team"
+      ? "Moves on when it ends, or after the time below. Nothing live: your team's game."
+      : "Moves on when it ends, or after the time below. Nothing live: the next kickoff, today's finals, or the next game this week.";
     favSelects.forEach((fs, i) => {
       if (document.activeElement === fs) return;
       fs.value = refKey((S.favs || [])[i]) || "none";

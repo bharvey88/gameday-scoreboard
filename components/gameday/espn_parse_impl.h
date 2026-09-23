@@ -3,8 +3,147 @@
 
 #include <ArduinoJson.h>
 
+#include <algorithm>
+#include <cstring>
+
 namespace espn {
+
+// Host-side stand-in for the device's HTTP reader: same read()/readBytes()
+// interface, and total() says how far the parser got.
+class StringReader {
+ public:
+  explicit StringReader(const std::string &s) : s_(s) {}
+  int read() { return this->pos_ < this->s_.size() ? (unsigned char) this->s_[this->pos_++] : -1; }
+  size_t readBytes(char *dst, size_t n) {
+    size_t k = std::min(n, this->s_.size() - this->pos_);
+    memcpy(dst, this->s_.data() + this->pos_, k);
+    this->pos_ += k;
+    return k;
+  }
+  size_t total() const { return this->pos_; }
+
+ private:
+  const std::string &s_;
+  size_t pos_{0};
+};
+
 namespace detail {
+
+// Wraps a reader with one character of push-back, so the array walker can
+// look at the next character and still hand it to ArduinoJson.
+template<typename R> class PeekReader {
+ public:
+  explicit PeekReader(R &r) : r_(r) {}
+  int read() {
+    if (this->back_ >= 0) {
+      int c = this->back_;
+      this->back_ = -1;
+      return c;
+    }
+    return this->r_.read();
+  }
+  size_t readBytes(char *dst, size_t n) {
+    size_t done = 0;
+    while (done < n) {
+      int c = this->read();
+      if (c < 0)
+        break;
+      dst[done++] = (char) c;
+    }
+    return done;
+  }
+  void unread(int c) { this->back_ = c; }
+
+ private:
+  R &r_;
+  int back_{-1};
+};
+
+template<typename R> int next_non_ws(R &r) {
+  for (;;) {
+    int c = r.read();
+    if (c != ' ' && c != '\n' && c != '\r' && c != '\t')
+      return c;
+  }
+}
+
+// One string or number value to note on the way to the array, first
+// occurrence only. `pattern` ends right before the value.
+struct Capture {
+  const char *pattern;
+  std::string *out;
+  bool number;
+};
+
+// Reads up to and including the '[' that opens "key"'s array, filling the
+// captures it passes. Keys and captures are matched on the raw text, which is
+// safe for the ESPN and NWS documents: "events", "entries" and "periods"
+// occur once, and the captured keys come before them.
+template<typename R>
+bool seek_array(R &r, const char *key, const Capture *caps = nullptr, size_t ncaps = 0) {
+  std::string quoted = std::string("\"") + key + "\"";
+  size_t keep = quoted.size();
+  for (size_t i = 0; i < ncaps; i++)
+    keep = std::max(keep, strlen(caps[i].pattern));
+  std::string win;
+  for (;;) {
+    int c = r.read();
+    if (c < 0)
+      return false;
+    win.push_back((char) c);
+    if (win.size() > keep)
+      win.erase(0, win.size() - keep);
+    for (size_t i = 0; i < ncaps; i++) {
+      size_t n = strlen(caps[i].pattern);
+      if (!caps[i].out->empty() || win.size() < n || win.compare(win.size() - n, n, caps[i].pattern) != 0)
+        continue;
+      for (;;) {
+        int v = r.read();
+        if (v < 0)
+          return false;
+        if (caps[i].number ? !(v >= '0' && v <= '9') : v == '"') {
+          win.clear();
+          break;
+        }
+        caps[i].out->push_back((char) v);
+      }
+    }
+    if (win.size() < quoted.size() || win.compare(win.size() - quoted.size(), quoted.size(), quoted) != 0)
+      continue;
+    win.clear();
+    int n = next_non_ws(r);
+    if (n != ':')
+      continue;
+    n = next_non_ws(r);
+    if (n == '[')
+      return true;
+  }
+}
+
+// Parses the array's elements one at a time through `filter`, so only one
+// element's filtered fields are ever in memory. `fn` returns false to stop
+// reading; the rest of the document is then never downloaded.
+template<typename R, typename F> bool for_each_element(R &r, JsonDocument &filter, F &&fn) {
+  PeekReader<R> p(r);
+  JsonDocument doc;
+  for (;;) {
+    int c = next_non_ws(p);
+    if (c == ']')
+      return true;
+    if (c == ',')
+      continue;
+    if (c < 0)
+      return false;
+    p.unread(c);
+    doc.clear();
+    DeserializationError err =
+        deserializeJson(doc, p, DeserializationOption::Filter(filter), DeserializationOption::NestingLimit(20));
+    if (err)
+      return false;
+    if (!fn(doc.as<JsonObjectConst>()))
+      return true;
+  }
+}
 
 inline std::string str_or_empty(JsonVariantConst v) {
   const char *s = v.as<const char *>();
@@ -58,11 +197,12 @@ inline void fill_upcoming_filter(JsonDocument &f) {
   comp["broadcasts"].add<JsonObject>()["media"]["shortName"] = true;
 }
 
-inline void fill_scan_filter(JsonDocument &f) {
-  JsonObject ev = f["events"].add<JsonObject>();
-  ev["id"] = true;
-  ev["status"]["type"]["state"] = true;
-  JsonObject c = ev["competitions"].add<JsonObject>()["competitors"].add<JsonObject>();
+// One scoreboard event, for the live modes' scan (filter at event level).
+inline void fill_scan_event_filter(JsonDocument &f) {
+  f["id"] = true;
+  f["date"] = true;
+  f["status"]["type"]["state"] = true;
+  JsonObject c = f["competitions"].add<JsonObject>()["competitors"].add<JsonObject>();
   c["id"] = true;
   c["homeAway"] = true;
   c["team"]["abbreviation"] = true;
@@ -230,35 +370,49 @@ bool parse_upcoming(TInput &input, uint32_t our_team_id, size_t max, std::vector
   return true;
 }
 
-// Lists the in-progress games in a scoreboard document.
-template<typename TInput, typename TOut> bool parse_live_games(TInput &input, TOut &out) {
-  JsonDocument filter;
-  detail::fill_scan_filter(filter);
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
-                                              DeserializationOption::NestingLimit(40));
-  if (err)
+// Walks a scoreboard document event by event and sorts the games into
+// in progress, final, and the earliest one not started. Works for a day's
+// scoreboard (dates=) and for a week view (no date).
+template<typename TInput> bool parse_scan(TInput &input, ScanResult &out) {
+  out = ScanResult{};
+  std::string week;
+  detail::Capture caps[] = {{"\"week\":{\"number\":", &week, true}};
+  if (!detail::seek_array(input, "events", caps, 1))
     return false;
-  for (JsonObjectConst ev : doc["events"].as<JsonArrayConst>()) {
-    if (detail::str_or_empty(ev["status"]["type"]["state"]) != "in")
-      continue;
+  JsonDocument filter;
+  detail::fill_scan_event_filter(filter);
+  bool ok = detail::for_each_element(input, filter, [&](JsonObjectConst ev) {
+    out.events++;
+    std::string state = detail::str_or_empty(ev["status"]["type"]["state"]);
     LiveGame g;
     g.event_id = detail::str_or_empty(ev["id"]);
+    g.kickoff_epoch = parse_iso8601_z(detail::str_or_empty(ev["date"]));
+    g.state = state == "in" ? GameState::IN : state == "post" ? GameState::POST : GameState::PRE;
     for (JsonObjectConst c : ev["competitions"][0]["competitors"].as<JsonArrayConst>()) {
       bool home = detail::str_or_empty(c["homeAway"]) == "home";
       std::string abbr = detail::str_or_empty(c["team"]["abbreviation"]);
+      uint32_t id = (uint32_t) atol(detail::str_or_empty(c["id"]).c_str());
       if (home) {
         g.home_abbr = abbr;
+        g.home_id = id;
         g.group = (uint32_t) atol(detail::str_or_empty(c["team"]["conferenceId"]).c_str());
       } else {
         g.away_abbr = abbr;
-        g.away_id = (uint32_t) atol(detail::str_or_empty(c["id"]).c_str());
+        g.away_id = id;
       }
     }
-    if (!g.event_id.empty() && g.away_id != 0)
-      out.push_back(g);
-  }
-  return true;
+    if (g.event_id.empty() || g.away_id == 0)
+      return true;
+    if (g.state == GameState::IN)
+      out.live.push_back(g);
+    else if (g.state == GameState::POST)
+      out.finals.push_back(g);
+    else if (out.later.state != GameState::PRE || g.kickoff_epoch < out.later.kickoff_epoch)
+      out.later = g;
+    return true;
+  });
+  out.week = atoi(week.c_str());
+  return ok;
 }
 
 // Parses a scoreboard document and extracts the event with `event_id`.

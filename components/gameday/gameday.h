@@ -24,6 +24,7 @@ namespace gameday {
 using ::espn::GameSnapshot;
 using ::espn::GameState;
 using ::espn::League;
+using ::espn::LiveShow;
 using ::espn::Schedule;
 using ::espn::Splash;
 using ::espn::TickerOptions;
@@ -79,6 +80,7 @@ class GamedaySelect : public select::Select, public Component {
 //   POST /gameday/set?key=value...   team=nfl:6 mode=0-4 rotate=2-30 fav1..fav4=nfl:6|none
 //                                    tz=<index> tzauto=0/1 down/play/odds/opp=0/1 panels=1/2
 //                                    lockon=5-120 (min) release=30-3600 (s) collide=0 stick|1 alternate
+//                                    fallback=next_game|my_team (live modes with nothing live)
 //   POST /gameday/action?do=refresh|demo   (demo: a scripted game on the panel, ~40s)
 // Requests arrive on the HTTP task; settings are applied on the main loop.
 class GamedayComponent : public Component, public AsyncWebHandler {
@@ -116,6 +118,10 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void set_lockon_minutes(int minutes);
   void set_release_seconds(int seconds);
   void set_collision_alternate(bool alternate);
+  // Live modes with nothing live: the league's next thing (false), or the
+  // saved team's own card as in v1.4.0 (true).
+  void set_fallback_my_team(bool my_team);
+  bool fallback_my_team() const { return this->prefs5_.fallback == 1; }
   void refresh_now();
   // Plays a scripted game through the real splash and render path, for
   // showing the panel off without a live game. Real data resumes after.
@@ -194,6 +200,9 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     uint16_t release_seconds;
     uint8_t collide;  // 0 = stick with the higher slot, 1 = alternate on the rotate timer
   } __attribute__((packed));
+  struct Prefs5 {
+    uint8_t fallback;  // 0 = the league's next thing, 1 = the saved team (v1.4.0)
+  } __attribute__((packed));
 
   bool flag_(uint8_t f) const { return (this->prefs_.flags & f) != 0; }
   void set_flag_(uint8_t f, bool on);
@@ -212,7 +221,14 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     // live-game modes: scan the day's games first, then follow one
     bool need_scan{false};
     std::vector<::espn::LiveGame> live;
+    std::vector<::espn::LiveGame> finals;
+    ::espn::LiveGame later;
     bool scan_ok{false};
+    // live-game modes: the league's next game this week
+    bool need_next{false};
+    uint8_t next_league{0};
+    ::espn::LiveGame next;
+    bool next_ok{false};
     bool need_schedule{false};
     Schedule schedule;
     bool schedule_ok{false};
@@ -234,7 +250,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   bool fetch_schedule_(const ::espn::Team *team, Schedule &out);
   bool fetch_upcoming_(const ::espn::Team *team, std::vector<::espn::Upcoming> &out);
   bool fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out);
-  bool fetch_live_games_(League league, std::vector<::espn::LiveGame> &out);
+  bool fetch_scan_(League league, Job &j);
+  bool fetch_next_(League league, ::espn::LiveGame &out);
   bool live_mode_() const {
     return this->prefs2_.mode >= (uint8_t) Mode::LIVE_NFL && this->prefs2_.mode <= (uint8_t) Mode::LIVE_ANY;
   }
@@ -279,6 +296,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   Prefs3 prefs3_{};
   ESPPreferenceObject pref4_;
   Prefs4 prefs4_{};
+  ESPPreferenceObject pref5_;
+  Prefs5 prefs5_{};
   std::string favorite_option_(uint8_t slot) const;
   // Favorite Teams mode: one cached next-game card per set slot, in slot
   // order. The worker refreshes one entry per cycle; the main loop picks
@@ -304,13 +323,32 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   bool fav_choose_(int64_t now_epoch);  // true when the shown entry changed
   void start_fav_job_(uint32_t now);
   void apply_fav_job_(uint32_t now);
-  uint32_t live_away_id_{0};      // the followed live game's away team
-  uint32_t live_started_ms_{0};   // when the current live game was picked,
-                                  // or, in the fallback, when the last scan ran
-  bool live_none_{false};         // last scan found nothing in progress
-  // A live mode with nothing live: the board shows the saved team's card and
-  // keeps scanning. The mode the owner picked does not change.
-  bool live_fallback_{false};
+  uint32_t live_away_id_{0};      // the followed game's away team
+  uint32_t live_started_ms_{0};   // when the current live game was picked
+  uint32_t last_scan_ms_{0};      // when the last league scan was started
+  uint32_t card_polled_ms_{0};    // last poll of a later/final/next card
+  LiveShow live_show_{LiveShow::NONE};
+  // The "my_team" fallback is up: the board shows the saved team's card
+  // through the My team path and keeps scanning.
+  bool team_fallback_{false};
+  // From the last scan, kept so a next-game lookup can re-run the pick.
+  std::vector<::espn::LiveGame> finals_;
+  ::espn::LiveGame later_;
+  size_t final_idx_{0};
+  uint32_t final_since_ms_{0};
+  // The league's next game this week, per league (index = League).
+  struct NextCache {
+    uint32_t fetched_ms{0};  // 0 = never
+    bool found{false};
+    ::espn::LiveGame game;
+  };
+  NextCache next_[2];
+  uint8_t next_pending_{0};  // bit per league: look it up on the next cycle
+  bool league_wanted_(League league) const;
+  ::espn::NextState next_state_(int64_t now_epoch) const;
+  void decide_live_(uint32_t now, const std::vector<::espn::LiveGame> &live);
+  void show_live_card_(const ::espn::LiveGame &g, uint32_t now);
+  void start_worker_();
 
   Schedule schedule_;
   uint32_t schedule_fetched_ms_{0};

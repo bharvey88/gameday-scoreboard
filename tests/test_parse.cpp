@@ -308,30 +308,133 @@ static void test_upcoming() {
 
 static void test_live_games() {
   std::string json = slurp("fixtures/scoreboard_ncaa_live.json");
-  std::vector<LiveGame> games;
-  CHECK(parse_live_games(json, games));
-  CHECK(games.size() >= 1);
+  StringReader r(json);
+  ScanResult scan;
+  CHECK(parse_scan(r, scan));
+  CHECK_EQ(scan.events, (size_t) 99);
+  CHECK_EQ(scan.live.size(), (size_t) 18);
+  CHECK_EQ(scan.finals.size(), (size_t) 45);
+  CHECK_EQ(scan.week, 1);
   bool found = false;
-  for (const auto &g : games) {
+  for (const auto &g : scan.live) {
     if (g.event_id == kLiveEvent) {
       found = true;
       CHECK_EQ(g.away_abbr, std::string("BOIS"));
       CHECK_EQ(g.home_abbr, std::string("ORE"));
       CHECK_EQ(g.away_id, kBoise);
+      CHECK_EQ(g.home_id, kOregon);
       CHECK(g.group != 0);
+      CHECK(g.state == GameState::IN);
+      CHECK_EQ(g.kickoff_epoch, parse_iso8601_z("2026-09-05T19:30Z"));
     }
   }
   CHECK(found);
-  std::vector<LiveGame> none;
+  found = false;
+  for (const auto &g : scan.finals)
+    found = found || (g.event_id == kPostEvent && g.away_id == kBallState && g.home_id == kOhioState);
+  CHECK(found);
+  // The earliest game that has not started: later today, kickoff and all.
+  CHECK(scan.later.state == GameState::PRE);
+  CHECK_EQ(scan.later.event_id, std::string("401856668"));
+  CHECK_EQ(scan.later.kickoff_epoch, parse_iso8601_z("2026-09-05T23:00Z"));
+
+  // Finals until midnight local: the fixture's week view also carries last
+  // week's and Thursday's games, which must not rotate on Saturday.
+  int64_t now = parse_iso8601_z("2026-09-05T22:00Z");
+  CHECK_EQ(finals_today(scan.finals, now, -5 * 3600).size(), (size_t) 18);
+  // 11:30 PM Central is still Saturday; 12:30 AM is Sunday and they are gone.
+  CHECK_EQ(finals_today(scan.finals, parse_iso8601_z("2026-09-06T04:30Z"), -5 * 3600).size(), (size_t) 18);
+  CHECK_EQ(finals_today(scan.finals, parse_iso8601_z("2026-09-06T05:30Z"), -5 * 3600).size(), (size_t) 0);
+  CHECK_EQ(local_day(-1, 0), (int64_t) -1);
+
+  // All-pre week: nothing live or final, the first game is next, week noted.
   std::string nfl = slurp("fixtures/scoreboard_nfl.json");
-  CHECK(parse_live_games(nfl, none));
-  CHECK_EQ(none.size(), (size_t) 0);
+  StringReader rn(nfl);
+  ScanResult none;
+  CHECK(parse_scan(rn, none));
+  CHECK_EQ(none.live.size(), (size_t) 0);
+  CHECK_EQ(none.finals.size(), (size_t) 0);
+  CHECK_EQ(none.week, 1);
+  CHECK(none.later.state == GameState::PRE);
+  CHECK_EQ(none.later.event_id, std::string(kNflEvent));
+  CHECK_EQ(none.later.away_abbr, std::string("NE"));
+  CHECK_EQ(none.later.home_abbr, std::string("SEA"));
+
+  std::string junk = "{\"events\":[{\"id\":";
+  StringReader rj(junk);
+  ScanResult bad;
+  CHECK(!parse_scan(rj, bad));
+  std::string noevents = "{\"leagues\":[]}";
+  StringReader rne(noevents);
+  CHECK(!parse_scan(rne, bad));
+  // Whitespace around the key, as NWS pretty-prints its JSON.
+  std::string spaced = "{\"week\": {\"number\": 3}, \"events\" :\n [ ]}";
+  StringReader rs(spaced);
+  CHECK(parse_scan(rs, bad));
+  CHECK_EQ(bad.events, (size_t) 0);
+
+  CHECK_EQ(week_url(League::NFL, 0), std::string("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"));
+  CHECK_EQ(week_url(League::NFL, 4), std::string("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=4"));
+  CHECK_EQ(week_url(League::NCAA, 0), std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80"));
+  CHECK_EQ(week_url(League::NCAA, 5), std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&week=5"));
   CHECK(scan_url(League::NFL, parse_iso8601_z("2026-09-14T01:00Z")).find("dates=20260913") != std::string::npos);
   CHECK(scan_url(League::NCAA, 0).find("groups=80") != std::string::npos);
   // neutral splashes name both sides
   CHECK_EQ(decide_splash(live(0, 0), live(6, 0), true, true).text, std::string("DAL TOUCHDOWN"));
   CHECK_EQ(decide_splash(live(0, 0), live(0, 3), true, true).text, std::string("PHI FIELD GOAL"));
   CHECK_EQ(decide_splash(live(20, 21), live(20, 21, GameState::POST), true, true).text, std::string("PHI WINS!"));
+}
+
+static void test_live_precedence() {
+  LiveInputs in;
+  CHECK(live_precedence(in) == LiveShow::FETCH_NEXT);  // nothing known yet: ask for the week
+  in.next = NextState::NONE;
+  CHECK(live_precedence(in) == LiveShow::IDLE);
+  in.next = NextState::FOUND;
+  CHECK(live_precedence(in) == LiveShow::NEXT_GAME);
+  in.finals_today = 3;
+  CHECK(live_precedence(in) == LiveShow::FINAL_TODAY);
+  in.later_today = true;
+  CHECK(live_precedence(in) == LiveShow::LATER_TODAY);  // a kickoff to come beats a final
+  in.any_live = true;
+  CHECK(live_precedence(in) == LiveShow::LIVE);
+  // The v1.4.0 behavior, kept as a setting: live first, else the saved team.
+  LiveInputs mine;
+  mine.my_team_fallback = true;
+  mine.later_today = true;
+  mine.finals_today = 2;
+  CHECK(live_precedence(mine) == LiveShow::MY_TEAM);
+  mine.any_live = true;
+  CHECK(live_precedence(mine) == LiveShow::LIVE);
+  // Finals need no next-game lookup.
+  LiveInputs fin;
+  fin.finals_today = 1;
+  CHECK(live_precedence(fin) == LiveShow::FINAL_TODAY);
+
+  TickerOptions o;
+  GameSnapshot pre = live(0, 0, GameState::PRE);
+  pre.team_abbr = "UGA";
+  pre.opp_abbr = "BAMA";
+  pre.odds = "BAMA -3";
+  pre.tv = "CBS";
+  CHECK_EQ(live_ticker(LiveShow::LATER_TODAY, "college ", pre, o, "Today 2:30 PM", "x"),
+           std::string("Next college game: UGA at BAMA, 2:30 PM | BAMA -3 | CBS"));
+  CHECK_EQ(live_ticker(LiveShow::NEXT_GAME, "", pre, o, "Thu 6:30 PM", "x"),
+           std::string("Next game: UGA at BAMA, Thu 6:30 PM | BAMA -3 | CBS"));
+  TickerOptions no_odds;
+  no_odds.odds = false;
+  CHECK_EQ(live_ticker(LiveShow::NEXT_GAME, "NFL ", pre, no_odds, "Thu 6:30 PM", "x"),
+           std::string("Next NFL game: UGA at BAMA, Thu 6:30 PM"));
+  GameSnapshot fin_g = live(24, 10, GameState::POST);
+  CHECK_EQ(live_ticker(LiveShow::FINAL_TODAY, "college ", fin_g, o, "", "Final | DAL 2-0"),
+           std::string("Today: Final | DAL 2-0"));
+  CHECK_EQ(live_ticker(LiveShow::IDLE, "college ", GameSnapshot{}, o, "", "No upcoming game"),
+           std::string("No college games scheduled"));
+  CHECK_EQ(live_ticker(LiveShow::NONE, "NFL ", GameSnapshot{}, o, "", "No upcoming game"),
+           std::string("Looking for a live NFL game"));
+  CHECK_EQ(live_ticker(LiveShow::LIVE, "", live(7, 0), o, "", "base"), std::string("base"));
+  // Never an apology, never the saved team's name.
+  CHECK(live_ticker(LiveShow::MY_TEAM, "college ", pre, o, "", "Sat 2:30 PM").find("showing") == std::string::npos);
 }
 
 static void test_clock_text() {
@@ -516,6 +619,7 @@ int main() {
   test_status_text();
   test_kickoff_label();
   test_live_games();
+  test_live_precedence();
   test_upcoming();
   test_clock_text();
   test_color();
