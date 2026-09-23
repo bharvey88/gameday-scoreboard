@@ -3,28 +3,61 @@
 Companion app handoff: ~/development/gameday-scoreboard-ios/HANDOFF.md.
 Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
 
-## NEXT UP (from the 2026-09-23 close, pick one per session)
+## NEXT UP (from the 2026-09-23 afternoon session)
 
-1. **www.gamedayscoreboard.app has no TLS cert.** GitHub's cert covers the
-   apex only, because the www CNAME had not propagated when it was issued
-   (checked 2026-09-23: `gh api repos/bharvey88/gameday-scoreboard/pages
-   --jq .https_certificate.domains` lists only gamedayscoreboard.app).
-   Re-trigger issuance by removing and re-adding the Pages custom domain.
-   That briefly drops HTTPS on the apex, which panels poll every 6 h, so do
-   it deliberately and re-verify /firmware/moonhub75/manifest.json and
-   /.well-known/apple-app-site-association afterwards.
-2. **Privacy page review** (docs/site/privacy/index.html): a draft Brandon
-   has not read; TestFlight and the App Store will link to it.
-3. **site.yml has a 90-day fuse:** it pulls firmware from the latest tag's
-   Build artifact (90-day retention). Past that, a site-only deploy fails.
-   Option: have the tag's publish job also attach the manifest and OTA bin
-   to the GitHub release, and let site.yml pull from release assets.
-4. **QR code on the panel's setup screen** pointing at
-   https://gamedayscoreboard.app/setup: researched below ("QR code to get the
-   app"), now unblocked because the universal link works (verified on
-   Brandon's iPhone 2026-09-23).
-5. Panels on 1.4.2 or older need one USB reinstall to reach the moonhub75
-   manifest (Brandon's own panel included).
+1. **Bench PR #14 (v1.4.4, setup QR code) on the second panel** gameday-74de74
+   (128x64 chain, on USB at /dev/cu.usbmodem1101, joined to HarveyIoT). It
+   runs v1.4.3; flash the branch with `esphome upload firmware/gameday.yaml
+   --device /dev/cu.usbmodem1101` from ~/development/gameday-scoreboard-qr
+   (Claude's permission classifier blocked flashing unreleased firmware;
+   Brandon approves or runs it). Check: iPhone Camera scans the QR in setup
+   mode, after connect, and on Wi-Fi lost, incl. low brightness; the 128
+   layout (text starts ~2 px past the QR border); boot button hold shows the
+   full address for 20 s. Then merge, tag v1.4.4.
+2. **Failed handover disarms the 10-minute offline restart** (found by the
+   #14 agent, not fixed): after a wrong password over Improv, ESPHome calls
+   clear_sta(), and the restart in gameday-common.yaml bails when there is no
+   network in memory. Check whether ESPHome falls back to the saved network by
+   itself; if not, the panel sits offline until power-cycled.
+3. **Wi-Fi network list in the app needs firmware:** ESPHome 2026.8.2
+   esp32_improv answers Improv Get WiFi Networks (0x04) with unknown command
+   (improv_serial supports it). Needs a local esp32_improv copy under
+   firmware/components/ (or upstream PR): one result per unique SSID, sent one
+   at a time, then an empty terminator; fresh scan results in setup mode.
+   Brandon wants this; not started.
+4. **Auto-publish the site** on pushes to main touching docs/site: design is a
+   gate job that skips while firmware/gameday-common.yaml's version has no
+   release tag yet (a pending release's tag deploy publishes docs anyway; a
+   version already tagged can't be tagged again, so no sha collision). Edit
+   was blocked by the permission classifier; needs Brandon's OK.
+5. Panels on 1.4.2 or older need one USB reinstall (Brandon's gameday-2f6a70
+   included).
+
+## 2026-09-23 afternoon
+
+- www cert: GitHub would not reissue for www (removed and re-added the
+  custom domain, waited 30 min, still apex only). Fixed in Cloudflare
+  instead: www CNAME is now Proxied, redirect rule "www to apex"
+  (https://www.gamedayscoreboard.app/* -> https://gamedayscoreboard.app/${1},
+  301). Apex records stay DNS-only so panels still see GitHub's Let's Encrypt
+  cert. Side effect: applinks:www universal links won't open the app (Apple
+  won't follow a redirect for AASA); nothing uses www links.
+- PR #13 merged: privacy page final (draft notes gone, Wi-Fi password stays
+  on the panel, ESPN/GitHub see request IPs). Published via site.yml.
+- PR #12 merged: tag builds attach firmware-moonhub75.zip to the release and
+  site.yml reads it (falls back to the Build artifact for v1.4.3, good until
+  about 2026-12-22). site.yml is still manual dispatch only.
+- PR #14 open (v1.4.4): QR for https://gamedayscoreboard.app/setup on the
+  setup, Wi-Fi lost and new-panel connected screens. 64 px: text/QR take
+  turns; 128 px: QR left, static text right. Setup mode leads with "SETUP /
+  Game Day / app", hotspot text only as a turn once the AP is up. No fast
+  scrolling (12 px/s, per-label duration). Six review findings fixed
+  (3f86bff). Needs the bench check in NEXT UP #1.
+- Second panel gameday-74de74 (ESP32-S3, 16 MB flash, 8 MB octal PSRAM,
+  MAC 10:20:ba:74:de:74) flashed with the v1.4.3 release factory bin after a
+  full erase, then set up from the app. First Improv join timed out (see the
+  iOS HANDOFF, PR #3); retry worked. Note the panel's debug log prints the
+  Improv password in plain text on USB.
 
 ## 2026-09-23
 
