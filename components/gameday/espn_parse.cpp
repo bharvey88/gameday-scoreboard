@@ -72,6 +72,20 @@ std::string week_url(League league, int week) {
   return url;
 }
 
+// The site/v2 standings route is a stub; the data lives under apis/v2.
+std::string standings_url(League league, uint32_t group) {
+  return std::string("https://site.api.espn.com/apis/v2/sports/football/") + league_path(league) +
+         "/standings?group=" + std::to_string(group);
+}
+
+std::string result_line(const GameResult &r) {
+  if (!r.valid || r.opp_abbr.empty())
+    return "";
+  const char *wl = r.us > r.them ? "W" : r.us < r.them ? "L" : "T";
+  return std::string(wl) + " " + std::to_string(r.us) + "-" + std::to_string(r.them) +
+         (r.home || r.neutral ? " vs " : " at ") + r.opp_abbr;
+}
+
 // Dark-background variant, shrunk to 64px by ESPN's image resizer. A 500px
 // logo PNG is up to 95KB and takes the ESP32 almost two seconds to decode;
 // the 64px one is about 3KB and decodes in a few milliseconds.

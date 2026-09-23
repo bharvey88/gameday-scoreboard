@@ -26,6 +26,8 @@ INITIAL = {
     "tz": 1, "tz_name": "Central", "tz_auto": True,
     "down": True, "play": True, "odds": True, "opp": True, "bootaddr": True, "misses": 0, "stale_s": 4,
     "fallback": False, "fallback_mode": "next_game",
+    "idle": False, "idle_screen": "", "idle_screens": 3, "idle_rotate": 60, "idle_off": 0,
+    "wx_lat": None, "wx_lon": None, "wx_grid": "",
     "status": "DAL vs PHI | Sun 3:25 PM | on FOX",
     "splash": "", "splash_color": "000000",
     "next": [{"id": "1", "kick": 1757971500, "oi": 21, "oa": "PHI", "on": "Eagles", "home": True, "neutral": False, "tv": "FOX"},
@@ -58,6 +60,12 @@ ENTITIES = [
 
 def apply_set(q):
     """Mirrors GamedayComponent::apply_set_ closely enough for the page."""
+    if "wxlat" in q or "wxlon" in q:
+        lat, lon = q.get("wxlat", ""), q.get("wxlon", "")
+        if lat in ("", "none") and lon in ("", "none"):
+            STATE.update(wx_lat=None, wx_lon=None, wx_grid="")
+        elif lat not in ("", "none") and lon not in ("", "none"):
+            STATE.update(wx_lat=float(lat), wx_lon=float(lon), wx_grid="")
     for k, v in q.items():
         if k == "team":
             lg, tid = v.split(":")
@@ -73,6 +81,13 @@ def apply_set(q):
             STATE["tz_auto"] = v == "1"
         elif k in ("down", "play", "odds", "opp", "bootaddr"):
             STATE[k] = v == "1"
+        elif k == "idle":
+            STATE["idle_screens"] = int(v) & 31
+        elif k == "idlerot":
+            STATE["idle_rotate"] = min(600, max(10, int(v)))
+        elif k == "idleoff":
+            if int(v) in (0, 15, 30, 60, 120):
+                STATE["idle_off"] = int(v)
         elif k == "fallback":
             if v in ("my_team", "1"):
                 STATE["fallback_mode"] = "my_team"
@@ -132,7 +147,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
-        q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        q = {k: v[0] for k, v in parse_qs(u.query, keep_blank_values=True).items()}
         if u.path == "/_reset":
             LOG.clear()
             STATE.clear()

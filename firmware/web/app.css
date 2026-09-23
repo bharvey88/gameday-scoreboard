@@ -277,3 +277,10 @@ button { font: inherit; color: inherit; }
   .grid { column-gap: 18px; }
 }
 
+
+/* when nothing is on, weather location */
+.ctl .num { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.ctl .num input, .wxrow input { width: 72px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; text-align: center; }
+.wxrow { gap: 8px; }
+.wxrow input { flex: 1; min-width: 0; width: auto; text-align: left; }
+.wxbtns { margin: 4px 0 6px; }

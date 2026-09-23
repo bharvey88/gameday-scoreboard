@@ -17,8 +17,8 @@ substitutions:
   display_layout_cols: "2"
   display_scan_wiring: STANDARD_TWO_SCAN
 
-  # hub75-studio packages (ESPHome version, theme, clock page). Pinned to a
-  # commit so a release always builds the same thing.
+  # hub75-studio packages (ESPHome version, theme). Pinned to a commit so a
+  # release always builds the same thing.
   hub75_studio_ref: "2c121972321cc1e3c2c87d9647fd3beb9a5e2271"
 
 # The controller package already sets board/framework/psram; this only
@@ -98,12 +98,12 @@ packages:
     files:
       - path: packages/common/esphome-version.yaml
       - path: packages/common/theme.yaml
-      - path: packages/pages/clock.yaml
-        vars:
-          page_friendly_name: "Clock"
   controller: !include controllers/moonhub75.yaml
   boot: !include pages/boot.yaml
   scoreboard: !include pages/gameday-live.yaml
+  # Clock, countdown, standings, record and weather for when nothing is on.
+  # Its Clock page replaces hub75-studio's, under the same Select Page name.
+  idle: !include pages/idle.yaml
   wizmote: !include pages/wizmote.yaml
 
 # Panel count from the saved preference, applied before the display starts.
@@ -177,6 +177,47 @@ script:
           lv_obj_t *top = lv_layer_top();
           if (top != nullptr)
             lv_obj_invalidate(top);
+
+  # Asks for the board's two logos. The scoreboard (on_update) and the idle
+  # screens (idle.yaml) both land here.
+  # is_decoding() keeps a second request off a download already running:
+  # online_image would drop it, and set_url would have pointed the image at
+  # the new URL on the way. The next board update asks again.
+  - id: gd_set_logos
+    mode: queued
+    parameters:
+      team_logo: string
+      opponent_logo: string
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return !team_logo.empty() && team_logo != id(gd_last_team_logo) &&
+                     !id(gd_team_logo)->is_decoding();
+          then:
+            - lambda: 'id(gd_team_logo_url) = team_logo;'
+            - online_image.set_url:
+                id: gd_team_logo
+                url: !lambda 'return team_logo;'
+                update: true
+      - if:
+          condition:
+            lambda: 'return opponent_logo.empty();'
+          then:
+            - lambda: |-
+                id(gd_last_opp_logo) = "";
+                id(gd_opp_logo_url) = "";  // no opponent on this card, nothing to retry
+      - if:
+          condition:
+            lambda: |-
+              return !opponent_logo.empty() && opponent_logo != id(gd_last_opp_logo) &&
+                     !id(gd_opp_logo)->is_decoding();
+          then:
+            - lambda: 'id(gd_opp_logo_url) = opponent_logo;'
+            - online_image.set_url:
+                id: gd_opp_logo
+                url: !lambda 'return opponent_logo;'
+                update: true
 
   # A logo download that fails leaves a blank square until the team changes,
   # because the dispatch below only asks for a URL it has not asked for yet.
@@ -344,6 +385,15 @@ image:
       - lvgl.image.update:
           id: gd_team_logo_img
           src: gd_team_logo
+      - lvgl.image.update:
+          id: gd_ck_tlogo
+          src: gd_team_logo
+      - lvgl.image.update:
+          id: gd_cd_tlogo
+          src: gd_team_logo
+      - lvgl.image.update:
+          id: gd_rc_tlogo
+          src: gd_team_logo
       # Remember the URL only once it has actually arrived. Recording it when
       # the request went out was a latch: online_image drops a request made
       # while it is still decoding (a WARN, neither callback), and the board
@@ -370,6 +420,12 @@ image:
     on_download_finished:
       - lvgl.image.update:
           id: gd_opp_logo_img
+          src: gd_opp_logo
+      - lvgl.image.update:
+          id: gd_ck_ologo
+          src: gd_opp_logo
+      - lvgl.image.update:
+          id: gd_cd_ologo
           src: gd_opp_logo
       - lambda: 'id(gd_last_opp_logo) = id(gd_opp_logo_url);'
       - script.stop: gd_opp_logo_retry
@@ -449,6 +505,20 @@ gameday:
             - switch.is_off: power
         then:
           - switch.turn_on: power
+    # Off after idle: the panel goes dark once it has been idle for the chosen
+    # time, and comes back by itself when there is something to show.
+    - if:
+        condition:
+          lambda: 'return x == "idle_off";'
+        then:
+          - switch.turn_off: power
+    - if:
+        condition:
+          and:
+            - lambda: 'return x == "idle_wake";'
+            - switch.is_off: power
+        then:
+          - switch.turn_on: power
   on_update:
     - text_sensor.template.publish:
         id: gd_status_sensor
@@ -476,38 +546,10 @@ gameday:
         opponent_record: !lambda 'return x.opponent_record;'
         splash_text: !lambda 'return x.splash_text;'
         splash_color: !lambda 'return (int) x.splash_color;'
-    # is_decoding() keeps a second request off a download already running:
-    # online_image would drop it, and set_url would have pointed the image at
-    # the new URL on the way. The next board update asks again.
-    - if:
-        condition:
-          lambda: |-
-            return !x.team_logo.empty() && x.team_logo != id(gd_last_team_logo) &&
-                   !id(gd_team_logo)->is_decoding();
-        then:
-          - lambda: 'id(gd_team_logo_url) = x.team_logo;'
-          - online_image.set_url:
-              id: gd_team_logo
-              url: !lambda 'return x.team_logo;'
-              update: true
-    - if:
-        condition:
-          lambda: 'return x.opponent_logo.empty();'
-        then:
-          - lambda: |-
-              id(gd_last_opp_logo) = "";
-              id(gd_opp_logo_url) = "";  // no opponent on this card, nothing to retry
-    - if:
-        condition:
-          lambda: |-
-            return !x.opponent_logo.empty() && x.opponent_logo != id(gd_last_opp_logo) &&
-                   !id(gd_opp_logo)->is_decoding();
-        then:
-          - lambda: 'id(gd_opp_logo_url) = x.opponent_logo;'
-          - online_image.set_url:
-              id: gd_opp_logo
-              url: !lambda 'return x.opponent_logo;'
-              update: true
+    - script.execute:
+        id: gd_set_logos
+        team_logo: !lambda 'return x.team_logo;'
+        opponent_logo: !lambda 'return x.opponent_logo;'
 
 lvgl_page_manager:
   sort: by_order
@@ -546,6 +588,8 @@ switch:
           id: matrix
           brightness: !lambda return id(brightness).state;
       - script.execute: gd_repaint
+      # Any way the panel comes back on restarts the off-after-idle count.
+      - lambda: 'id(gameday_ctl).on_power_on();'
     turn_off_action:
       - hub75.set_brightness:
           id: matrix

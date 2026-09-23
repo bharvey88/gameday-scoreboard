@@ -116,6 +116,21 @@
         </div>
       </div>
       <div class="card">
+        <h2>When nothing is on</h2>
+        <p class="hint">When the mode has no game to show, the panel rotates through the screens you turn on here.</p>
+        <div id="idleCtls">
+          <div class="ctl"><label>Clock<small>The time in your team's colors, with the next kickoff under it.</small></label><button class="sw" data-idle="0" aria-label="Clock"></button></div>
+          <div class="ctl"><label>Countdown<small>Days, hours and minutes to your team's next game.</small></label><button class="sw" data-idle="1" aria-label="Countdown"></button></div>
+          <div class="ctl"><label>Standings<small>Your team's division or conference.</small></label><button class="sw" data-idle="2" aria-label="Standings"></button></div>
+          <div class="ctl"><label>Record<small>Your team's record, last result and next opponent.</small></label><button class="sw" data-idle="3" aria-label="Record"></button></div>
+          <div class="ctl"><label>Weather<small id="wxHint">Needs a weather location, under Setup.</small></label><button class="sw" data-idle="4" aria-label="Weather"></button></div>
+        </div>
+        <div class="ctl"><label for="idlerot">Switch screens every</label><span class="num"><input type="number" id="idlerot" min="10" max="600" step="5"><span>s</span></span></div>
+        <div class="ctl"><label for="idleoff">Turn the panel off after</label><select id="idleoff">
+          <option value="0">Never</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">1 hour</option><option value="120">2 hours</option>
+        </select></div>
+      </div>
+      <div class="card">
         <h2>Panel</h2>
         <div id="panelCtls"></div>
       </div>
@@ -154,6 +169,15 @@
         <div class="sub">Time</div>
         <div class="tzline" id="tzline">Timezone not known yet</div>
         <div class="ctl" id="tzpick" hidden><label>Timezone</label><select id="tzsel"></select></div>
+        <div class="sub">Weather location</div>
+        <p class="hint">For the Weather screen. US only: the forecast comes from the National Weather Service.</p>
+        <div class="ctl wxrow">
+          <input id="wxlat" inputmode="decimal" placeholder="Latitude" aria-label="Latitude">
+          <input id="wxlon" inputmode="decimal" placeholder="Longitude" aria-label="Longitude">
+          <button class="btn" id="wxsave">Save</button>
+        </div>
+        <div class="actions wxbtns"><button class="btn" id="wxgeo">Use my phone's location</button><button class="btn" id="wxclear">Clear</button></div>
+        <div class="tzline" id="wxline"></div>
         <div class="sub">Live modes</div>
         <div class="ctl">
           <label>Show my team when nothing is live<small>Off: the panel shows the league's next kickoff, today's finals, or the next game this week. On: it shows your own team's game until a live one starts.</small></label>
@@ -304,6 +328,7 @@
       msg.hidden = false;
       const liveMode = S && S.mode;
       msg.textContent = !g ? "Waiting for the first fetch" : liveMode ? (S.status || "No live games right now") : "No upcoming game for this team";
+      if (S && S.idle && S.idle_screen) msg.textContent += ". The panel is showing its " + S.idle_screen + " screen.";
       $("#clock").innerHTML = "&nbsp;";
       $("#down").textContent = "";
       return;
@@ -410,6 +435,76 @@
     const mine = !fallbackSw.classList.contains("on");
     fallbackSw.classList.toggle("on", mine);
     setGD({ fallback: mine ? "my_team" : "next_game" });
+  };
+  // ---- when nothing is on (idle screens) --------------------------------------
+  const idleSw = Array.from(document.querySelectorAll(".sw[data-idle]"));
+  idleSw.forEach((sw) => {
+    sw.onclick = () => {
+      sw.classList.toggle("on");
+      const mask = idleSw.reduce((m, x) => m | (x.classList.contains("on") ? 1 << Number(x.dataset.idle) : 0), 0);
+      setGD({ idle: mask });
+    };
+  });
+  const idleRot = $("#idlerot");
+  idleRot.onchange = () => {
+    const v = Math.min(600, Math.max(10, Number(idleRot.value) || 60));
+    idleRot.value = v;
+    setGD({ idlerot: v });
+  };
+  const idleOff = $("#idleoff");
+  idleOff.onchange = () => setGD({ idleoff: idleOff.value });
+  // Four decimals is what NWS takes (about 11 m), and all a forecast needs.
+  const coord = (v, lim) => {
+    const n = Number(String(v).trim());
+    return String(v).trim() !== "" && isFinite(n) && Math.abs(n) <= lim ? n.toFixed(4) : null;
+  };
+  const wxLat = $("#wxlat"), wxLon = $("#wxlon");
+  const saveWx = (lat, lon) => {
+    wxLat.value = lat;
+    wxLon.value = lon;
+    setGD({ wxlat: lat, wxlon: lon });
+    toast("Weather location saved");
+  };
+  $("#wxsave").onclick = () => {
+    const lat = coord(wxLat.value, 90), lon = coord(wxLon.value, 180);
+    if (lat === null || lon === null) { toast("Latitude -90 to 90, longitude -180 to 180"); return; }
+    saveWx(lat, lon);
+  };
+  $("#wxclear").onclick = () => {
+    wxLat.value = "";
+    wxLon.value = "";
+    setGD({ wxlat: "none", wxlon: "none" });
+  };
+  // Browsers only share location with https pages (and localhost). The panel's
+  // page is plain http, so on the panel this says so instead of failing quietly.
+  $("#wxgeo").onclick = () => {
+    if (!window.isSecureContext || !navigator.geolocation) {
+      toast("Your browser only shares location with secure pages. Use the Game Day app, or type the numbers.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => saveWx(pos.coords.latitude.toFixed(4), pos.coords.longitude.toFixed(4)),
+      () => toast("Location not available. Type the numbers instead."),
+      { timeout: 15000, maximumAge: 600000 },
+    );
+  };
+  const renderIdle = () => {
+    if (!S) return;
+    const mask = S.idle_screens ?? 3;
+    idleSw.forEach((sw) => sw.classList.toggle("on", !!(mask & (1 << Number(sw.dataset.idle)))));
+    if (document.activeElement !== idleRot) idleRot.value = S.idle_rotate || 60;
+    if (document.activeElement !== idleOff) idleOff.value = String(S.idle_off || 0);
+    const has = S.wx_lat !== null && S.wx_lat !== undefined;
+    if (has && document.activeElement !== wxLat && document.activeElement !== wxLon) {
+      wxLat.value = Number(S.wx_lat).toFixed(4);
+      wxLon.value = Number(S.wx_lon).toFixed(4);
+    }
+    const line = $("#wxline");
+    if (!has) line.textContent = "No location set";
+    else if (S.wx_grid === "-") line.textContent = "No National Weather Service forecast for this spot (US only)";
+    else if (S.wx_grid) line.textContent = "Forecast from the NWS " + String(S.wx_grid).split("/")[0] + " office";
+    else line.textContent = "Saved. The forecast arrives the next time the Weather screen is due.";
+    $("#wxHint").textContent = has ? "Current temperature, conditions, and the next day's high and low." : "Needs a weather location, under Setup.";
   };
   const favSelects = Array.from(document.querySelectorAll("select[data-fav]"));
   favSelects.forEach((fs) => {
@@ -839,6 +934,7 @@
     renderSettings();
     renderPanels();
     renderTime();
+    renderIdle();
     if (S && S.name) $("#hostname").textContent = S.name + ".local";
   };
 

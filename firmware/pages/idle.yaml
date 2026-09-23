@@ -1,0 +1,335 @@
+# Idle screens: what the panel shows when its mode has nothing to show (an
+# off season, a Tuesday night, or before the first fetch lands). The gameday
+# component picks the screen and the text (components/gameday/idle.h) and
+# hands it over through on_idle; this file only draws it.
+#
+# Each screen is its own page under the page manager, so Select Page still
+# reaches all of them. Positions and fonts are set at boot for the panel
+# width, like the scoreboard: a single 64 px panel has no room for logos.
+
+lvgl_page_manager:
+  pages:
+    - page: gd_idle_clock
+      friendly_name: "Clock"
+      order: 1
+    - page: gd_idle_countdown
+      friendly_name: "Countdown"
+      order: 2
+    - page: gd_idle_standings
+      friendly_name: "Standings"
+      order: 3
+    - page: gd_idle_record
+      friendly_name: "Record"
+      order: 4
+    - page: gd_idle_weather
+      friendly_name: "Weather"
+      order: 5
+
+# 12x24 for the big line. Only the characters the idle text can contain.
+font:
+  - file: "https://github.com/fcambus/spleen/raw/refs/tags/2.1.0/spleen-12x24.bdf"
+    id: spleen_24
+    size: 24
+    glyphs:
+      - " -:&'.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+      - "°"
+
+esphome:
+  on_boot:
+    - priority: -100.0
+      then:
+        - script.execute: gd_idle_layout
+
+script:
+  - id: gd_idle_layout
+    then:
+      - lambda: |-
+          const int W = lv_disp_get_hor_res(lv_disp_get_default());
+          const bool wide = W >= 128;
+          auto place = [](lv_obj_t *o, int x, int y, int w) {
+            lv_obj_set_pos(o, x, y);
+            lv_obj_set_width(o, w);
+          };
+          // Clock and countdown: the big line across the top, logos in the
+          // bottom corners on a wide panel, the small lines between them.
+          const int mx = wide ? 34 : 0, mw = wide ? W - 68 : W;
+          place(id(gd_ck_big), 0, 2, W);
+          place(id(gd_ck_l1), mx, wide ? 34 : 30, mw);
+          place(id(gd_ck_l2), mx, wide ? 44 : 40, mw);
+          place(id(gd_cd_big), 0, 2, W);
+          place(id(gd_cd_l1), mx, wide ? 32 : 30, mw);
+          place(id(gd_cd_l2), mx, wide ? 42 : 40, mw);
+          place(id(gd_cd_l3), mx, wide ? 52 : 50, mw);
+          lv_obj_t *logos[4] = {id(gd_ck_tlogo), id(gd_ck_ologo), id(gd_cd_tlogo), id(gd_cd_ologo)};
+          for (int i = 0; i < 4; i++)
+            lv_obj_set_pos(logos[i], i % 2 == 0 ? 2 : W - 34, 30);
+          // Standings: title, then four rows.
+          lv_obj_set_style_text_font(id(gd_st_title), wide ? id(spleen_12) : id(spleen_8), 0);
+          place(id(gd_st_title), 0, 1, W);
+          lv_obj_t *rows[4] = {id(gd_st_r0), id(gd_st_r1), id(gd_st_r2), id(gd_st_r3)};
+          for (int i = 0; i < 4; i++)
+            place(rows[i], wide ? 8 : 1, (wide ? 14 : 11) + i * 13, wide ? W - 16 : W - 2);
+          // Record: logo on the left of a wide panel, text to its right.
+          const int rx = wide ? 36 : 0, rw = wide ? W - 38 : W;
+          lv_obj_set_pos(id(gd_rc_tlogo), 2, 16);
+          place(id(gd_rc_big), rx, 2, rw);
+          place(id(gd_rc_l1), rx, wide ? 30 : 22, rw);
+          place(id(gd_rc_l2), rx, wide ? 40 : 32, rw);
+          place(id(gd_rc_l3), rx, wide ? 50 : 42, rw);
+          // Weather: everything centered.
+          place(id(gd_wx_big), 0, 2, W);
+          place(id(gd_wx_l1), 0, 29, W);
+          place(id(gd_wx_l2), 0, 40, W);
+          place(id(gd_wx_l3), 0, 51, W);
+
+gameday:
+  on_idle:
+    - lambda: |-
+        const int W = lv_disp_get_hor_res(lv_disp_get_default());
+        const bool wide = W >= 128;
+        auto set = [](lv_obj_t *l, const std::string &t) {
+          const char *cur = lv_label_get_text(l);
+          if (cur == nullptr || t != cur)
+            lv_label_set_text(l, t.c_str());
+        };
+        // The big line takes 12 px per character; fall back to 8 px when a
+        // countdown or a record does not fit its label.
+        auto big = [&](lv_obj_t *l, const std::string &t) {
+          int chars = 0;
+          for (unsigned char c : t)
+            if ((c & 0xC0) != 0x80)
+              chars++;
+          const bool fits = chars * 12 <= lv_obj_get_width(l);
+          lv_obj_set_style_text_font(l, fits ? id(spleen_24) : id(spleen_16), 0);
+          lv_obj_set_y(l, fits ? 2 : 6);
+          set(l, t);
+        };
+        // Same lift as the scoreboard: dark team colors vanish on the panel.
+        auto bright = [](uint32_t c) -> lv_color_t {
+          uint32_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+          uint32_t m = std::max(r, std::max(g, b));
+          if (m == 0)
+            return lv_color_hex(0xFFFFFF);
+          if (m < 0xC0) {
+            r = r * 0xC0 / m;
+            g = g * 0xC0 / m;
+            b = b * 0xC0 / m;
+          }
+          return lv_color_make(r, g, b);
+        };
+        auto logo = [&](lv_obj_t *img, const std::string &url) {
+          if (wide && !url.empty())
+            lv_obj_clear_flag(img, LV_OBJ_FLAG_HIDDEN);
+          else
+            lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
+        };
+        const std::string &s = x.screen;
+        const char *page = "gameday_live";
+        if (s == "clock") {
+          big(id(gd_ck_big), x.big);
+          lv_obj_set_style_text_color(id(gd_ck_big), bright(x.color), 0);
+          set(id(gd_ck_l1), x.line1);
+          set(id(gd_ck_l2), x.line2);
+          logo(id(gd_ck_tlogo), x.team_logo);
+          logo(id(gd_ck_ologo), x.opp_logo);
+          page = "gd_idle_clock";
+        } else if (s == "countdown") {
+          big(id(gd_cd_big), x.big);
+          lv_obj_set_style_text_color(id(gd_cd_big), bright(x.color), 0);
+          set(id(gd_cd_l1), x.line1);
+          set(id(gd_cd_l2), x.line2);
+          set(id(gd_cd_l3), x.line3);
+          logo(id(gd_cd_tlogo), x.team_logo);
+          logo(id(gd_cd_ologo), x.opp_logo);
+          page = "gd_idle_countdown";
+        } else if (s == "standings") {
+          set(id(gd_st_title), x.line1);
+          lv_obj_t *rows[4] = {id(gd_st_r0), id(gd_st_r1), id(gd_st_r2), id(gd_st_r3)};
+          for (int i = 0; i < 4; i++) {
+            set(rows[i], x.rows[i]);
+            lv_obj_set_style_text_color(rows[i], i == x.highlight ? bright(x.color) : lv_color_hex(0xFFFFFF), 0);
+          }
+          page = "gd_idle_standings";
+        } else if (s == "record") {
+          big(id(gd_rc_big), x.big);
+          lv_obj_set_style_text_color(id(gd_rc_big), bright(x.color), 0);
+          set(id(gd_rc_l1), x.line1);
+          set(id(gd_rc_l2), x.line2);
+          set(id(gd_rc_l3), x.line3);
+          logo(id(gd_rc_tlogo), x.team_logo);
+          page = "gd_idle_record";
+        } else if (s == "weather") {
+          big(id(gd_wx_big), x.big);
+          set(id(gd_wx_l1), x.line1);
+          set(id(gd_wx_l2), x.line2);
+          set(id(gd_wx_l3), x.line3);
+          page = "gd_idle_weather";
+        }
+        if (x.show)
+          id(page_manager).show_page(page);
+    # Logos only fit on a wide panel; a narrow one leaves the board's logos be.
+    - if:
+        condition:
+          lambda: 'return lv_disp_get_hor_res(lv_disp_get_default()) >= 128 && !x.team_logo.empty();'
+        then:
+          - script.execute:
+              id: gd_set_logos
+              team_logo: !lambda 'return x.team_logo;'
+              opponent_logo: !lambda 'return x.opp_logo;'
+
+lvgl:
+  style_definitions:
+    - id: gd_idle_small
+      text_font: spleen_8
+      text_color: 0xB0B8C4
+      text_align: CENTER
+    - id: gd_idle_row
+      text_font: spleen_12
+      text_color: 0xFFFFFF
+  pages:
+    - id: gd_idle_clock
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: gd_ck_tlogo
+            src: gd_team_logo
+            hidden: true
+        - image:
+            id: gd_ck_ologo
+            src: gd_opp_logo
+            hidden: true
+        - label:
+            id: gd_ck_big
+            text_align: CENTER
+            long_mode: CLIP
+            text_font: spleen_24
+            text: ""
+        - label:
+            id: gd_ck_l1
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text: ""
+        - label:
+            id: gd_ck_l2
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text: ""
+
+    - id: gd_idle_countdown
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: gd_cd_tlogo
+            src: gd_team_logo
+            hidden: true
+        - image:
+            id: gd_cd_ologo
+            src: gd_opp_logo
+            hidden: true
+        - label:
+            id: gd_cd_big
+            text_align: CENTER
+            long_mode: CLIP
+            text_font: spleen_24
+            text: ""
+        - label:
+            id: gd_cd_l1
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text: ""
+        - label:
+            id: gd_cd_l2
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text: ""
+        - label:
+            id: gd_cd_l3
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text: ""
+
+    - id: gd_idle_standings
+      bg_color: 0x000000
+      widgets:
+        - label:
+            id: gd_st_title
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text_color: 0xFFD000
+            text: ""
+        - label:
+            id: gd_st_r0
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_row]
+            text: ""
+        - label:
+            id: gd_st_r1
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_row]
+            text: ""
+        - label:
+            id: gd_st_r2
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_row]
+            text: ""
+        - label:
+            id: gd_st_r3
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_row]
+            text: ""
+
+    - id: gd_idle_record
+      bg_color: 0x000000
+      widgets:
+        - image:
+            id: gd_rc_tlogo
+            src: gd_team_logo
+            hidden: true
+        - label:
+            id: gd_rc_big
+            text_align: CENTER
+            long_mode: CLIP
+            text_font: spleen_24
+            text: ""
+        - label:
+            id: gd_rc_l1
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text_color: 0xFFFFFF
+            text: ""
+        - label:
+            id: gd_rc_l2
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text: ""
+        - label:
+            id: gd_rc_l3
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text: ""
+
+    - id: gd_idle_weather
+      bg_color: 0x000000
+      widgets:
+        - label:
+            id: gd_wx_big
+            text_align: CENTER
+            long_mode: CLIP
+            text_font: spleen_24
+            text: ""
+        - label:
+            id: gd_wx_l1
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text_color: 0xFFFFFF
+            text: ""
+        - label:
+            id: gd_wx_l2
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text: ""
+        - label:
+            id: gd_wx_l3
+            long_mode: SCROLL_CIRCULAR
+            styles: [gd_idle_small]
+            text: ""

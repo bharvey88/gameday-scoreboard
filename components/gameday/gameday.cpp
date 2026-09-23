@@ -7,6 +7,7 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -43,6 +44,10 @@ static const uint32_t NO_LIVE_RESCAN = 2 * MINUTE;
 static const uint32_t FINAL_CARD_INTERVAL = 30 * MINUTE;
 // The league's next game this week is looked up again after this long.
 static const uint32_t NEXT_REFRESH = 60 * MINUTE;
+static const uint32_t DAY = 24 * 60 * MINUTE;
+static const uint32_t WEATHER_INTERVAL = 30 * MINUTE;
+// Standings and weather are extras: a failure waits a while before retrying.
+static const uint32_t IDLE_RETRY = 5 * MINUTE;
 // How long the loop waits on a worker task before writing it off. A job chains
 // at most two requests (schedule then game, or the NFL then the NCAA
 // scoreboard). http_request in gameday-common.yaml allows each one 20s, with a
@@ -154,8 +159,16 @@ void GamedayComponent::setup() {
     this->prefs4_.collide = 0;
   }
   this->pref5_ = global_preferences->make_preference<Prefs5>(fnv1_hash("gameday_prefs5_v1"));
-  if (!this->pref5_.load(&this->prefs5_) || this->prefs5_.fallback > 1)
+  bool loaded = this->pref5_.load(&this->prefs5_);
+  uint8_t off = this->prefs5_.idle_off_min;
+  if (!loaded || this->prefs5_.fallback > 1 || this->prefs5_.idle_screens > idle::ALL_SCREENS ||
+      this->prefs5_.idle_rotate_s < 10 || this->prefs5_.idle_rotate_s > 600 || this->prefs5_.wx_set > 1 ||
+      (off != 0 && off != 15 && off != 30 && off != 60 && off != 120)) {
     this->prefs5_ = Prefs5{};
+    this->prefs5_.idle_screens = idle::DEFAULT_SCREENS;
+    this->prefs5_.idle_rotate_s = 60;
+  }
+  this->prefs5_.wx_grid[sizeof(this->prefs5_.wx_grid) - 1] = '\0';
   this->rebuild_favorites_(false);
   this->apply_timezone_();
   this->publish_selects_();
@@ -568,6 +581,7 @@ void GamedayComponent::dump_config() {
 }
 
 void GamedayComponent::loop() {
+  this->idle_tick_();
   if (this->demo_active_) {
     this->demo_tick_();
     if (!this->busy_)
@@ -597,8 +611,15 @@ void GamedayComponent::loop() {
     this->apply_job_();
     return;
   }
-  if ((int32_t) (millis() - this->next_fetch_ms_) < 0)
+  if ((int32_t) (millis() - this->next_fetch_ms_) < 0) {
+    // The mode has nothing due: an idle screen's data may be.
+    uint32_t now = millis();
+    if (this->idle_ && now - this->idle_job_check_ms_ >= 5000 && network::is_connected()) {
+      this->idle_job_check_ms_ = now;
+      this->start_idle_job_(now);
+    }
     return;
+  }
   if (!network::is_connected() || this->time_ == nullptr || !this->time_->now().is_valid()) {
     this->schedule_next_(NOT_READY_INTERVAL);
     return;
@@ -784,16 +805,20 @@ void GamedayComponent::reset_game_() {
   this->misses_ = 0;
 }
 
-std::shared_ptr<http_request::HttpContainer> GamedayComponent::open_(const std::string &url) {
+std::shared_ptr<http_request::HttpContainer> GamedayComponent::open_(const std::string &url, int *status,
+                                                                    const char *accept) {
+  // NWS also requires a User-Agent; the same one serves both services.
   std::vector<http_request::Header> headers = {
       {"User-Agent", USER_AGENT},
-      {"Accept", "application/json"},
+      {"Accept", accept},
   };
   auto container = this->http_->get(url, headers);
   if (container == nullptr) {
     ESP_LOGW(TAG, "Request failed: %s", url.c_str());
     return nullptr;
   }
+  if (status != nullptr)
+    *status = container->status_code;
   if (container->status_code != 200) {
     ESP_LOGW(TAG, "HTTP %d for %s", container->status_code, url.c_str());
     container->end();
@@ -822,7 +847,7 @@ bool GamedayComponent::fetch_schedule_(const ::espn::Team *team, Schedule &out) 
   return true;
 }
 
-bool GamedayComponent::fetch_upcoming_(const ::espn::Team *team, std::vector<::espn::Upcoming> &out) {
+bool GamedayComponent::fetch_upcoming_(const ::espn::Team *team, ::espn::TeamSchedule &out) {
   std::string url = ::espn::schedule_url(team->league, team->espn_id);
   ESP_LOGD(TAG, "Fetching upcoming games: %s", url.c_str());
   auto container = this->open_(url);
@@ -830,9 +855,10 @@ bool GamedayComponent::fetch_upcoming_(const ::espn::Team *team, std::vector<::e
     return false;
   ContainerReader reader(container);
   // Four: the game on the board plus the three after it.
-  bool ok = ::espn::parse_upcoming(reader, team->espn_id, 4, out);
+  bool ok = ::espn::parse_team_schedule(reader, team->espn_id, 4, out);
   container->end();
-  ESP_LOGI(TAG, "Upcoming: %u game(s) (%u bytes)", (unsigned) out.size(), (unsigned) reader.total());
+  ESP_LOGI(TAG, "Upcoming: %u game(s), record %s (%u bytes)", (unsigned) out.upcoming.size(), out.record.c_str(),
+           (unsigned) reader.total());
   return ok;
 }
 
@@ -1038,6 +1064,18 @@ void GamedayComponent::start_job_() {
     this->start_worker_();
     return;
   }
+  if (!j.need_schedule && this->schedule_.valid && this->schedule_.event_id.empty()) {
+    // No game on the schedule (off season): there is no scoreboard to poll,
+    // only the team endpoint to re-read when it is due.
+    uint32_t age = now - this->schedule_fetched_ms_;
+    uint32_t wait = age >= SCHEDULE_INTERVAL ? 0 : SCHEDULE_INTERVAL - age;
+    if (this->team_fallback_) {
+      uint32_t since = now - this->last_scan_ms_;
+      wait = std::min(wait, since >= NO_LIVE_RESCAN ? 0 : NO_LIVE_RESCAN - since);
+    }
+    this->schedule_next_(wait);
+    return;
+  }
   if (this->post_since_ms_ != 0 && (now - this->post_since_ms_) >= POST_LINGER) {
     // Game is over and lingered: look for the next one. Re-reading the team
     // endpoint is not enough on its own, because it can keep pointing at a
@@ -1098,6 +1136,22 @@ void GamedayComponent::worker_(void *arg) {
 // Worker task: network and parsing only, no display or entity access.
 void GamedayComponent::run_job_() {
   Job &j = this->job_;
+  if (j.need_team_sched) {
+    j.team_sched_ok = this->fetch_upcoming_(j.team, j.team_sched);
+    return;
+  }
+  if (j.need_standings) {
+    j.standings_ok = this->fetch_standings_(j.team->league, j.standings_group, j.standings);
+    return;
+  }
+  if (j.need_points) {
+    this->fetch_points_(j.wx_lat, j.wx_lon, j.wx_grid, j.points_status);
+    return;
+  }
+  if (j.need_weather) {
+    j.weather_ok = this->fetch_weather_(j.wx_grid, j.weather);
+    return;
+  }
   if (j.need_scan) {
     j.scan_ok = true;
     if (this->league_wanted_(League::NFL))
@@ -1111,7 +1165,7 @@ void GamedayComponent::run_job_() {
     return;
   }
   if (j.need_upcoming) {
-    j.upcoming_ok = this->fetch_upcoming_(j.team, j.upcoming);
+    j.upcoming_ok = this->fetch_upcoming_(j.team, j.team_sched);
     return;
   }
   if (j.need_schedule) {
@@ -1137,6 +1191,10 @@ void GamedayComponent::apply_job_() {
     return;
   }
   uint32_t now = millis();
+  if (j.need_team_sched || j.need_standings || j.need_points || j.need_weather) {
+    this->apply_idle_job_(now);
+    return;
+  }
   if (j.fav_index >= 0) {
     this->apply_fav_job_(now);
     return;
@@ -1174,8 +1232,13 @@ void GamedayComponent::apply_job_() {
   }
   if (j.need_upcoming) {
     this->upcoming_due_ = false;
-    if (j.upcoming_ok)
-      this->upcoming_ = j.upcoming;
+    if (j.upcoming_ok) {
+      this->upcoming_ = j.team_sched.upcoming;
+      // The same download feeds the idle screens.
+      this->team_sched_ = j.team_sched;
+      this->team_sched_team_ = j.team;
+      this->team_sched_ms_ = now == 0 ? 1 : now;
+    }
     this->rebuild_state_(&this->last_fields_);
     this->schedule_next_(this->interval_for_phase_());
     return;
@@ -1502,6 +1565,404 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
     cb(f);
 }
 
+// ---- idle screens -------------------------------------------------------------
+
+void GamedayComponent::set_idle_screens(uint8_t mask) {
+  mask &= idle::ALL_SCREENS;
+  if (mask == this->prefs5_.idle_screens)
+    return;
+  this->prefs5_.idle_screens = mask;
+  this->save_prefs5_();
+  if (this->idle_)
+    this->render_idle_(false);
+  this->rebuild_state_(&this->last_fields_);
+}
+
+void GamedayComponent::set_idle_rotate_seconds(int seconds) {
+  seconds = seconds < 10 ? 10 : seconds > 600 ? 600 : seconds;
+  if (seconds == this->prefs5_.idle_rotate_s)
+    return;
+  this->prefs5_.idle_rotate_s = (uint16_t) seconds;
+  this->save_prefs5_();
+  this->rebuild_state_(&this->last_fields_);
+}
+
+void GamedayComponent::set_idle_off_minutes(int minutes) {
+  if (minutes != 0 && minutes != 15 && minutes != 30 && minutes != 60 && minutes != 120)
+    return;
+  if (minutes == this->prefs5_.idle_off_min)
+    return;
+  this->prefs5_.idle_off_min = (uint8_t) minutes;
+  this->save_prefs5_();
+  this->idle_woke_ms_ = millis();  // a new setting counts from now
+  this->rebuild_state_(&this->last_fields_);
+}
+
+void GamedayComponent::set_weather_location(bool set, float lat, float lon) {
+  if (set && (!(lat >= -90.0f && lat <= 90.0f) || !(lon >= -180.0f && lon <= 180.0f)))
+    return;
+  if (set && this->prefs5_.wx_set && fabsf(lat - this->prefs5_.wx_lat) < 0.00005f &&
+      fabsf(lon - this->prefs5_.wx_lon) < 0.00005f)
+    return;
+  if (!set && !this->prefs5_.wx_set)
+    return;
+  this->prefs5_.wx_set = set ? 1 : 0;
+  this->prefs5_.wx_lat = set ? lat : 0.0f;
+  this->prefs5_.wx_lon = set ? lon : 0.0f;
+  this->prefs5_.wx_grid[0] = '\0';  // looked up again for the new place
+  this->save_prefs5_();
+  this->weather_ = ::nws::Weather{};
+  this->weather_ms_ = 0;
+  this->weather_try_ms_ = 0;
+  ESP_LOGI(TAG, "Weather location: %s", set ? "set" : "cleared");
+  if (this->idle_)
+    this->render_idle_(false);
+  this->rebuild_state_(&this->last_fields_);
+}
+
+void GamedayComponent::on_power_on() {
+  this->idle_dark_ = false;
+  this->idle_woke_ms_ = millis();
+}
+
+// The mode has nothing to put on the scoreboard.
+bool GamedayComponent::idle_wanted_() const {
+  if (this->demo_active_)
+    return false;
+  // The saved team's schedule came back with no game in it (off season).
+  bool team_empty = this->schedule_.valid && this->schedule_.event_id.empty() && !this->game_.valid;
+  if (this->live_mode_())
+    return this->team_fallback_ ? team_empty : this->live_show_ == LiveShow::IDLE;
+  if (this->favorites_mode_()) {
+    for (const auto &e : this->fav_)
+      if (!e.sched.valid || e.game.valid)
+        return false;  // still loading, or something to show
+    return true;
+  }
+  return team_empty;
+}
+
+const ::espn::Upcoming *GamedayComponent::team_next_game_(int64_t now_epoch) const {
+  if (!this->team_sched_.valid || this->team_sched_team_ != this->current_team_())
+    return nullptr;
+  for (const auto &u : this->team_sched_.upcoming)
+    if (u.kickoff_epoch > now_epoch)
+      return &u;
+  return nullptr;
+}
+
+// Screens that have something true to show right now.
+uint8_t GamedayComponent::idle_available_() const {
+  uint8_t have = idle::bit(idle::CLOCK);
+  int64_t tnow = (int64_t) this->time_->timestamp_now();
+  bool ours = this->team_sched_.valid && this->team_sched_team_ == this->current_team_();
+  if (this->team_next_game_(tnow) != nullptr)
+    have |= idle::bit(idle::COUNTDOWN);
+  if (this->standings_.valid && ours)
+    have |= idle::bit(idle::STANDINGS);
+  if (ours && !this->team_sched_.record.empty())
+    have |= idle::bit(idle::RECORD);
+  // A forecast older than three hours says nothing about now.
+  if (this->weather_.valid && this->prefs5_.wx_set && millis() - this->weather_ms_ < 3 * 60 * MINUTE)
+    have |= idle::bit(idle::WEATHER);
+  return have;
+}
+
+IdleFields GamedayComponent::idle_fields_(int screen) {
+  IdleFields f;
+  f.screen = idle::screen_name(screen);
+  const ::espn::Team *t = this->current_team_();
+  if (t == nullptr)
+    return f;
+  bool wide = this->panels_ != nullptr && this->panels_->cols() >= 2;
+  struct tm now = this->time_->now().to_c_tm();
+  int64_t tnow = (int64_t) this->time_->timestamp_now();
+  const ::espn::Upcoming *next = this->team_next_game_(tnow);
+  std::string color = this->team_sched_.color.empty() ? this->schedule_.team_color : this->team_sched_.color;
+  f.color = ::espn::parse_color(color);
+  std::string us = t->abbr;
+  std::string vs, kick;
+  if (next != nullptr) {
+    vs = us + (next->home || next->neutral ? " vs " : " at ") + next->opp_abbr;
+    struct tm k = ESPTime::from_epoch_local((time_t) next->kickoff_epoch).to_c_tm();
+    kick = ::espn::kickoff_label(k, now);
+  }
+  std::string our_logo = ::espn::team_logo_url(t->league, t->espn_id, t->abbr);
+  std::string their_logo = next != nullptr ? ::espn::team_logo_url(t->league, next->opp_id, next->opp_abbr.c_str()) : "";
+  switch (screen) {
+    case idle::COUNTDOWN:
+      if (next == nullptr)
+        break;
+      f.big = idle::countdown_text(next->kickoff_epoch - tnow, wide);
+      f.line1 = vs;
+      f.line2 = kick;
+      f.line3 = next->tv;
+      f.team_logo = our_logo;
+      f.opp_logo = their_logo;
+      break;
+    case idle::STANDINGS: {
+      f.line1 = this->standings_.title;
+      const auto &rows = this->standings_.rows;
+      int64_t shown_s = (int64_t) ((millis() - this->idle_screen_ms_) / 1000);
+      size_t page = idle::standings_page(rows.size(), 4, shown_s, 20);
+      for (size_t i = 0; i < 4 && page * 4 + i < rows.size(); i++) {
+        const auto &r = rows[page * 4 + i];
+        f.rows[i] = std::to_string(page * 4 + i + 1) + " " + r.abbr + " " + r.record;
+        if (r.team_id == t->espn_id)
+          f.highlight = (int) i;
+      }
+      break;
+    }
+    case idle::RECORD:
+      f.big = us + " " + this->team_sched_.record;
+      f.line1 = ::espn::result_line(this->team_sched_.last);
+      if (next != nullptr)
+        f.line2 = std::string("Next: ") + (next->home || next->neutral ? "vs " : "at ") + next->opp_abbr;
+      f.line3 = this->team_sched_.standing;
+      f.team_logo = our_logo;
+      break;
+    case idle::WEATHER: {
+      char buf[24];
+      snprintf(buf, sizeof(buf), "%d\xC2\xB0", this->weather_.temp);
+      f.big = buf;
+      f.line1 = this->weather_.condition;
+      snprintf(buf, sizeof(buf), "H %d  L %d", this->weather_.high, this->weather_.low);
+      f.line2 = buf;
+      f.line3 = idle::clock_text(now) + (now.tm_hour < 12 ? " AM" : " PM");
+      break;
+    }
+    default:
+      f.screen = idle::screen_name(idle::CLOCK);
+      f.big = idle::clock_text(now);
+      if (next != nullptr) {
+        f.line1 = vs;
+        f.line2 = kick;
+        f.team_logo = our_logo;
+        f.opp_logo = their_logo;
+      } else {
+        f.line1 = idle::date_text(now);
+        f.line2 = now.tm_hour < 12 ? "AM" : "PM";
+      }
+      break;
+  }
+  return f;
+}
+
+// Sends the current screen to the pages. show switches pages; otherwise it
+// only goes out when the text changed (the minute, a countdown second).
+void GamedayComponent::render_idle_(bool show) {
+  if (!this->idle_ || this->idle_screen_ < 0)
+    return;
+  // A screen the owner turned off, or whose data went away (location
+  // cleared, the game kicked off), gives way to the next one. With nothing
+  // left to show, that is the clock.
+  uint8_t ok = this->prefs5_.idle_screens & this->idle_available_();
+  bool keep = ok != 0 ? (ok & (1u << this->idle_screen_)) != 0 : this->idle_screen_ == idle::CLOCK;
+  if (!keep) {
+    this->idle_screen_ = idle::next_screen(this->prefs5_.idle_screens, this->idle_available_(), this->idle_screen_);
+    this->idle_screen_ms_ = millis();
+    show = true;
+    this->rebuild_state_(&this->last_fields_);
+  }
+  IdleFields f = this->idle_fields_(this->idle_screen_);
+  f.show = show;
+  std::string key = f.screen + "|" + f.big + "|" + f.line1 + "|" + f.line2 + "|" + f.line3 + "|" + f.rows[0] + f.rows[1] +
+                    f.rows[2] + f.rows[3] + "|" + f.team_logo + "|" + f.opp_logo;
+  if (!show && key == this->idle_key_)
+    return;
+  this->idle_key_ = key;
+  for (auto &cb : this->idle_callbacks_)
+    cb(f);
+}
+
+// Main loop, every pass: enter or leave idle, rotate, tick the text, and the
+// off-after-idle timer. Runs while a fetch is in flight so the clock ticks.
+void GamedayComponent::idle_tick_() {
+  uint32_t now = millis();
+  if (now - this->idle_tick_ms_ < 500)
+    return;
+  this->idle_tick_ms_ = now;
+  bool time_ok = this->time_ != nullptr && this->time_->now().is_valid();
+  bool want = time_ok && this->idle_wanted_();
+  if (want != this->idle_) {
+    this->idle_ = want;
+    this->idle_key_.clear();
+    if (want) {
+      ESP_LOGI(TAG, "Nothing to show: idle screens");
+      this->idle_since_ms_ = now;
+      this->idle_woke_ms_ = now;
+      this->idle_screen_ = idle::next_screen(this->prefs5_.idle_screens, this->idle_available_(), -1);
+      this->idle_screen_ms_ = now;
+      this->idle_job_check_ms_ = 0;
+      this->render_idle_(true);
+    } else {
+      ESP_LOGI(TAG, "Back to the scoreboard");
+      this->idle_screen_ = -1;
+      IdleFields f;  // an empty screen hands the panel back to the scoreboard
+      f.show = true;
+      for (auto &cb : this->idle_callbacks_)
+        cb(f);
+      if (this->idle_dark_) {
+        this->idle_dark_ = false;
+        this->fire_action_("idle_wake");
+      }
+    }
+    this->rebuild_state_(&this->last_fields_);
+    return;
+  }
+  if (!this->idle_)
+    return;
+  if (now - this->idle_screen_ms_ >= (uint32_t) this->prefs5_.idle_rotate_s * 1000) {
+    int next = idle::next_screen(this->prefs5_.idle_screens, this->idle_available_(), this->idle_screen_);
+    this->idle_screen_ms_ = now;
+    if (next != this->idle_screen_) {
+      this->idle_screen_ = next;
+      this->render_idle_(true);
+      this->rebuild_state_(&this->last_fields_);
+    }
+  }
+  this->render_idle_(false);
+  uint32_t off_ms = (uint32_t) this->prefs5_.idle_off_min * MINUTE;
+  if (off_ms != 0 && !this->idle_dark_ && now - this->idle_woke_ms_ >= off_ms) {
+    ESP_LOGI(TAG, "Idle for %u min: panel off until there is something to show", (unsigned) this->prefs5_.idle_off_min);
+    this->idle_dark_ = true;
+    this->fire_action_("idle_off");
+  }
+}
+
+// While idle, keeps the idle screens' data fresh: the saved team's season
+// (countdown, record, standings group), the standings once a day, the
+// weather every half hour. One request per job, never next to a game fetch.
+bool GamedayComponent::start_idle_job_(uint32_t now) {
+  if (!this->idle_ || this->busy_)
+    return false;
+  const ::espn::Team *t = this->current_team_();
+  if (t == nullptr)
+    return false;
+  Job &j = this->job_;
+  auto may_try = [now](uint32_t tried, uint32_t wait) { return tried == 0 || now - tried >= wait; };
+  bool sched_stale = !this->team_sched_.valid || this->team_sched_team_ != t ||
+                     now - this->team_sched_ms_ >= SCHEDULE_INTERVAL;
+  if (sched_stale && may_try(this->team_sched_try_ms_, RETRY_INTERVAL)) {
+    this->team_sched_try_ms_ = now == 0 ? 1 : now;
+    j = Job{};
+    j.generation = this->generation_;
+    j.team = t;
+    j.need_team_sched = true;
+    this->start_worker_();
+    return true;
+  }
+  uint8_t on = this->prefs5_.idle_screens;
+  if ((on & idle::bit(idle::STANDINGS)) && this->team_sched_.valid && this->team_sched_team_ == t &&
+      this->team_sched_.group != 0) {
+    uint32_t key = (uint32_t) t->league * 100000u + this->team_sched_.group + 1;
+    bool stale = !this->standings_.valid || this->standings_key_ != key || now - this->standings_ms_ >= DAY;
+    if (stale && may_try(this->standings_try_ms_, IDLE_RETRY)) {
+      this->standings_try_ms_ = now == 0 ? 1 : now;
+      j = Job{};
+      j.generation = this->generation_;
+      j.team = t;
+      j.need_standings = true;
+      j.standings_group = this->team_sched_.group;
+      this->start_worker_();
+      return true;
+    }
+  }
+  if ((on & idle::bit(idle::WEATHER)) && this->prefs5_.wx_set && strcmp(this->prefs5_.wx_grid, "-") != 0) {
+    bool need_grid = this->prefs5_.wx_grid[0] == '\0';
+    bool stale = !this->weather_.valid || now - this->weather_ms_ >= WEATHER_INTERVAL;
+    if ((need_grid || stale) && may_try(this->weather_try_ms_, IDLE_RETRY)) {
+      this->weather_try_ms_ = now == 0 ? 1 : now;
+      j = Job{};
+      j.generation = this->generation_;
+      j.team = t;
+      j.wx_lat = this->prefs5_.wx_lat;
+      j.wx_lon = this->prefs5_.wx_lon;
+      if (need_grid) {
+        j.need_points = true;
+      } else {
+        j.need_weather = true;
+        j.wx_grid = this->prefs5_.wx_grid;
+      }
+      this->start_worker_();
+      return true;
+    }
+  }
+  return false;
+}
+
+void GamedayComponent::apply_idle_job_(uint32_t now) {
+  Job &j = this->job_;
+  uint32_t stamp = now == 0 ? 1 : now;
+  if (j.need_team_sched && j.team_sched_ok) {
+    this->team_sched_ = j.team_sched;
+    this->team_sched_team_ = j.team;
+    this->team_sched_ms_ = stamp;
+  } else if (j.need_standings && j.standings_ok) {
+    this->standings_ = j.standings;
+    this->standings_key_ = (uint32_t) j.team->league * 100000u + j.standings_group + 1;
+    this->standings_ms_ = stamp;
+  } else if (j.need_points) {
+    // The owner may have moved the location while the lookup ran.
+    bool same = this->prefs5_.wx_set && j.wx_lat == this->prefs5_.wx_lat && j.wx_lon == this->prefs5_.wx_lon;
+    if (same && (!j.wx_grid.empty() || j.points_status == 404)) {
+      // 404 is NWS for "not a US point": stop asking until the location changes.
+      std::string grid = j.wx_grid.empty() ? "-" : j.wx_grid;
+      strncpy(this->prefs5_.wx_grid, grid.c_str(), sizeof(this->prefs5_.wx_grid) - 1);
+      this->prefs5_.wx_grid[sizeof(this->prefs5_.wx_grid) - 1] = '\0';
+      this->save_prefs5_();
+      this->weather_try_ms_ = 0;  // forecast right away
+      this->rebuild_state_(&this->last_fields_);
+    }
+  } else if (j.need_weather && j.weather_ok && this->prefs5_.wx_set && j.wx_grid == this->prefs5_.wx_grid) {
+    this->weather_ = j.weather;
+    this->weather_ms_ = stamp;
+  }
+  this->render_idle_(false);
+}
+
+bool GamedayComponent::fetch_standings_(League league, uint32_t group, ::espn::Standings &out) {
+  std::string url = ::espn::standings_url(league, group);
+  ESP_LOGD(TAG, "Fetching standings: %s", url.c_str());
+  auto container = this->open_(url);
+  if (container == nullptr)
+    return false;
+  ContainerReader reader(container);
+  // A conference can have 18 teams; more than 20 rows is not a standings page.
+  bool ok = ::espn::parse_standings(reader, 20, out);
+  container->end();
+  ESP_LOGI(TAG, "Standings: %s, %u teams (%u bytes)", out.title.c_str(), (unsigned) out.rows.size(),
+           (unsigned) reader.total());
+  return ok;
+}
+
+bool GamedayComponent::fetch_points_(float lat, float lon, std::string &grid, int &status) {
+  std::string url = ::nws::points_url(lat, lon);
+  ESP_LOGD(TAG, "Weather grid: %s", url.c_str());
+  auto container = this->open_(url, &status, "application/geo+json");
+  if (container == nullptr)
+    return false;
+  ContainerReader reader(container);
+  bool ok = ::nws::parse_points(reader, grid);
+  container->end();
+  ESP_LOGI(TAG, "Weather grid: %s (%u bytes)", ok ? grid.c_str() : "not parsed", (unsigned) reader.total());
+  return ok;
+}
+
+bool GamedayComponent::fetch_weather_(const std::string &grid, ::nws::Weather &out) {
+  std::string url = ::nws::hourly_url(grid);
+  ESP_LOGD(TAG, "Fetching weather: %s", url.c_str());
+  auto container = this->open_(url, nullptr, "application/geo+json");
+  if (container == nullptr)
+    return false;
+  ContainerReader reader(container);
+  bool ok = ::nws::parse_hourly(reader, out);
+  container->end();
+  ESP_LOGI(TAG, "Weather: %d%s %s, high %d low %d (%u bytes)", out.temp, out.unit.c_str(), out.condition.c_str(),
+           out.high, out.low, (unsigned) reader.total());
+  return ok;
+}
+
 // ---- demo ---------------------------------------------------------------------
 
 struct DemoStep {
@@ -1660,6 +2121,20 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   // true while the my_team fallback has the board (the app reads it).
   doc["fallback"] = this->team_fallback_;
   doc["fallback_mode"] = this->fallback_my_team() ? "my_team" : "next_game";
+  doc["idle"] = this->idle_;
+  doc["idle_screen"] = this->idle_ ? idle::screen_name(this->idle_screen_) : "";
+  doc["idle_screens"] = this->prefs5_.idle_screens;
+  doc["idle_rotate"] = this->prefs5_.idle_rotate_s;
+  doc["idle_off"] = this->prefs5_.idle_off_min;
+  if (this->prefs5_.wx_set) {
+    doc["wx_lat"] = this->prefs5_.wx_lat;
+    doc["wx_lon"] = this->prefs5_.wx_lon;
+  } else {
+    doc["wx_lat"] = nullptr;
+    doc["wx_lon"] = nullptr;
+  }
+  // "-" when NWS has no forecast for the location (outside the US).
+  doc["wx_grid"] = this->prefs5_.wx_grid;
 
   JsonObject game = doc["game"].to<JsonObject>();
   game["s"] = g.valid ? ::espn::state_name(g.state) : "NOT_FOUND";
@@ -1787,7 +2262,7 @@ void GamedayComponent::handleRequest(AsyncWebServerRequest *request) {
 static const char *const SET_KEYS[] = {"team",     "mode",   "rotate",  "fav1",    "fav2", "fav3",
                                        "fav4",     "tz",     "tzauto",  "down",    "play", "odds",
                                        "opp",      "panels", "bootaddr", "lockon", "release", "collide",
-                                       "fallback"};
+                                       "fallback", "idle",     "idlerot", "idleoff", "wxlat", "wxlon"};
 
 void GamedayComponent::handle_set_(AsyncWebServerRequest *request) {
   std::vector<std::pair<std::string, std::string>> kv;
@@ -1822,6 +2297,8 @@ static bool parse_team_ref(const std::string &v, uint8_t &league, uint32_t &id) 
 
 void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::string>> &kv) {
   bool dirty = false;
+  bool wx_seen = false;
+  std::string wx_lat, wx_lon;
   for (const auto &p : kv) {
     const std::string &k = p.first;
     const std::string &v = p.second;
@@ -1842,6 +2319,18 @@ void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::
       this->set_release_seconds(atoi(v.c_str()));
     } else if (k == "collide") {
       this->set_collision_alternate(v == "1");
+    } else if (k == "idle") {
+      this->set_idle_screens((uint8_t) atoi(v.c_str()));
+    } else if (k == "idlerot") {
+      this->set_idle_rotate_seconds(atoi(v.c_str()));
+    } else if (k == "idleoff") {
+      this->set_idle_off_minutes(atoi(v.c_str()));
+    } else if (k == "wxlat") {
+      wx_seen = true;
+      wx_lat = v;
+    } else if (k == "wxlon") {
+      wx_seen = true;
+      wx_lon = v;
     } else if (k == "fallback") {
       if (v == "my_team" || v == "1")
         this->set_fallback_my_team(true);
@@ -1875,6 +2364,14 @@ void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::
       if (this->panels_ != nullptr)
         this->panels_->set_cols((uint8_t) atoi(v.c_str()));
     }
+  }
+  // Latitude and longitude arrive together; "none" (or empty) for both clears.
+  if (wx_seen) {
+    auto blank = [](const std::string &v) { return v.empty() || v == "none"; };
+    if (blank(wx_lat) && blank(wx_lon))
+      this->set_weather_location(false, 0, 0);
+    else if (!blank(wx_lat) && !blank(wx_lon))
+      this->set_weather_location(true, strtof(wx_lat.c_str(), nullptr), strtof(wx_lon.c_str(), nullptr));
   }
   if (dirty)
     this->rebuild_state_(&this->last_fields_);

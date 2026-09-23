@@ -20,6 +20,7 @@ CONF_HTTP_REQUEST_ID = "http_request_id"
 CONF_PANEL_LAYOUT_ID = "panel_layout_id"
 CONF_ON_UPDATE = "on_update"
 CONF_ON_ACTION = "on_action"
+CONF_ON_IDLE = "on_idle"
 
 gameday_ns = cg.esphome_ns.namespace("gameday")
 GamedayComponent = gameday_ns.class_("GamedayComponent", cg.Component)
@@ -30,6 +31,11 @@ UpdateTrigger = gameday_ns.class_(
 )
 ActionTrigger = gameday_ns.class_(
     "ActionTrigger", automation.Trigger.template(cg.std_string)
+)
+IdleFields = gameday_ns.struct("IdleFields")
+IdleFieldsConstRef = IdleFields.operator("const").operator("ref")
+IdleTrigger = gameday_ns.class_(
+    "IdleTrigger", automation.Trigger.template(IdleFieldsConstRef)
 )
 
 COMPONENT_DIR = Path(__file__).resolve().parent
@@ -86,6 +92,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_ON_ACTION): automation.validate_automation(
             {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(ActionTrigger)}
         ),
+        cv.Optional(CONF_ON_IDLE): automation.validate_automation(
+            {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(IdleTrigger)}
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -120,3 +129,6 @@ async def to_code(config):
     for conf in config.get(CONF_ON_ACTION, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
         await automation.build_automation(trigger, [(cg.std_string, "x")], conf)
+    for conf in config.get(CONF_ON_IDLE, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [(IdleFieldsConstRef, "x")], conf)

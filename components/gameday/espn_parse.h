@@ -60,6 +60,38 @@ struct Upcoming {
   std::string tv;
 };
 
+// The team's last finished game, for the idle Record screen.
+struct GameResult {
+  bool valid{false};
+  int64_t kickoff_epoch{0};
+  std::string opp_abbr;
+  int us{0}, them{0};
+  bool home{false};
+  bool neutral{false};
+};
+
+// Everything the idle screens need about the saved team, from the one
+// season-schedule download (no team endpoint needed).
+struct TeamSchedule {
+  bool valid{false};
+  std::string color, record, standing;  // "002a5c", "2-1", "1st in NFC East"
+  uint32_t group{0};                    // division (NFL) or conference (college)
+  std::vector<Upcoming> upcoming;
+  GameResult last;
+};
+
+struct StandingRow {
+  uint32_t team_id{0};
+  std::string abbr, record;
+};
+
+// One division or conference, in ESPN's order (which is the standings order).
+struct Standings {
+  bool valid{false};
+  std::string title;  // "NFC East", "ACC"
+  std::vector<StandingRow> rows;
+};
+
 // A game found by scanning a day's scoreboard (live-game modes).
 struct LiveGame {
   uint8_t league{0};
@@ -161,6 +193,7 @@ std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch)
 std::string scan_url(League league, int64_t now_epoch);  // every game of the day for one league
 // The league's current week, or `week` when it is not 0 (next-game lookup).
 std::string week_url(League league, int week);
+std::string standings_url(League league, uint32_t group);
 std::string dark_logo(const std::string &url);
 std::string team_logo_url(League league, uint32_t espn_id, const char *abbr);  // for a team with no game loaded yet
 
@@ -174,6 +207,9 @@ bool parse_scoreboard_str(const std::string &json, const std::string &event_id, 
 Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral = false);
 uint32_t parse_color(const std::string &hex);
 std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local);
+// "W 37-20 vs WSH", "L 15-34 at CIN", "T 20-20 vs NYG"; empty when unknown.
+std::string result_line(const GameResult &r);
+
 // Ticker for a live mode's board. league_word is "college ", "NFL " or "".
 // kickoff_local is kickoff_label()'s text; base is status_text()'s.
 std::string live_ticker(LiveShow show, const std::string &league_word, const GameSnapshot &s, const TickerOptions &o,

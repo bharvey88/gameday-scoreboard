@@ -183,6 +183,10 @@ inline void fill_scoreboard_filter(JsonDocument &f) {
 }
 
 inline void fill_upcoming_filter(JsonDocument &f) {
+  f["team"]["color"] = true;
+  f["team"]["recordSummary"] = true;
+  f["team"]["standingSummary"] = true;
+  f["team"]["groups"]["id"] = true;
   JsonObject ev = f["events"].add<JsonObject>();
   ev["id"] = true;
   ev["date"] = true;
@@ -194,7 +198,26 @@ inline void fill_upcoming_filter(JsonDocument &f) {
   c["team"]["id"] = true;
   c["team"]["abbreviation"] = true;
   c["team"]["shortDisplayName"] = true;
+  c["score"] = true;
   comp["broadcasts"].add<JsonObject>()["media"]["shortName"] = true;
+}
+
+inline void fill_standing_entry_filter(JsonDocument &f) {
+  f["team"]["id"] = true;
+  f["team"]["abbreviation"] = true;
+  JsonObject st = f["stats"].add<JsonObject>();
+  st["type"] = true;
+  st["displayValue"] = true;
+}
+
+// ESPN sends ids and scores as strings, sometimes as numbers or objects.
+inline uint32_t id_of(JsonVariantConst v) {
+  return v.is<const char *>() ? (uint32_t) atol(v.as<const char *>()) : (uint32_t) (v | 0);
+}
+inline int score_of(JsonVariantConst v) {
+  if (v.is<JsonObjectConst>())
+    v = v["displayValue"];
+  return v.is<const char *>() ? atoi(v.as<const char *>()) : (int) (v | 0);
 }
 
 // One scoreboard event, for the live modes' scan (filter at event level).
@@ -330,9 +353,11 @@ template<typename TInput> bool parse_team(TInput &input, Schedule &out) {
   return true;
 }
 
-// Games that have not started yet, in the order ESPN lists them (by date).
+// The team's season schedule: games that have not started yet, in the order
+// ESPN lists them (by date), up to `max`; the last finished game; and the
+// team's record, color and group.
 template<typename TInput>
-bool parse_upcoming(TInput &input, uint32_t our_team_id, size_t max, std::vector<Upcoming> &out) {
+bool parse_team_schedule(TInput &input, uint32_t our_team_id, size_t max, TeamSchedule &sched) {
   JsonDocument filter;
   detail::fill_upcoming_filter(filter);
   JsonDocument doc;
@@ -340,12 +365,35 @@ bool parse_upcoming(TInput &input, uint32_t our_team_id, size_t max, std::vector
                                               DeserializationOption::NestingLimit(40));
   if (err)
     return false;
-  out.clear();
+  sched = TeamSchedule{};
+  JsonObjectConst team = doc["team"];
+  sched.color = detail::str_or_empty(team["color"]);
+  sched.record = detail::str_or_empty(team["recordSummary"]);
+  sched.standing = detail::str_or_empty(team["standingSummary"]);
+  sched.group = detail::id_of(team["groups"]["id"]);
+  std::vector<Upcoming> &out = sched.upcoming;
   for (JsonObjectConst ev : doc["events"].as<JsonArrayConst>()) {
-    if (out.size() >= max)
-      break;
     JsonObjectConst comp = ev["competitions"][0];
-    if (detail::str_or_empty(comp["status"]["type"]["state"]) != "pre")
+    std::string state = detail::str_or_empty(comp["status"]["type"]["state"]);
+    if (state == "post") {
+      GameResult r;
+      r.valid = true;
+      r.kickoff_epoch = parse_iso8601_z(detail::str_or_empty(ev["date"]));
+      r.neutral = comp["neutralSite"] | false;
+      for (JsonObjectConst c : comp["competitors"].as<JsonArrayConst>()) {
+        bool ours = detail::id_of(c["team"]["id"]) == our_team_id;
+        if (ours) {
+          r.us = detail::score_of(c["score"]);
+          r.home = detail::str_or_empty(c["homeAway"]) == "home";
+        } else {
+          r.them = detail::score_of(c["score"]);
+          r.opp_abbr = detail::str_or_empty(c["team"]["abbreviation"]);
+        }
+      }
+      sched.last = r;  // listed by date, so the last one seen is the latest
+      continue;
+    }
+    if (state != "pre" || out.size() >= max)
       continue;
     Upcoming u;
     u.event_id = detail::str_or_empty(ev["id"]);
@@ -367,7 +415,47 @@ bool parse_upcoming(TInput &input, uint32_t our_team_id, size_t max, std::vector
     if (!u.event_id.empty() && u.opp_id != 0)
       out.push_back(u);
   }
+  sched.valid = true;
   return true;
+}
+
+template<typename TInput>
+bool parse_upcoming(TInput &input, uint32_t our_team_id, size_t max, std::vector<Upcoming> &out) {
+  TeamSchedule sched;
+  if (!parse_team_schedule(input, our_team_id, max, sched))
+    return false;
+  out = sched.upcoming;
+  return true;
+}
+
+// One division's or conference's standings, entry by entry: a conference
+// entry carries about a hundred stats, and only "total" (overall W-L) is
+// kept. Stops after `max` rows.
+template<typename TInput> bool parse_standings(TInput &input, size_t max, Standings &out) {
+  out = Standings{};
+  std::string name, short_name;
+  detail::Capture caps[] = {{"\"shortName\":\"", &short_name, false}, {"\"name\":\"", &name, false}};
+  if (!detail::seek_array(input, "entries", caps, 2))
+    return false;
+  out.title = short_name.empty() ? name : short_name;
+  JsonDocument filter;
+  detail::fill_standing_entry_filter(filter);
+  bool ok = detail::for_each_element(input, filter, [&](JsonObjectConst e) {
+    StandingRow row;
+    row.team_id = detail::id_of(e["team"]["id"]);
+    row.abbr = detail::str_or_empty(e["team"]["abbreviation"]);
+    for (JsonObjectConst st : e["stats"].as<JsonArrayConst>()) {
+      if (detail::str_or_empty(st["type"]) == "total") {
+        row.record = detail::str_or_empty(st["displayValue"]);
+        break;
+      }
+    }
+    if (!row.abbr.empty())
+      out.rows.push_back(row);
+    return out.rows.size() < max;
+  });
+  out.valid = ok && !out.rows.empty();
+  return out.valid;
 }
 
 // Walks a scoreboard document event by event and sorts the games into

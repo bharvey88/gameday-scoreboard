@@ -17,6 +17,8 @@
 
 #include "espn_parse.h"
 #include "favorites.h"
+#include "idle.h"
+#include "weather.h"
 
 namespace esphome {
 namespace gameday {
@@ -55,6 +57,18 @@ struct UpdateFields {
   std::string kickoff;  // "Sun 3:25 PM" style label while PRE, else empty
 };
 
+// One idle screen's content, for the LVGL pages in firmware/pages/idle.yaml.
+struct IdleFields {
+  std::string screen;  // "clock", "countdown", "standings", "record", "weather"; "" = back to the scoreboard
+  bool show{false};    // switch to this screen's page now
+  std::string big;     // the large line: time, countdown, record, temperature
+  std::string line1, line2, line3;
+  std::string rows[4];  // standings, one page
+  int highlight{-1};    // the row that is the saved team
+  uint32_t color{0xFFFFFF};  // the saved team's color
+  std::string team_logo, opp_logo;  // empty = hide that logo
+};
+
 enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE, FAVORITE };
 
 enum class Mode : uint8_t { MY_TEAM = 0, LIVE_NFL = 1, LIVE_NCAA = 2, LIVE_ANY = 3, FAVORITES = 4 };
@@ -81,6 +95,8 @@ class GamedaySelect : public select::Select, public Component {
 //                                    tz=<index> tzauto=0/1 down/play/odds/opp=0/1 panels=1/2
 //                                    lockon=5-120 (min) release=30-3600 (s) collide=0 stick|1 alternate
 //                                    fallback=next_game|my_team (live modes with nothing live)
+//                                    idle=<bitmask> idlerot=10-600 (s) idleoff=0|15|30|60|120 (min)
+//                                    wxlat=<deg> wxlon=<deg> (both; both "none" clears)
 //   POST /gameday/action?do=refresh|demo   (demo: a scripted game on the panel, ~40s)
 // Requests arrive on the HTTP task; settings are applied on the main loop.
 class GamedayComponent : public Component, public AsyncWebHandler {
@@ -102,6 +118,9 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void add_on_update_callback(std::function<void(const UpdateFields &)> &&cb) {
     this->callbacks_.push_back(std::move(cb));
   }
+  void add_on_idle_callback(std::function<void(const IdleFields &)> &&cb) {
+    this->idle_callbacks_.push_back(std::move(cb));
+  }
 
   // Called by the selects and by template entities in YAML.
   void select_team(const std::string &option);
@@ -122,6 +141,14 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   // saved team's own card as in v1.4.0 (true).
   void set_fallback_my_team(bool my_team);
   bool fallback_my_team() const { return this->prefs5_.fallback == 1; }
+  // Idle screens (idle.h): which ones rotate, how often, and the off timer.
+  void set_idle_screens(uint8_t mask);
+  void set_idle_rotate_seconds(int seconds);
+  void set_idle_off_minutes(int minutes);
+  void set_weather_location(bool set, float lat, float lon);
+  bool idle() const { return this->idle_; }
+  // The Power switch turned on, by anyone: the off-after-idle timer restarts.
+  void on_power_on();
   void refresh_now();
   // Plays a scripted game through the real splash and render path, for
   // showing the panel off without a live game. Real data resumes after.
@@ -201,7 +228,14 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     uint8_t collide;  // 0 = stick with the higher slot, 1 = alternate on the rotate timer
   } __attribute__((packed));
   struct Prefs5 {
-    uint8_t fallback;  // 0 = the league's next thing, 1 = the saved team (v1.4.0)
+    uint8_t fallback;        // 0 = the league's next thing, 1 = the saved team (v1.4.0)
+    uint8_t idle_screens;    // idle::bit() mask
+    uint16_t idle_rotate_s;  // seconds per idle screen
+    uint8_t idle_off_min;    // 0 = never, else minutes of idle before the panel goes dark
+    uint8_t wx_set;          // 1 when a weather location has been entered
+    float wx_lat;
+    float wx_lon;
+    char wx_grid[24];  // NWS office/cell for that location; "" = not looked up, "-" = outside the US
   } __attribute__((packed));
 
   bool flag_(uint8_t f) const { return (this->prefs_.flags & f) != 0; }
@@ -229,6 +263,21 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     uint8_t next_league{0};
     ::espn::LiveGame next;
     bool next_ok{false};
+    // idle screens: the saved team's season, standings, weather
+    bool need_team_sched{false};
+    ::espn::TeamSchedule team_sched;
+    bool team_sched_ok{false};
+    bool need_standings{false};
+    uint32_t standings_group{0};
+    ::espn::Standings standings;
+    bool standings_ok{false};
+    bool need_points{false};
+    float wx_lat{0}, wx_lon{0};
+    std::string wx_grid;
+    int points_status{0};
+    bool need_weather{false};
+    ::nws::Weather weather;
+    bool weather_ok{false};
     bool need_schedule{false};
     Schedule schedule;
     bool schedule_ok{false};
@@ -248,7 +297,10 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void run_job_();
   void apply_job_();
   bool fetch_schedule_(const ::espn::Team *team, Schedule &out);
-  bool fetch_upcoming_(const ::espn::Team *team, std::vector<::espn::Upcoming> &out);
+  bool fetch_upcoming_(const ::espn::Team *team, ::espn::TeamSchedule &out);
+  bool fetch_standings_(League league, uint32_t group, ::espn::Standings &out);
+  bool fetch_points_(float lat, float lon, std::string &grid, int &status);
+  bool fetch_weather_(const std::string &grid, ::nws::Weather &out);
   bool fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out);
   bool fetch_scan_(League league, Job &j);
   bool fetch_next_(League league, ::espn::LiveGame &out);
@@ -258,7 +310,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   // Mode 4 with at least one favorite set; with none it behaves like My Team.
   bool favorites_mode_() const { return this->prefs2_.mode == (uint8_t) Mode::FAVORITES && !this->fav_.empty(); }
   uint32_t our_id_() const;  // team id the snapshot is oriented around
-  std::shared_ptr<http_request::HttpContainer> open_(const std::string &url);
+  std::shared_ptr<http_request::HttpContainer> open_(const std::string &url, int *status = nullptr,
+                                                    const char *accept = "application/json");
   void schedule_next_(uint32_t ms) { this->next_fetch_ms_ = millis() + ms; }
   uint32_t interval_for_phase_() const;
   void emit_(const ::espn::Splash &splash);
@@ -285,6 +338,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   select::Select *team_select_{nullptr};
   select::Select *timezone_select_{nullptr};
   std::vector<std::function<void(const UpdateFields &)>> callbacks_;
+  std::vector<std::function<void(const IdleFields &)>> idle_callbacks_;
 
   ESPPreferenceObject pref_;
   Prefs prefs_{};
@@ -344,6 +398,36 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   };
   NextCache next_[2];
   uint8_t next_pending_{0};  // bit per league: look it up on the next cycle
+  // Idle screens. idle_ is true while the mode has nothing to show and the
+  // panel rotates through the owner's idle screens instead.
+  bool idle_{false};
+  int idle_screen_{-1};
+  uint32_t idle_since_ms_{0};
+  uint32_t idle_screen_ms_{0};  // when the current screen went up
+  uint32_t idle_woke_ms_{0};    // start of the off-after-idle count
+  uint32_t idle_tick_ms_{0};
+  uint32_t idle_job_check_ms_{0};
+  bool idle_dark_{false};       // the off timer switched the panel off
+  std::string idle_key_;        // what was last rendered, to skip repeats
+  // The saved team's season schedule, whatever the mode: the countdown,
+  // record and standings group come from it.
+  ::espn::TeamSchedule team_sched_;
+  const ::espn::Team *team_sched_team_{nullptr};
+  uint32_t team_sched_ms_{0}, team_sched_try_ms_{0};
+  ::espn::Standings standings_;
+  uint32_t standings_key_{0};
+  uint32_t standings_ms_{0}, standings_try_ms_{0};
+  ::nws::Weather weather_;
+  uint32_t weather_ms_{0}, weather_try_ms_{0};
+  bool idle_wanted_() const;
+  uint8_t idle_available_() const;
+  const ::espn::Upcoming *team_next_game_(int64_t now_epoch) const;
+  IdleFields idle_fields_(int screen);
+  void render_idle_(bool show);
+  void idle_tick_();
+  bool start_idle_job_(uint32_t now);
+  void apply_idle_job_(uint32_t now);
+  void save_prefs5_() { this->pref5_.save(&this->prefs5_); }
   bool league_wanted_(League league) const;
   ::espn::NextState next_state_(int64_t now_epoch) const;
   void decide_live_(uint32_t now, const std::vector<::espn::LiveGame> &live);
@@ -383,6 +467,13 @@ class UpdateTrigger : public Trigger<const UpdateFields &> {
  public:
   explicit UpdateTrigger(GamedayComponent *parent) {
     parent->add_on_update_callback([this](const UpdateFields &f) { this->trigger(f); });
+  }
+};
+
+class IdleTrigger : public Trigger<const IdleFields &> {
+ public:
+  explicit IdleTrigger(GamedayComponent *parent) {
+    parent->add_on_idle_callback([this](const IdleFields &f) { this->trigger(f); });
   }
 };
 
