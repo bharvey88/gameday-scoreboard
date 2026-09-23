@@ -11,6 +11,7 @@ owns the panel, not for the code.
 ## v1.4.4
 
 - While the panel is waiting to be set up, or has lost its Wi-Fi, it now takes turns showing its message and a QR code. Point your iPhone camera at the code: it opens the Game Day app if you have it, or the setup page at gamedayscoreboard.app if you do not.
+- A panel waiting to be set up says SETUP and points you at the Game Day app again, instead of switching to the hotspot instructions half a second later. The hotspot instructions still come round in turn, for setting it up without an iPhone.
 
 ## v1.4.3
 
