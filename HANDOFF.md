@@ -14,10 +14,11 @@ Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
   3NRQ7L5FUW.app.gamedayscoreboard.scoreboard for /setup and /setup/*.
   build.yml now copies docs/site/. (the old docs/site/* glob skipped
   dot-directories).
-- New .github/workflows/site.yml republishes the site when docs/site changes
-  on main (or by hand), copying the live firmware manifests and binaries
-  unchanged, so site edits no longer need a firmware tag. Both workflows
-  deploy to the same Pages site; a tag release rebuilds everything anyway.
+- .github/workflows/site.yml republishes the site without a firmware tag.
+  First version ran on every docs/site push to main; that broke the v1.4.3
+  deploy (Pages keys deploys by commit sha, so tagging an already-deployed
+  commit is a silent no-op). Now manual dispatch only; see the later entry
+  below for how it sources firmware.
 
 ## Where things stand (2026-09-22)
 
