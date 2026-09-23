@@ -1,8 +1,8 @@
 name: Site
 
 # Republish gamedayscoreboard.app when only docs/site changed, without a
-# firmware release. The firmware files are copied from the live site as-is,
-# so panels see the same manifests and binaries they saw before.
+# firmware release. The firmware files come from the Build run of the latest
+# release tag, so panels see the same manifest and binaries they saw before.
 
 on:
   push:
@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -28,22 +29,18 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Assemble site from docs/site and the live firmware files
+      - name: Assemble site from docs/site and the latest release's firmware
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          BASE=https://gamedayscoreboard.app/firmware
-          mkdir -p site/firmware/m1
-          cp -r docs/site/. site/
-          curl -fsS "$BASE/m1/manifest.json" -o site/firmware/m1/manifest.json
-          for f in $(jq -r '.builds[] | (.ota.path, .parts[].path)' site/firmware/m1/manifest.json | sort -u); do
-            curl -fsS "$BASE/m1/$f" -o "site/firmware/m1/$f"
-          done
-          # Panels flashed before v0.6.0 poll these two manifests for updates.
-          cp -r site/firmware/m1 site/firmware/64x64
-          cp -r site/firmware/m1 site/firmware/128x64
           TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch "$TAG" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "release $TAG, build run $RUN"
+          mkdir -p site/firmware
+          cp -r docs/site/. site/
+          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n firmware-moonhub75 -D site/firmware
+          test -f site/firmware/moonhub75/manifest.json
           sed -i "s/__VERSION__/${TAG}/g" site/index.html
           ls -laR site
       - uses: actions/upload-pages-artifact@v3
@@ -51,3 +48,7 @@ jobs:
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
+        env:
+          # Pages keys deployments by this value. Two workflows deploying the
+          # same commit (a docs push, then its tag) must not collide.
+          GITHUB_SHA: ${{ github.sha }}-${{ github.run_id }}

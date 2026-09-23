@@ -120,6 +120,10 @@ jobs:
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
+        env:
+          # Pages keys deployments by this value. A docs push to main and the
+          # tag on that same commit must not collide (v1.4.3 never went live).
+          GITHUB_SHA: ${{ github.sha }}-${{ github.run_id }}
       - name: Create the release with notes and binaries
         env:
           GH_TOKEN: ${{ github.token }}
