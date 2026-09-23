@@ -8,6 +8,15 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.5.0
+
+- The live modes follow the league when nothing is on: the next kickoff today, then today's finals one at a time until midnight, then the next game this week. The ticker says "Next college game: UGA at BAMA, 2:30 PM" instead of apologizing.
+- Showing your own team when nothing is live (new in v1.4.0) is now a setting, off by default: "Show my team when nothing is live" under Setup on the device page.
+- When there is no game to show at all, the panel rotates through screens you choose on the device page under "When nothing is on": a clock, a countdown to your team's next game, your division or conference standings, your team's record and last result, and the weather. Clock and countdown are on to start with.
+- Weather needs a location, typed in under Setup or sent from the Game Day app. It comes from the National Weather Service, so it only works in the US.
+- The panel can turn itself off after 15, 30, 60 or 120 minutes with nothing to show, and turns back on when a game comes up or when you use the remote, the page or the app.
+- Startup is quicker: the clock shows as soon as the panel knows the time, the scoreboard follows the moment the first scores arrive, and the "----" and "Loading" board is gone. The boot screen stays up until there is something real behind it. These timings have not been measured on a panel yet.
+
 ## v1.4.3
 
 - The firmware no longer names a specific controller board. It runs on any ESP32-S3 HUB75 controller wired to the MoonHub75 pinout, and the update manifest moved to firmware/moonhub75/. Panels on v1.4.2 or older will not see this update by themselves: install once over USB from gamedayscoreboard.app and updates resume from there.
@@ -33,7 +42,7 @@ owns the panel, not for the code.
 - The boot screen shows an address you can actually type, and holding the boot button warns you before it erases your Wi-Fi, with five seconds to let go.
 - "Switch every" can be set as low as 1 minute.
 - After a game ends the panel moves on to the next one instead of sitting on a final, even when ESPN keeps reporting the finished game.
-- The live modes show your team instead of an empty board when no game is on, and go back to live games the moment one starts.
+- The live modes show your team instead of an empty board when no game is on, and go back to live games the moment one starts. (Since v1.5.0 this is a setting, off by default.)
 - Refresh Now re-reads the schedule instead of only re-polling the game already on the board, so a game that moved, was postponed or has finished shows up as soon as you press it. For the first six hours after a restart the button did nothing at all.
 
 ## v1.3.8
