@@ -3,6 +3,167 @@
 Companion app handoff: ~/development/gameday-scoreboard-ios/HANDOFF.md.
 Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
 
+## v1.5.0 built, branch `idle-and-startup` (2026-09-23)
+
+Spec: docs/superpowers/specs/2026-09-23-idle-and-startup-design.md, with the
+owner's answers: finals until midnight local, NWS weather, lat/lon from the
+page and the app. Four commits on top of the spec commit, nothing flashed,
+nothing pushed or tagged.
+
+1. Live modes follow the league (e313d22). Precedence is
+   `espn::live_precedence` (espn_parse.h): live, else later today, else
+   today's finals (one per "Switch every", until local midnight), else the
+   next game this week, else nothing. The day scan is `parse_scan`, walked
+   one event at a time. Setting `fallback=my_team|next_game` (Prefs5), state
+   keys `fallback_mode` and `fallback` (still true while the my_team card is
+   up, the app reads it). The "showing DAL" text is gone in both settings.
+2. Idle rotation (b6a1c34). idle.h (screen order, countdown text, standings
+   paging), weather.h (NWS), firmware/pages/idle.yaml (five LVGL pages,
+   spleen 12x24 font). The component decides the screen and text, YAML only
+   draws (`on_idle` trigger). Idle data (season schedule, standings, weather)
+   runs as its own single-request jobs, only while idle, never beside a game
+   fetch. Off after idle turns the Power switch off (`idle_off` action) and
+   back on (`idle_wake`); Power's turn_on_action restarts the count.
+3. Startup (c672abe). NOT_READY_INTERVAL 500 ms; `parse_scan` early stop;
+   Prefs6 team-info cache; clock first; the boot overlay holds on
+   `content_ready`; placeholders removed from gameday-live.yaml.
+4. Version 1.5.0 and the changelog.
+
+Verified with curl on 2026-09-23 (UA "curl/8.0 gameday-scoreboard"), and
+where it differs from the spec:
+
+- `scoreboard?limit=8` is not 25 to 40 KB: NFL is about 140 KB, and college
+  `groups=80&limit=8` returns 16 events (limit N gives 2N) at about 300 KB.
+  limit=8 would also miss Monday night on a Sunday evening, when the first
+  eight are finals. Built instead: the week view with no limit, parsed event
+  by event with the early stop, then `week=N+1` (N from `"week":{"number"}`)
+  when nothing this week is left. `week=4` alone works, no seasontype needed.
+- ESPN does not list a game day by kickoff: the college fixture is in
+  progress first, then finals, then games to come, then other days' games.
+  A quiet day is by kickoff. The early stop works for both: stop at the
+  first unstarted game kicking off more than 30 minutes from now
+  (SCAN_STOP_MARGIN). Host test: the Saturday fixture reads 37 of 99 events.
+- Standings: `site/v2/.../standings` is an 86 byte stub. The data is at
+  `https://site.api.espn.com/apis/v2/sports/football/{league}/standings?group=<id>`,
+  group from the season schedule's `team.groups.id` (NFL division 1 = NFC
+  East, 35 KB; college conference, e.g. ACC 333 KB because each entry carries
+  about 100 stats). Entries are in standings order; W-L is the stat with
+  type "total". Parsed entry by entry, capped at 20.
+- Record and next opponent come from the season schedule endpoint
+  (`team.recordSummary`, `standingSummary`, last "post" event). In My team
+  mode that is the download the panel already makes; in the live modes and
+  Favorites it is one extra 70 to 200 KB fetch every 6 hours while idle.
+- NWS: `/points` needs a User-Agent (403 without), rejects more than four
+  decimals with a 301 (the firmware sends %.4f), and answers 404 outside the
+  US (stored as grid "-", weather skipped until the location changes). Only
+  the hourly forecast has a current temperature, so the panel reads
+  `/gridpoints/{grid}/forecast/hourly` (164 KB) and stops after 24 periods;
+  high and low span the next 24 hours, not "today" (at 10 PM today has two
+  hours left). The grid ("FWD/86,112") is cached in Prefs5, not the URL.
+
+Other deviations, all deliberate:
+
+- The phone-location button cannot work on the panel's own page: browsers
+  only share location with https pages (and localhost). The page says so
+  and points at typing the numbers or the app. It works in the Playwright
+  test because that runs on 127.0.0.1.
+- Clearing the location posts `wxlat=none&wxlon=none` (empty values were
+  unreliable through parse_qs and possibly hasParam).
+- Logos on the idle Clock, Countdown and Record screens only on a two-panel
+  (128 px) chain; a single 64 px panel has no room. The countdown reads
+  "3d 14h 22m" on 128 px and "3d 14h" on 64 px.
+- Live cards read "UGA at BAMA" always (away at home); the scan does not
+  carry neutral site, so the spec's "BC vs ND" example is "BC at ND".
+- Only the active idle screen is rendered. Picking another idle page from
+  Select Page shows whatever it last showed.
+- hub75-studio's clock page is no longer pulled; the idle Clock page takes
+  its "Clock" name in Select Page.
+- Fixed on the way: My team with no game on the schedule polled a
+  scoreboard for an empty event id every minute (misses climbing). It now
+  waits for the next team read.
+- The owner's boot log (spec section 3) was not captured, before or after;
+  the changelog says the timings were not measured.
+- Also on the panel: pick Clock from Select Page during a game (it ticks);
+  pick Standings during idle (it stays); turn Power off by hand during
+  idle (it stays off when a game comes up); block NTP (the overlay gives
+  way after a minute); a late Pacific game after 9 PM in Live college.
+
+Build and test on Windows (this session): host tests `mingw32-make -C tests`
+from Git Bash with the WinLibs bin on PATH, 352 checks, 0 failures (after the review fixes). Page
+tests are new in this repo: `cd tests/web && npm install && npx playwright
+install chromium --only-shell && npx playwright test` (9 tests), against
+tests/web/mock_device.py on port 8791 (MOCK_PORT overrides; PYTHON picks the
+interpreter). The mock was adapted from the iOS repo's tools/mock_device.py.
+Firmware: `esphome config` and `esphome compile firmware/gameday.yaml`
+green after commits 1, 2, 3 and 4; RAM 43.3%, Flash 24.6% after the review fixes (v1.4.3 was
+42.6% / 24.3%).
+
+Review fixes (one commit after v1.5.0, same day):
+
+1. Off season in a live mode no longer leaves idle once an hour. A
+   next-game lookup started from IDLE runs in the background and the show
+   stays IDLE; a failed lookup is cached as "none" for 5 minutes
+   (NextCache.valid_ms) instead of leaving a blank FETCH_NEXT board that
+   retried every minute. Before this, the hourly re-check flashed the
+   board, fired idle_wake (Power on) and restarted the off timer.
+2. Off after idle only arms when Power is on (YAML hands the component a
+   `power_state` getter at boot). Power's turn_off_action calls
+   `on_power_off()`, which clears the pending wake unless the off came from
+   the component's own `idle_off` (`idle_turning_off_`).
+3. After a worker is abandoned at WORKER_DEADLINE no idle job starts for
+   RETRY_INTERVAL (`worker_cooldown_until_`), same as the fetch loop.
+4. `scan_url` takes the local UTC offset and asks for the local date
+   (was now minus 5 h, which from 9 PM Pacific asked for tomorrow). Only
+   the local date is scanned; an East Coast owner after midnight still
+   loses a West Coast game running past midnight Eastern (as before).
+   Host tests: 10:30 PM PDT Saturday, 9 PM EDT, and a European date.
+5. A 1 s YAML interval reports the active LVGL page (`set_active_page`).
+   Outside idle a Clock or Countdown page picked by hand is re-rendered
+   (without logos, which belong to the board's game). During idle, a page
+   that is not the one the rotation showed (after a 2 s grace for the
+   page load) pauses the rotation until idle is next entered; state key
+   `idle_manual`. Changelog bullets added.
+6. After a boot from the team cache, the first failed game poll forces a
+   team read at once (`cache_unconfirmed_`).
+7. The clock page has a third line (orange) with "Scores: no update yet" /
+   "no update for N min" once misses reach 3. On Wi-Fi 60 s without a
+   clock, `waiting_clock_` emits "Waiting for the clock" (also on the
+   scoreboard's no-game label) and marks content ready so the overlay
+   hides.
+8. `fetch_next_`: a non-200 on the week+1 request means no game (cached
+   as none), not a failed lookup.
+
+Known, not fixed (review items 9 and 10):
+
+- A NWS 404 is stored as "-" permanently for that location; if NWS was
+  briefly wrong, the owner has to re-save the location to retry.
+- The idle pages share the scoreboard's two online_image logos. Idle
+  screens repoint them (wide panels only); leaving idle, the board's next
+  update asks for its own logos again, so the board can show the idle
+  logos until that update and its download land.
+
+Still to test on the panel (owner):
+
+- Boot: time from power to first content; the overlay should hold with the
+  bar moving until the clock shows, then the scoreboard. A second boot in
+  My team should log "Team info from cache" and poll the scoreboard first.
+- A Tuesday: My team with a game days away stays on the scoreboard (PRE);
+  a live mode shows "Next NFL game: ..." as a card. Off season or a team
+  with nothing scheduled: the idle rotation through every screen, on 64 and
+  128 px, and each screen's layout (fonts, the degree sign, scrolling).
+- A Saturday in Live college: live first, later-today card between games,
+  finals rotating in the evening, gone after local midnight; the log line
+  "Scan: ... stopped early" and the byte count against 1.3 MB.
+- Weather with and without a location, and a non-US location ("US only").
+- Off after idle at 15 min, then wake by a WizMote button, and by a game
+  coming up (Power goes on by itself).
+- Internal heap (Free Heap internal) across an idle hour with standings and
+  weather on; the standings parse holds one entry (about 100 stats) at a
+  time, the rest are small.
+- The app: new state keys (idle, idle_screen, idle_screens, idle_rotate,
+  idle_off, wx_lat, wx_lon, wx_grid, fallback_mode, ready) are additive;
+  settings `idle`, `idlerot`, `idleoff`, `wxlat`, `wxlon`, `fallback`.
+
 ## NEXT UP (from the 2026-09-23 afternoon session)
 
 1. **Bench PR #14 (v1.4.4, setup QR code) on the second panel** gameday-74de74

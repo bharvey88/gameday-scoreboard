@@ -50,10 +50,12 @@ std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch)
   return url;
 }
 
-std::string scan_url(League league, int64_t now_epoch) {
+std::string scan_url(League league, int64_t now_epoch, int32_t utc_offset_s) {
   std::string url = std::string(kSite) + league_path(league) + "/scoreboard";
   int y, m, d;
-  civil_from_epoch(now_epoch - 5 * 3600, y, m, d);
+  // The local date, not Eastern: from 9 PM Pacific the Eastern date is
+  // already tomorrow, which dropped tonight's late games and finals.
+  civil_from_epoch(now_epoch + utc_offset_s, y, m, d);
   char buf[64];
   if (league == League::NCAA)
     snprintf(buf, sizeof(buf), "?groups=80&limit=300&dates=%04d%02d%02d", y, m, d);
@@ -61,6 +63,29 @@ std::string scan_url(League league, int64_t now_epoch) {
     snprintf(buf, sizeof(buf), "?dates=%04d%02d%02d", y, m, d);
   url += buf;
   return url;
+}
+
+std::string week_url(League league, int week) {
+  std::string url = std::string(kSite) + league_path(league) + "/scoreboard";
+  // No date: ESPN answers with the current week. FBS only, like the scan.
+  url += league == League::NCAA ? "?groups=80" : "";
+  if (week > 0)
+    url += std::string(league == League::NCAA ? "&" : "?") + "week=" + std::to_string(week);
+  return url;
+}
+
+// The site/v2 standings route is a stub; the data lives under apis/v2.
+std::string standings_url(League league, uint32_t group) {
+  return std::string("https://site.api.espn.com/apis/v2/sports/football/") + league_path(league) +
+         "/standings?group=" + std::to_string(group);
+}
+
+std::string result_line(const GameResult &r) {
+  if (!r.valid || r.opp_abbr.empty())
+    return "";
+  const char *wl = r.us > r.them ? "W" : r.us < r.them ? "L" : "T";
+  return std::string(wl) + " " + std::to_string(r.us) + "-" + std::to_string(r.them) +
+         (r.home || r.neutral ? " vs " : " at ") + r.opp_abbr;
 }
 
 // Dark-background variant, shrunk to 64px by ESPN's image resizer. A 500px
@@ -167,6 +192,17 @@ static std::string records_line(const GameSnapshot &s) {
   return out;
 }
 
+// Odds, TV and venue: the part of a pre-game ticker after the kickoff.
+static void add_pre_details(std::string &out, const GameSnapshot &s, const TickerOptions &o) {
+  if (o.odds) {
+    add_part(out, s.odds);
+    if (!s.over_under.empty())
+      add_part(out, "O/U " + s.over_under);
+    add_part(out, s.tv);
+  }
+  add_part(out, s.venue);
+}
+
 std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local) {
   std::string out;
   switch (s.state) {
@@ -174,13 +210,7 @@ std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std
       return "No upcoming game";
     case GameState::PRE:
       add_part(out, kickoff_local.empty() ? s.short_detail : kickoff_local);
-      if (o.odds) {
-        add_part(out, s.odds);
-        if (!s.over_under.empty())
-          add_part(out, "O/U " + s.over_under);
-        add_part(out, s.tv);
-      }
-      add_part(out, s.venue);
+      add_pre_details(out, s, o);
       return out;
     case GameState::POST:
       out = "Final";
@@ -207,6 +237,36 @@ std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std
   if (out.empty())
     out = s.short_detail.empty() ? "In Progress" : s.short_detail;
   return out;
+}
+
+std::string live_ticker(LiveShow show, const std::string &league_word, const GameSnapshot &s, const TickerOptions &o,
+                        const std::string &kickoff_local, const std::string &base) {
+  if (show == LiveShow::IDLE)
+    return "No " + league_word + "games scheduled";
+  // Between picking a game and its first poll there is nothing to describe.
+  if (show != LiveShow::MY_TEAM && (!s.valid || s.state == GameState::NOT_FOUND))
+    return "Looking for a live " + league_word + "game";
+  switch (show) {
+    case LiveShow::LATER_TODAY:
+    case LiveShow::NEXT_GAME: {
+      if (s.state != GameState::PRE)
+        return base;  // it kicked off between the scan and this poll
+      std::string when = kickoff_local.empty() ? s.short_detail : kickoff_local;
+      // "Today 2:30 PM" says nothing the heading does not: keep the time.
+      if (show == LiveShow::LATER_TODAY && when.rfind("Today ", 0) == 0)
+        when = when.substr(6);
+      // Live cards are oriented around the away team, so "team at opp".
+      std::string out = "Next " + league_word + "game: " + s.team_abbr + " at " + s.opp_abbr;
+      if (!when.empty())
+        out += ", " + when;
+      add_pre_details(out, s, o);
+      return out;
+    }
+    case LiveShow::FINAL_TODAY:
+      return s.state == GameState::POST ? "Today: " + base : base;
+    default:
+      return base;
+  }
 }
 
 static std::string clock_12h(const struct tm &t) {

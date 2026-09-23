@@ -248,6 +248,9 @@ script:
       - lambda: |-
           // Toggle between the game layout and the "no game" layout
           if (game_state == "NOT_FOUND" || game_state == "BYE" || game_state == "") {
+            // No clock yet (NTP not answering): say that, not "No upcoming game".
+            const bool clockless = status_text.rfind("Waiting for the clock", 0) == 0;
+            lv_label_set_text(id(tt_no_game_msg_lbl), clockless ? "Waiting for the clock" : "No upcoming game");
             lv_obj_add_flag(id(tt_game_container), LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(id(tt_no_game_container), LV_OBJ_FLAG_HIDDEN);
           } else {
@@ -356,7 +359,7 @@ lvgl:
                   y: 33
                   width: 32
                   text_align: CENTER
-                  text: "----"
+                  text: ""
                   styles: ["tt_st_team_text"]
 
               - label:
@@ -365,7 +368,7 @@ lvgl:
                   y: 33
                   width: 32
                   text_align: CENTER
-                  text: "----"
+                  text: ""
                   styles: ["tt_st_team_text"]
 
               - label:
@@ -374,7 +377,7 @@ lvgl:
                   y: 42
                   width: 32
                   text_align: CENTER
-                  text: "-"
+                  text: ""
                   styles: ["tt_st_score_text"]
 
               - label:
@@ -383,7 +386,7 @@ lvgl:
                   y: 42
                   width: 32
                   text_align: CENTER
-                  text: "-"
+                  text: ""
                   styles: ["tt_st_score_text"]
 
               - label:
@@ -503,7 +506,7 @@ lvgl:
                   width: 64
                   text_align: CENTER
                   long_mode: SCROLL_CIRCULAR
-                  text: "Loading"
+                  text: ""
                   styles: ["tt_st_status_text"]
 
         # Full-screen score splash (TOUCHDOWN! etc), shown briefly on scores

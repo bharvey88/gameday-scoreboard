@@ -7,6 +7,8 @@
 
 #include "espn_parse.h"
 #include "favorites.h"
+#include "idle.h"
+#include "weather.h"
 
 using namespace espn;
 
@@ -308,30 +310,141 @@ static void test_upcoming() {
 
 static void test_live_games() {
   std::string json = slurp("fixtures/scoreboard_ncaa_live.json");
-  std::vector<LiveGame> games;
-  CHECK(parse_live_games(json, games));
-  CHECK(games.size() >= 1);
+  StringReader r(json);
+  ScanResult scan;
+  CHECK(parse_scan(r, scan));
+  CHECK_EQ(scan.events, (size_t) 99);
+  CHECK_EQ(scan.live.size(), (size_t) 18);
+  CHECK_EQ(scan.finals.size(), (size_t) 45);
+  CHECK_EQ(scan.week, 1);
   bool found = false;
-  for (const auto &g : games) {
+  for (const auto &g : scan.live) {
     if (g.event_id == kLiveEvent) {
       found = true;
       CHECK_EQ(g.away_abbr, std::string("BOIS"));
       CHECK_EQ(g.home_abbr, std::string("ORE"));
       CHECK_EQ(g.away_id, kBoise);
+      CHECK_EQ(g.home_id, kOregon);
       CHECK(g.group != 0);
+      CHECK(g.state == GameState::IN);
+      CHECK_EQ(g.kickoff_epoch, parse_iso8601_z("2026-09-05T19:30Z"));
     }
   }
   CHECK(found);
-  std::vector<LiveGame> none;
+  found = false;
+  for (const auto &g : scan.finals)
+    found = found || (g.event_id == kPostEvent && g.away_id == kBallState && g.home_id == kOhioState);
+  CHECK(found);
+  // The earliest game that has not started: later today, kickoff and all.
+  CHECK(scan.later.state == GameState::PRE);
+  CHECK_EQ(scan.later.event_id, std::string("401856668"));
+  CHECK_EQ(scan.later.kickoff_epoch, parse_iso8601_z("2026-09-05T23:00Z"));
+
+  // Finals until midnight local: the fixture's week view also carries last
+  // week's and Thursday's games, which must not rotate on Saturday.
+  int64_t now = parse_iso8601_z("2026-09-05T22:00Z");
+  CHECK_EQ(finals_today(scan.finals, now, -5 * 3600).size(), (size_t) 18);
+  // 11:30 PM Central is still Saturday; 12:30 AM is Sunday and they are gone.
+  CHECK_EQ(finals_today(scan.finals, parse_iso8601_z("2026-09-06T04:30Z"), -5 * 3600).size(), (size_t) 18);
+  CHECK_EQ(finals_today(scan.finals, parse_iso8601_z("2026-09-06T05:30Z"), -5 * 3600).size(), (size_t) 0);
+  CHECK_EQ(local_day(-1, 0), (int64_t) -1);
+
+  // All-pre week: nothing live or final, the first game is next, week noted.
   std::string nfl = slurp("fixtures/scoreboard_nfl.json");
-  CHECK(parse_live_games(nfl, none));
-  CHECK_EQ(none.size(), (size_t) 0);
-  CHECK(scan_url(League::NFL, parse_iso8601_z("2026-09-14T01:00Z")).find("dates=20260913") != std::string::npos);
-  CHECK(scan_url(League::NCAA, 0).find("groups=80") != std::string::npos);
+  StringReader rn(nfl);
+  ScanResult none;
+  CHECK(parse_scan(rn, none));
+  CHECK_EQ(none.live.size(), (size_t) 0);
+  CHECK_EQ(none.finals.size(), (size_t) 0);
+  CHECK_EQ(none.week, 1);
+  CHECK(none.later.state == GameState::PRE);
+  CHECK_EQ(none.later.event_id, std::string(kNflEvent));
+  CHECK_EQ(none.later.away_abbr, std::string("NE"));
+  CHECK_EQ(none.later.home_abbr, std::string("SEA"));
+
+  std::string junk = "{\"events\":[{\"id\":";
+  StringReader rj(junk);
+  ScanResult bad;
+  CHECK(!parse_scan(rj, bad));
+  std::string noevents = "{\"leagues\":[]}";
+  StringReader rne(noevents);
+  CHECK(!parse_scan(rne, bad));
+  // Whitespace around the key, as NWS pretty-prints its JSON.
+  std::string spaced = "{\"week\": {\"number\": 3}, \"events\" :\n [ ]}";
+  StringReader rs(spaced);
+  CHECK(parse_scan(rs, bad));
+  CHECK_EQ(bad.events, (size_t) 0);
+
+  CHECK_EQ(week_url(League::NFL, 0), std::string("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"));
+  CHECK_EQ(week_url(League::NFL, 4), std::string("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=4"));
+  CHECK_EQ(week_url(League::NCAA, 0), std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80"));
+  CHECK_EQ(week_url(League::NCAA, 5), std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&week=5"));
+  // Sunday 9 PM Eastern (EDT, -4 h) is still Sunday the 13th.
+  CHECK(scan_url(League::NFL, parse_iso8601_z("2026-09-14T01:00Z"), -4 * 3600).find("dates=20260913") != std::string::npos);
+  CHECK(scan_url(League::NCAA, 0, 0).find("groups=80") != std::string::npos);
+  // Saturday 10:30 PM Pacific (PDT, -7 h) is 05:30Z Sunday and already
+  // Sunday in the East: the scan must still ask for Saturday's games.
+  int64_t late_west = parse_iso8601_z("2026-09-06T05:30Z");
+  CHECK(scan_url(League::NCAA, late_west, -7 * 3600).find("dates=20260905") != std::string::npos);
+  CHECK(scan_url(League::NCAA, late_west, -4 * 3600).find("dates=20260906") != std::string::npos);
+  // Past midnight in Europe it is the local date too.
+  CHECK(scan_url(League::NFL, parse_iso8601_z("2026-09-13T22:30Z"), 2 * 3600).find("dates=20260914") != std::string::npos);
   // neutral splashes name both sides
   CHECK_EQ(decide_splash(live(0, 0), live(6, 0), true, true).text, std::string("DAL TOUCHDOWN"));
   CHECK_EQ(decide_splash(live(0, 0), live(0, 3), true, true).text, std::string("PHI FIELD GOAL"));
   CHECK_EQ(decide_splash(live(20, 21), live(20, 21, GameState::POST), true, true).text, std::string("PHI WINS!"));
+}
+
+static void test_live_precedence() {
+  LiveInputs in;
+  CHECK(live_precedence(in) == LiveShow::FETCH_NEXT);  // nothing known yet: ask for the week
+  in.next = NextState::NONE;
+  CHECK(live_precedence(in) == LiveShow::IDLE);
+  in.next = NextState::FOUND;
+  CHECK(live_precedence(in) == LiveShow::NEXT_GAME);
+  in.finals_today = 3;
+  CHECK(live_precedence(in) == LiveShow::FINAL_TODAY);
+  in.later_today = true;
+  CHECK(live_precedence(in) == LiveShow::LATER_TODAY);  // a kickoff to come beats a final
+  in.any_live = true;
+  CHECK(live_precedence(in) == LiveShow::LIVE);
+  // The v1.4.0 behavior, kept as a setting: live first, else the saved team.
+  LiveInputs mine;
+  mine.my_team_fallback = true;
+  mine.later_today = true;
+  mine.finals_today = 2;
+  CHECK(live_precedence(mine) == LiveShow::MY_TEAM);
+  mine.any_live = true;
+  CHECK(live_precedence(mine) == LiveShow::LIVE);
+  // Finals need no next-game lookup.
+  LiveInputs fin;
+  fin.finals_today = 1;
+  CHECK(live_precedence(fin) == LiveShow::FINAL_TODAY);
+
+  TickerOptions o;
+  GameSnapshot pre = live(0, 0, GameState::PRE);
+  pre.team_abbr = "UGA";
+  pre.opp_abbr = "BAMA";
+  pre.odds = "BAMA -3";
+  pre.tv = "CBS";
+  CHECK_EQ(live_ticker(LiveShow::LATER_TODAY, "college ", pre, o, "Today 2:30 PM", "x"),
+           std::string("Next college game: UGA at BAMA, 2:30 PM | BAMA -3 | CBS"));
+  CHECK_EQ(live_ticker(LiveShow::NEXT_GAME, "", pre, o, "Thu 6:30 PM", "x"),
+           std::string("Next game: UGA at BAMA, Thu 6:30 PM | BAMA -3 | CBS"));
+  TickerOptions no_odds;
+  no_odds.odds = false;
+  CHECK_EQ(live_ticker(LiveShow::NEXT_GAME, "NFL ", pre, no_odds, "Thu 6:30 PM", "x"),
+           std::string("Next NFL game: UGA at BAMA, Thu 6:30 PM"));
+  GameSnapshot fin_g = live(24, 10, GameState::POST);
+  CHECK_EQ(live_ticker(LiveShow::FINAL_TODAY, "college ", fin_g, o, "", "Final | DAL 2-0"),
+           std::string("Today: Final | DAL 2-0"));
+  CHECK_EQ(live_ticker(LiveShow::IDLE, "college ", GameSnapshot{}, o, "", "No upcoming game"),
+           std::string("No college games scheduled"));
+  CHECK_EQ(live_ticker(LiveShow::NONE, "NFL ", GameSnapshot{}, o, "", "No upcoming game"),
+           std::string("Looking for a live NFL game"));
+  CHECK_EQ(live_ticker(LiveShow::LIVE, "", live(7, 0), o, "", "base"), std::string("base"));
+  // Never an apology, never the saved team's name.
+  CHECK(live_ticker(LiveShow::MY_TEAM, "college ", pre, o, "", "Sat 2:30 PM").find("showing") == std::string::npos);
 }
 
 static void test_clock_text() {
@@ -505,6 +618,208 @@ static void test_schedule_due() {
   CHECK(schedule_due(true, false, before_wrap + 1000u + kSix, before_wrap, kSix));
 }
 
+static void test_team_schedule() {
+  // BC's first game is already final: a 34-15 loss at Cincinnati.
+  std::string json = slurp("fixtures/schedule_ncaa_bc.json");
+  TeamSchedule bc;
+  CHECK(parse_team_schedule(json, 103, 4, bc));
+  CHECK(bc.valid);
+  CHECK(bc.last.valid);
+  CHECK_EQ(bc.last.opp_abbr, std::string("CIN"));
+  CHECK_EQ(bc.last.us, 15);
+  CHECK_EQ(bc.last.them, 34);
+  CHECK(!bc.last.home);
+  CHECK_EQ(result_line(bc.last), std::string("L 15-34 at CIN"));
+  CHECK_EQ(bc.group, (uint32_t) 1);
+  CHECK_EQ(bc.upcoming.size(), (size_t) 4);
+  CHECK_EQ(bc.upcoming[0].opp_abbr, std::string("RUTG"));
+
+  // DAL: nothing played yet, record and standing from the team block.
+  std::string dal_json = slurp("fixtures/schedule_nfl_dal.json");
+  TeamSchedule dal;
+  CHECK(parse_team_schedule(dal_json, 6, 2, dal));
+  CHECK(!dal.last.valid);
+  CHECK_EQ(result_line(dal.last), std::string(""));
+  CHECK_EQ(dal.record, std::string("0-0"));
+  CHECK_EQ(dal.color, std::string("002a5c"));
+  CHECK_EQ(dal.standing, std::string("1st in NFC East"));
+  CHECK_EQ(dal.group, (uint32_t) 1);
+  CHECK_EQ(dal.upcoming.size(), (size_t) 2);
+  CHECK_EQ(dal.upcoming[0].opp_abbr, std::string("NYG"));
+
+  GameResult r;
+  r.valid = true;
+  r.opp_abbr = "WSH";
+  r.us = 37;
+  r.them = 20;
+  r.home = true;
+  CHECK_EQ(result_line(r), std::string("W 37-20 vs WSH"));
+  r.home = false;
+  r.neutral = true;
+  r.us = 20;
+  CHECK_EQ(result_line(r), std::string("T 20-20 vs WSH"));
+}
+
+static void test_standings() {
+  std::string nfl = slurp("fixtures/standings_nfl_nfc_east.json");
+  StringReader r(nfl);
+  Standings st;
+  CHECK(parse_standings(r, 20, st));
+  CHECK_EQ(st.title, std::string("NFC East"));
+  CHECK_EQ(st.rows.size(), (size_t) 4);
+  CHECK_EQ(st.rows[0].abbr, std::string("PHI"));
+  CHECK_EQ(st.rows[0].record, std::string("2-0"));
+  CHECK_EQ(st.rows[2].abbr, std::string("DAL"));
+  CHECK_EQ(st.rows[2].team_id, (uint32_t) 6);
+  CHECK_EQ(st.rows[3].record, std::string("0-2"));
+
+  // A conference: the short name, overall record out of ~100 stats per team.
+  std::string acc = slurp("fixtures/standings_ncaa_acc.json");
+  StringReader ra(acc);
+  Standings conf;
+  CHECK(parse_standings(ra, 20, conf));
+  CHECK_EQ(conf.title, std::string("ACC"));
+  CHECK_EQ(conf.rows.size(), (size_t) 6);
+  CHECK_EQ(conf.rows[0].abbr, std::string("MIA"));
+  CHECK_EQ(conf.rows[0].record, std::string("3-0"));
+  CHECK_EQ(conf.rows[5].abbr, std::string("CLEM"));
+  CHECK_EQ(conf.rows[5].record, std::string("2-1"));
+  // The cap stops the download early.
+  StringReader rc(acc);
+  Standings capped;
+  CHECK(parse_standings(rc, 2, capped));
+  CHECK_EQ(capped.rows.size(), (size_t) 2);
+  CHECK(rc.total() < acc.size() / 2);
+
+  std::string stub = "{\"fullViewLink\":{\"text\":\"Full Standings\"}}";
+  StringReader rs(stub);
+  Standings none;
+  CHECK(!parse_standings(rs, 20, none));
+  CHECK_EQ(standings_url(League::NFL, 1), std::string("https://site.api.espn.com/apis/v2/sports/football/nfl/standings?group=1"));
+  CHECK_EQ(standings_url(League::NCAA, 8), std::string("https://site.api.espn.com/apis/v2/sports/football/college-football/standings?group=8"));
+}
+
+static void test_weather() {
+  std::string pts = slurp("fixtures/nws_points.json");
+  std::string grid;
+  CHECK(nws::parse_points(pts, grid));
+  CHECK_EQ(grid, std::string("FWD/86,112"));
+  CHECK_EQ(nws::hourly_url(grid), std::string("https://api.weather.gov/gridpoints/FWD/86,112/forecast/hourly"));
+  CHECK_EQ(nws::points_url(32.95371f, -96.89032f), std::string("https://api.weather.gov/points/32.9537,-96.8903"));
+  std::string bad_grid;
+  std::string not_found = "{\"status\":404}";
+  CHECK(!nws::parse_points(not_found, bad_grid));
+
+  // Pretty-printed like the service sends it; 30 hours in the fixture.
+  std::string hourly = slurp("fixtures/nws_hourly.json");
+  StringReader r(hourly);
+  nws::Weather w;
+  CHECK(nws::parse_hourly(r, w));
+  CHECK(w.valid);
+  CHECK_EQ(w.temp, 99);
+  CHECK_EQ(w.condition, std::string("Mostly Sunny"));
+  CHECK_EQ(w.high, 100);
+  CHECK_EQ(w.low, 76);
+  CHECK_EQ(w.unit, std::string("F"));
+  CHECK(r.total() < hourly.size());  // the rest of the week is never read
+  StringReader r2(hourly);
+  nws::Weather hour;
+  CHECK(nws::parse_hourly(r2, hour, 1));
+  CHECK_EQ(hour.high, 99);
+  CHECK_EQ(hour.low, 99);
+  std::string empty = "{\"properties\": {\"periods\": []}}";
+  StringReader re(empty);
+  nws::Weather none;
+  CHECK(!nws::parse_hourly(re, none));
+}
+
+static void test_idle() {
+  using namespace idle;
+  // Only the enabled screens that have something to show, in order, wrapping.
+  uint8_t on = bit(CLOCK) | bit(COUNTDOWN) | bit(WEATHER);
+  uint8_t have = bit(CLOCK) | bit(COUNTDOWN) | bit(STANDINGS);
+  CHECK_EQ(next_screen(on, have, -1), (int) CLOCK);
+  CHECK_EQ(next_screen(on, have, CLOCK), (int) COUNTDOWN);
+  CHECK_EQ(next_screen(on, have, COUNTDOWN), (int) CLOCK);  // weather has no data, standings is off
+  CHECK_EQ(next_screen(on, have | bit(WEATHER), COUNTDOWN), (int) WEATHER);
+  // Clock turned off and countdown has nothing: still the clock, never dark.
+  CHECK_EQ(next_screen(bit(COUNTDOWN), bit(CLOCK), CLOCK), (int) CLOCK);
+  CHECK_EQ(next_screen(bit(RECORD), ALL_SCREENS, RECORD), (int) RECORD);
+  CHECK_EQ(DEFAULT_SCREENS, (uint8_t) 3);
+  CHECK_EQ(std::string(screen_name(STANDINGS)), std::string("standings"));
+  CHECK_EQ(std::string(screen_name(9)), std::string(""));
+
+  CHECK_EQ(countdown_text(3 * 86400 + 14 * 3600 + 22 * 60 + 5, true), std::string("3d 14h 22m"));
+  CHECK_EQ(countdown_text(3 * 86400 + 14 * 3600 + 22 * 60 + 5, false), std::string("3d 14h"));
+  CHECK_EQ(countdown_text(14 * 3600 + 2 * 60, false), std::string("14h 02m"));
+  CHECK_EQ(countdown_text(22 * 60 + 15, true), std::string("22:15"));
+  CHECK_EQ(countdown_text(59, false), std::string("0:59"));
+  CHECK_EQ(countdown_text(0, true), std::string("Kickoff"));
+
+  struct tm t = {};
+  t.tm_hour = 19;
+  t.tm_min = 42;
+  t.tm_wday = 2;
+  t.tm_mon = 8;
+  t.tm_mday = 23;
+  CHECK_EQ(clock_text(t), std::string("7:42"));
+  t.tm_hour = 0;
+  t.tm_min = 5;
+  CHECK_EQ(clock_text(t), std::string("12:05"));
+  CHECK_EQ(date_text(t), std::string("Tue Sep 23"));
+
+  CHECK_EQ(standings_page(4, 4, 100, 20), (size_t) 0);
+  CHECK_EQ(standings_page(17, 4, 0, 20), (size_t) 0);
+  CHECK_EQ(standings_page(17, 4, 20, 20), (size_t) 1);
+  CHECK_EQ(standings_page(17, 4, 99, 20), (size_t) 4);
+  CHECK_EQ(standings_page(17, 4, 100, 20), (size_t) 0);  // five pages, wraps
+}
+
+static void test_scan_early_stop() {
+  // Saturday 5 PM Eastern: the fixture lists the games in progress, then the
+  // day's finals, then the evening kickoffs (23:00Z onwards), then last
+  // week's games. Nothing after the first evening kickoff can have started.
+  std::string json = slurp("fixtures/scoreboard_ncaa_live.json");
+  int64_t now = parse_iso8601_z("2026-09-05T22:00Z");
+  StringReader r(json);
+  ScanResult scan;
+  CHECK(parse_scan(r, scan, now));
+  CHECK(scan.stopped);
+  CHECK_EQ(scan.live.size(), (size_t) 18);
+  CHECK_EQ(finals_today(scan.finals, now, -5 * 3600).size(), (size_t) 18);  // every final of the day
+  CHECK_EQ(scan.later.event_id, std::string("401856668"));
+  CHECK_EQ(scan.events, (size_t) 37);
+  CHECK(r.total() < json.size() / 2);
+
+  // A game a few minutes late to start does not end the read: 22:45Z is
+  // inside the margin of the 23:00Z kickoffs, so those are read on to the
+  // first one past 23:15Z.
+  StringReader r2(json);
+  ScanResult late;
+  CHECK(parse_scan(r2, late, parse_iso8601_z("2026-09-05T22:45Z")));
+  CHECK(late.stopped);
+  CHECK(late.events > 37);
+  CHECK_EQ(late.live.size(), (size_t) 18);
+  CHECK_EQ(late.later.event_id, std::string("401856668"));
+
+  // No clock given: the whole document, as before.
+  StringReader r3(json);
+  ScanResult all;
+  CHECK(parse_scan(r3, all));
+  CHECK(!all.stopped);
+  CHECK_EQ(all.events, (size_t) 99);
+
+  // A week view where every game is ahead: the first one ends the read.
+  std::string nfl = slurp("fixtures/scoreboard_nfl.json");
+  StringReader rn(nfl);
+  ScanResult week;
+  CHECK(parse_scan(rn, week, parse_iso8601_z("2026-09-08T12:00Z")));
+  CHECK(week.stopped);
+  CHECK_EQ(week.events, (size_t) 1);
+  CHECK_EQ(week.later.event_id, std::string(kNflEvent));
+  CHECK_EQ(week.week, 1);
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -516,12 +831,18 @@ int main() {
   test_status_text();
   test_kickoff_label();
   test_live_games();
+  test_live_precedence();
   test_upcoming();
   test_clock_text();
   test_color();
   test_favorites();
   test_schedule_league();
   test_schedule_due();
+  test_team_schedule();
+  test_standings();
+  test_weather();
+  test_idle();
+  test_scan_early_stop();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

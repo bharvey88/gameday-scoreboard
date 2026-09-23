@@ -22,6 +22,10 @@
 # boot button hold shows the full address instead: On your phone, open /
 # gameday.local / or 10.10.10.97 / then pick your team.
 #
+# None of those hides the overlay before there is something true behind it:
+# the first board from a real fetch, or the clock once the time is known
+# (gameday's content_ready). Until then the lines stay up and the bar moves.
+#
 # Two more states, event-driven off esp32_improv (Bluetooth setup) instead of
 # the WiFi poll, since that's how the Game Day app actually provisions a
 # panel: SETUP / open the / Game Day app while advertising, JOINING / Wi-Fi
@@ -48,6 +52,10 @@ globals:
   - id: boot_last_connected_ms
     type: uint32_t
     initial_value: '0'
+  # A hide was asked for before there was content: do it on content_ready.
+  - id: boot_hide_waiting
+    type: bool
+    initial_value: 'false'
 
 script:
   # Positions and fonts for the current panel width
@@ -156,10 +164,11 @@ script:
             } else {
               // Normal connect: point at the Game Day app first, the
               // hostname is only a fallback for typing the address by hand.
+              const bool busy = !id(gameday_ctl).content_ready();
               if (wide)
-                id(boot_set_lines).execute("GAME DAY APP", "or visit", id(gameday_ctl).hostname() + ".local", "", false);
+                id(boot_set_lines).execute("GAME DAY APP", "or visit", id(gameday_ctl).hostname() + ".local", "", busy);
               else
-                id(boot_set_lines).execute("GAME DAY", "APP", id(gameday_ctl).hostname() + ".local", "", false);
+                id(boot_set_lines).execute("GAME DAY", "APP", id(gameday_ctl).hostname() + ".local", "", busy);
             }
             if (id(boot_ip_shown_ms) == 0) {
               id(boot_ip_shown_ms) = millis() == 0 ? 1 : millis();
@@ -226,11 +235,20 @@ script:
                 id: boot_refresh
                 via_button: false
           else:
-            - component.suspend: boot_check
-            - component.suspend: boot_anim
-            - lvgl.obj.update:
-                id: boot_overlay
-                hidden: true
+            - if:
+                condition:
+                  lambda: 'return !id(gameday_ctl).content_ready();'
+                then:
+                  # Nothing behind the overlay yet: keep it, and let
+                  # content_ready (gameday-common.yaml) finish the hide.
+                  - lambda: 'id(boot_hide_waiting) = true;'
+                else:
+                  - lambda: 'id(boot_hide_waiting) = false;'
+                  - component.suspend: boot_check
+                  - component.suspend: boot_anim
+                  - lvgl.obj.update:
+                      id: boot_overlay
+                      hidden: true
 
   # Boot button: bring the address back for 20 seconds
   - id: boot_show_address
