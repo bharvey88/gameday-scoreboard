@@ -1,3 +1,8 @@
+// Local override of ESPHome 2026.8.2 esphome/components/esp32_improv
+// (ESPHome is GPLv3 for C++, MIT for Python; https://github.com/esphome/esphome).
+// Game Day change: answers Improv RPC 0x04 (Get Wi-Fi Networks) over BLE.
+// Every change from upstream sits between "GAMEDAY: begin" and "GAMEDAY: end".
+
 #include "esp32_improv_component.h"
 
 #include "esphome/components/bytebuffer/bytebuffer.h"
@@ -12,6 +17,12 @@
 #endif
 
 #ifdef USE_ESP32
+
+// GAMEDAY: begin
+#include <esp_wifi.h>
+
+#include <algorithm>
+// GAMEDAY: end
 
 namespace esphome::esp32_improv {
 
@@ -30,6 +41,17 @@ static constexpr uint8_t IMPROV_SERVICE_DATA_SIZE = 8;
 static constexpr uint8_t IMPROV_PROTOCOL_ID_1 = 0x77;  // 'P' << 1 | 'R' >> 7
 static constexpr uint8_t IMPROV_PROTOCOL_ID_2 = 0x46;  // 'I' << 1 | 'M' >> 7
 
+// GAMEDAY: begin (Get Wi-Fi Networks, RPC 0x04)
+// A scan that finished this recently is reused instead of starting another.
+static constexpr uint32_t NETWORKS_FRESH_MS = 15000;
+// Give up waiting for a scan after this long and send whatever results exist.
+static constexpr uint32_t NETWORKS_SCAN_TIMEOUT_MS = 10000;
+// Every result goes out on the same characteristic, so each notification
+// replaces the last one. Leave the phone time to receive each before the next.
+static constexpr uint32_t NETWORKS_SEND_INTERVAL_MS = 100;
+static constexpr size_t NETWORKS_MAX = 20;
+// GAMEDAY: end
+
 ESP32ImprovComponent::ESP32ImprovComponent() { global_improv_component = this; }
 
 void ESP32ImprovComponent::setup() {
@@ -43,7 +65,11 @@ void ESP32ImprovComponent::setup() {
     });
   }
 #endif
-  global_ble_server->on_disconnect([this](uint16_t conn_id) { this->set_error_(improv::ERROR_NONE); });
+  global_ble_server->on_disconnect([this](uint16_t conn_id) {
+    this->set_error_(improv::ERROR_NONE);
+    this->cancel_wifi_networks_();  // GAMEDAY
+  });
+  wifi::global_wifi_component->add_scan_results_listener(this);  // GAMEDAY
 
 #ifdef USE_PROVISIONING
   if (provisioning::global_provisioning_manager != nullptr) {
@@ -105,6 +131,7 @@ void ESP32ImprovComponent::loop() {
 #endif
     }
     this->incoming_data_.clear();
+    this->cancel_wifi_networks_();  // GAMEDAY
     return;
   }
   if (this->service_ == nullptr) {
@@ -117,6 +144,15 @@ void ESP32ImprovComponent::loop() {
   if (!this->incoming_data_.empty())
     this->process_incoming_data_();
   uint32_t now = App.get_loop_component_start_time();
+
+  // GAMEDAY: begin
+  if (this->networks_wait_scan_ && now - this->networks_scan_start_ > NETWORKS_SCAN_TIMEOUT_MS) {
+    ESP_LOGW(TAG, "Wi-Fi scan did not finish; sending the last results");
+    this->queue_wifi_networks_();
+  }
+  if (this->networks_pending_)
+    this->send_next_wifi_network_(now);
+  // GAMEDAY: end
 
   // Check if we need to update advertising type
   if (this->state_ != improv::STATE_STOPPED && this->state_ != improv::STATE_PROVISIONED) {
@@ -182,6 +218,7 @@ void ESP32ImprovComponent::loop() {
     }
     case improv::STATE_PROVISIONED: {
       this->incoming_data_.clear();
+      this->cancel_wifi_networks_();  // GAMEDAY
       this->set_status_indicator_state_(false);
       // Provisioning complete, no further loop execution needed
       this->disable_loop();
@@ -377,6 +414,7 @@ void ESP32ImprovComponent::process_incoming_data_() {
           this->incoming_data_.clear();
           return;
         }
+        this->cancel_wifi_networks_();  // GAMEDAY: the settings answer must not be overwritten
         wifi::WiFiAP sta{};
         sta.set_ssid(command.ssid.c_str());
         sta.set_password(command.password.c_str());
@@ -396,6 +434,12 @@ void ESP32ImprovComponent::process_incoming_data_() {
         this->incoming_data_.clear();
         this->identify_start_ = millis();
         break;
+      // GAMEDAY: begin
+      case improv::GET_WIFI_NETWORKS:
+        this->incoming_data_.clear();
+        this->handle_get_wifi_networks_();
+        break;
+      // GAMEDAY: end
       default:
         ESP_LOGW(TAG, "Unknown Improv payload");
         this->set_error_(improv::ERROR_UNKNOWN_RPC);
@@ -525,6 +569,115 @@ improv::State ESP32ImprovComponent::get_initial_state_() const {
   return improv::STATE_AUTHORIZED;
 #endif
 }
+
+// GAMEDAY: begin (Get Wi-Fi Networks, RPC 0x04)
+//
+// Answered the way improv_serial answers it: one RPC result per network,
+// [0x04][len][ssid][rssi][YES|NO][checksum], then a result with no strings to
+// end the list. Networks are deduplicated by SSID (strongest access point
+// wins), sorted strongest first and capped at NETWORKS_MAX.
+void ESP32ImprovComponent::handle_get_wifi_networks_() {
+  if (this->networks_pending_ || this->networks_wait_scan_) {
+    ESP_LOGD(TAG, "Wi-Fi network list already on its way");
+    return;
+  }
+  const uint32_t now = millis();
+  auto *wifi = wifi::global_wifi_component;
+  bool fresh = this->last_scan_done_ != 0 && now - this->last_scan_done_ < NETWORKS_FRESH_MS &&
+               !wifi->get_scan_result().empty();
+  // Never scan in the middle of joining a network, or with Wi-Fi off.
+  if (fresh || this->state_ == improv::STATE_PROVISIONING || wifi->is_disabled()) {
+    this->queue_wifi_networks_();
+    return;
+  }
+  // Start the scan in the driver directly rather than with start_scanning():
+  // that would take over the Wi-Fi component's state machine, which may be in
+  // the middle of a connection attempt. The component stores the results of
+  // any scan (Improv keeps it storing all of them) and calls
+  // on_wifi_scan_results() when it is done. Same settings as its own scans.
+  wifi_scan_config_t config{};
+  config.show_hidden = false;
+  config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+  config.scan_time.active.min = 100;
+  config.scan_time.active.max = 300;
+  esp_err_t err = esp_wifi_scan_start(&config, false);
+  if (err != ESP_OK) {
+    // Busy (a scan or connection attempt is running) or not in station mode.
+    ESP_LOGD(TAG, "Wi-Fi scan not started (%s); sending the last results", esp_err_to_name(err));
+    this->queue_wifi_networks_();
+    return;
+  }
+  ESP_LOGD(TAG, "Scanning for Wi-Fi networks");
+  this->networks_wait_scan_ = true;
+  this->networks_scan_start_ = App.get_loop_component_start_time();
+}
+
+void ESP32ImprovComponent::on_wifi_scan_results(const wifi::wifi_scan_vector_t<wifi::WiFiScanResult> &results) {
+  this->last_scan_done_ = std::max<uint32_t>(millis(), 1);
+  if (this->networks_wait_scan_)
+    this->queue_wifi_networks_();
+}
+
+void ESP32ImprovComponent::queue_wifi_networks_() {
+  this->networks_wait_scan_ = false;
+  this->networks_to_send_.clear();
+  this->networks_sent_ = 0;
+
+  const auto &results = wifi::global_wifi_component->get_scan_result();
+  std::vector<const wifi::WiFiScanResult *> best;
+  best.reserve(std::min<size_t>(results.size(), 32));
+  for (const auto &res : results) {
+    if (res.get_is_hidden() || res.get_ssid().empty())
+      continue;
+    bool seen = false;
+    for (auto &kept : best) {
+      if (strcmp(kept->get_ssid().c_str(), res.get_ssid().c_str()) == 0) {
+        if (res.get_rssi() > kept->get_rssi())
+          kept = &res;
+        seen = true;
+        break;
+      }
+    }
+    if (!seen)
+      best.push_back(&res);
+  }
+  std::sort(best.begin(), best.end(),
+            [](const wifi::WiFiScanResult *a, const wifi::WiFiScanResult *b) { return a->get_rssi() > b->get_rssi(); });
+  if (best.size() > NETWORKS_MAX)
+    best.resize(NETWORKS_MAX);
+
+  this->networks_to_send_.reserve(best.size());
+  for (const auto *res : best) {
+    char rssi_buf[5];  // int8_t: -128 to 127, max 4 chars + null
+    *int8_to_str(rssi_buf, res->get_rssi()) = '\0';
+    this->networks_to_send_.push_back(improv::build_rpc_response(
+        improv::GET_WIFI_NETWORKS, {std::string(res->get_ssid().c_str()), rssi_buf, YESNO(res->get_with_auth())}));
+  }
+  ESP_LOGD(TAG, "Sending %u Wi-Fi networks (%u scan results)", (unsigned) this->networks_to_send_.size(),
+           (unsigned) results.size());
+  this->networks_pending_ = true;
+}
+
+void ESP32ImprovComponent::send_next_wifi_network_(uint32_t now) {
+  if (now - this->networks_last_sent_ < NETWORKS_SEND_INTERVAL_MS)
+    return;
+  this->networks_last_sent_ = now;
+  if (this->networks_sent_ < this->networks_to_send_.size()) {
+    this->send_response_(std::move(this->networks_to_send_[this->networks_sent_++]));
+    return;
+  }
+  // A result with no strings marks the end of the list.
+  this->send_response_(improv::build_rpc_response(improv::GET_WIFI_NETWORKS, std::vector<std::string>{}));
+  this->cancel_wifi_networks_();
+}
+
+void ESP32ImprovComponent::cancel_wifi_networks_() {
+  this->networks_pending_ = false;
+  this->networks_wait_scan_ = false;
+  this->networks_sent_ = 0;
+  std::vector<std::vector<uint8_t>>().swap(this->networks_to_send_);  // give the memory back
+}
+// GAMEDAY: end
 
 ESP32ImprovComponent *global_improv_component = nullptr;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 

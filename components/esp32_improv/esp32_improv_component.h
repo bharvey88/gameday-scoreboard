@@ -1,5 +1,10 @@
 #pragma once
 
+// Local override of ESPHome 2026.8.2 esphome/components/esp32_improv
+// (ESPHome is GPLv3 for C++, MIT for Python; https://github.com/esphome/esphome).
+// Game Day change: answers Improv RPC 0x04 (Get Wi-Fi Networks) over BLE.
+// Every change from upstream sits between "GAMEDAY: begin" and "GAMEDAY: end".
+
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
@@ -32,8 +37,13 @@ namespace esphome::esp32_improv {
 
 using namespace esp32_ble_server;
 
-class ESP32ImprovComponent final : public Component, public improv_base::ImprovBase {
+// GAMEDAY: begin (scan results listener base)
+class ESP32ImprovComponent final : public Component,
+                                   public improv_base::ImprovBase,
+                                   public wifi::WiFiScanResultsListener {
  public:
+  void on_wifi_scan_results(const wifi::wifi_scan_vector_t<wifi::WiFiScanResult> &results) override;
+  // GAMEDAY: end
   ESP32ImprovComponent();
   void dump_config() override;
   void loop() override;
@@ -115,6 +125,21 @@ class ESP32ImprovComponent final : public Component, public improv_base::ImprovB
   void check_wifi_connection_();
   bool check_identify_();
   void advertise_service_data_();
+
+  // GAMEDAY: begin (Get Wi-Fi Networks, RPC 0x04)
+  void handle_get_wifi_networks_();
+  void queue_wifi_networks_();
+  void send_next_wifi_network_(uint32_t now);
+  void cancel_wifi_networks_();
+  // One pre-built RPC result per network, sent one per notification.
+  std::vector<std::vector<uint8_t>> networks_to_send_;
+  size_t networks_sent_{0};
+  bool networks_pending_{false};     // list queued, terminator not sent yet
+  bool networks_wait_scan_{false};   // 0x04 received, waiting for a scan to finish
+  uint32_t networks_scan_start_{0};  // when we started waiting for that scan
+  uint32_t networks_last_sent_{0};
+  uint32_t last_scan_done_{0};       // millis() of the last completed scan, 0 if none
+  // GAMEDAY: end
 #if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_DEBUG
   const char *state_to_string_(improv::State state);
 #endif
