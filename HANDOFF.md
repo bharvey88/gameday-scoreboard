@@ -3,6 +3,15 @@
 Companion app handoff: ~/development/gameday-scoreboard-ios/HANDOFF.md.
 Audit report both repos: ~/Claude Folder/gameday-production-audit-2026-09-12.md.
 
+## FOR THE PC SESSION (PR #17 author), read first
+
+PR #17 was reviewed adversarially and Brandon approved a restructure: a
+single playlist design, v1.5.0 = startup only (plan on branch plan-v1.5.0),
+v1.5.1 = playlist + new-panel state. Everything, including the review
+findings with file:line, is in
+`docs/superpowers/reviews/2026-09-23-pr17-review-and-new-plan.md`.
+Don't push more to #17.
+
 ## NEXT UP (from the 2026-09-23 afternoon session)
 
 1. **Bench PR #14 (v1.4.4, setup QR code) on the second panel** gameday-74de74
