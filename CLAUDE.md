@@ -9,11 +9,10 @@ controller (MoonHub75 pinout). Sibling repo: the iOS companion app at
 - Commit as `bharvey88 <8107750+bharvey88@users.noreply.github.com>`. No
   Claude credit or Co-Authored-By lines on commits or PRs. Multiline commit
   messages via `git commit -F <file>`.
-- This repo is PUBLIC. Never commit handoffs, session notes, specs, plans
-  or reviews here: only product code, CHANGELOG, README and the site.
-  Session notes live in the private app repo, in
-  ~/development/gameday-scoreboard-ios/notes/firmware-HANDOFF.md; read it
-  first and update it there at the end of every session.
+- This repo is PUBLIC and open source. Never commit handoffs, session
+  notes, specs, plans or reviews here: only product code, CHANGELOG, README
+  and the site. Maintainer notes are kept privately and loaded through a
+  gitignored CLAUDE.local.md.
 - Every parallel agent works in its own git worktree.
 - Product is not part of Apollo Automation. Brand is "Game Day Scoreboard".
 - Decisions not to reopen without Brandon: OTA with no password, `api:` with
@@ -26,5 +25,3 @@ controller (MoonHub75 pinout). Sibling repo: the iOS companion app at
   compile`, not `esphome config`, to catch C++ errors. Host tests: `make -C
   tests`. Rebuild the web bundle with the venv's python (bare python3 on
   this Mac is 3.9.6, too old) after editing firmware/web/app.js.
-
-@../gameday-scoreboard-ios/notes/firmware-HANDOFF.md

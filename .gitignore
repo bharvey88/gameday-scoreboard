@@ -9,3 +9,4 @@ firmware/build/
 
 # Design specs and plans stay out of this public repo.
 docs/superpowers/
+CLAUDE.local.md
