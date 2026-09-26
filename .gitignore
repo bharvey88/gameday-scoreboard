@@ -6,3 +6,6 @@ secrets.yaml
 __pycache__/
 build-*.log
 firmware/build/
+
+# Design specs and plans stay out of this public repo.
+docs/superpowers/
