@@ -8,6 +8,16 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.4.4
+
+- While the panel is waiting to be set up, or has lost its Wi-Fi, it now takes turns showing its message and a QR code. Point your iPhone camera at the code: it opens the Game Day app if you have it, or the setup page at gamedayscoreboard.app if you do not.
+- A panel waiting to be set up says SETUP and points you at the Game Day app again, instead of switching to the hotspot instructions half a second later. The hotspot instructions still come round in turn, for setting it up without an iPhone.
+- On two chained panels the QR code sits on the left with the words beside it, so nothing has to take turns.
+- Once a new panel joins your Wi-Fi it shows the QR code for the app instead of a fast-scrolling address. The address still takes a turn when "Show address at boot" is on, split over two lines so it stays still, and holding the boot button shows the full address for 20 seconds. A panel that already has a team shows just its address at start-up, as before, with no QR code.
+- Text on the setup screens no longer scrolls fast. The few lines that are too long to fit, like a long Wi-Fi name, now scroll slowly enough to read.
+- Holding the boot button on a panel that is not set up yet no longer blanks the screen until a restart. Off Wi-Fi, the setup and Wi-Fi lost screens now always stay up.
+- If handing the panel a new Wi-Fi password from the app fails, a panel that lost its Wi-Fi keeps saying so, instead of switching to the hotspot instructions.
+
 ## v1.4.3
 
 - The firmware no longer names a specific controller board. It runs on any ESP32-S3 HUB75 controller wired to the MoonHub75 pinout, and the update manifest moved to firmware/moonhub75/. Panels on v1.4.2 or older will not see this update by themselves: install once over USB from gamedayscoreboard.app and updates resume from there.
