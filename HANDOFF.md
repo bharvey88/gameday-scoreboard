@@ -12,6 +12,23 @@ findings with file:line, is in
 `docs/superpowers/reviews/2026-09-23-pr17-review-and-new-plan.md`.
 Don't push more to #17.
 
+## 2026-09-24 to 09-26
+
+- Test controller gameday-74de74 now drives a single 128x64 AliExpress
+  panel (HUB75, one 4-pin power socket, big 5 V supply). Flashed OTA with
+  the latest PR #16 build (664537c) and set Panels to 2: the firmware treats
+  one 128x64 panel like two chained 64x64, and it displays correctly (no
+  swapped halves, scan or color issues). Brightness 255 held fine. This is
+  the bench panel for the v1.4.5 check (NEXT UP #1): reset its Wi-Fi with an
+  11 s boot-button hold to see the 128 setup screen with the QR.
+- Thursday Night Football 09-24: the living-room chain (v1.4.3) in Live NFL
+  showed "No live NFL games, showing DEN" (the saved team's Sunday game)
+  until kickoff, then picked up GB at ATL about a minute after kickoff, 0
+  misses. The pre-kickoff card is the "later today" gap the v1.5.1 playlist
+  fixes.
+- The panel HTTP API is reachable by IP when .local lookups flake: a POST to
+  gameday-2f6a70.local timed out once while the IP worked.
+
 ## NEXT UP (from the 2026-09-23 afternoon session)
 
 1. **Bench PR #14 (v1.4.4, setup QR code) on the second panel** gameday-74de74
