@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.4.4"
+  version: "1.4.5"
   variant: "moonhub75"
 
   display_panel_width: "64"
@@ -83,7 +83,9 @@ external_components:
   - source:
       type: local
       path: ../components
-    components: [gameday, panel_layout]
+    # esp32_improv is ESPHome 2026.8.2's own, plus answering the app's
+    # "which Wi-Fi networks can you see" request (components/esp32_improv).
+    components: [gameday, panel_layout, esp32_improv]
   - source: github://pavlov-net/lvgl-page-manager@v0.3.0
     components: [lvgl_page_manager]
   # Fireworks behind the touchdown and win splashes

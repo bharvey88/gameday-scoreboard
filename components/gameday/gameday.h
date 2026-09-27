@@ -151,6 +151,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
 
  protected:
   void apply_team_(const ::espn::Team &t);
+  bool mark_setup_done_();
   void fire_action_(const std::string &name);
   void set_favorite_(uint8_t slot, uint8_t league, uint32_t id);
   void handle_set_(AsyncWebServerRequest *request);
@@ -170,7 +171,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   static constexpr uint8_t FLAG_ODDS = 8;
   static constexpr uint8_t FLAG_OPP = 16;
   static constexpr uint8_t FLAG_TZMANUAL = 32;  // timezone was picked by hand; page must not override
-  static constexpr uint8_t FLAG_SETUP = 64;     // a team has been picked at least once
+  static constexpr uint8_t FLAG_SETUP = 64;     // a team, mode or favorite has been picked at least once
   static constexpr uint8_t FLAG_NOBOOTADDR = 128;  // skip the address flash on a configured panel's boot
   static constexpr uint8_t FLAGS_DEFAULT = FLAG_DOWN | FLAG_PLAY | FLAG_ODDS | FLAG_OPP;
 
