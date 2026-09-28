@@ -36,7 +36,9 @@ static const uint32_t IN_INTERVAL = 5 * 1000;
 static const uint32_t POST_INTERVAL = MINUTE;
 static const uint32_t POST_LINGER = 30 * MINUTE;
 static const uint32_t RETRY_INTERVAL = MINUTE;
-static const uint32_t NOT_READY_INTERVAL = 5 * 1000;
+// Wi-Fi and the clock are re-checked this often at boot: every second waited
+// here is a second of boot screen.
+static const uint32_t NOT_READY_INTERVAL = 500;
 static const int64_t PRE_NEAR_SECONDS = 60 * 60;
 static const uint32_t NO_LIVE_RESCAN = 2 * MINUTE;
 // How long the loop waits on a worker task before writing it off. A job chains
@@ -597,6 +599,7 @@ void GamedayComponent::loop() {
   }
   if (!this->selects_published_) {
     this->selects_published_ = true;
+    ESP_LOGI(TAG, "Startup: Wi-Fi and clock ready at %u ms", (unsigned) millis());
     this->publish_selects_();
   }
   this->start_job_();
