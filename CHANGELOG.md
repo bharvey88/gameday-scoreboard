@@ -8,6 +8,12 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.5.0
+
+- The panel gets to your scoreboard sooner after it starts. It checks for Wi-Fi and the time every half second instead of every five, and in My team it remembers your team's next game for a day, so it can skip a download on the way.
+- The start-up screen now stays up, saying "Getting scores", until your scoreboard is ready, for up to 10 seconds after the panel joins Wi-Fi. You no longer see a board of dashes with "Loading" underneath first.
+- Changing your team shows "Getting scores" while the new team's game loads, instead of a half-empty board that says "Loading".
+
 ## v1.4.5
 
 - During Bluetooth setup the panel can now tell the Game Day app which Wi-Fi networks it can see, strongest first, so you can pick yours from a list instead of typing its name. The list needs an app version that asks for it; setup works the same as before either way.
