@@ -17,6 +17,7 @@
 
 #include "espn_parse.h"
 #include "favorites.h"
+#include "startup.h"
 
 namespace esphome {
 namespace gameday {
@@ -280,6 +281,14 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   Prefs3 prefs3_{};
   ESPPreferenceObject pref4_;
   Prefs4 prefs4_{};
+  // The team endpoint's answer for the saved team (startup.h), so a boot can
+  // skip that read and go straight to the scoreboard.
+  ESPPreferenceObject team_cache_pref_;
+  bool team_cache_tried_{false};     // one look per boot
+  bool cache_unconfirmed_{false};    // schedule_ came from the cache and no poll has confirmed it
+  bool upcoming_after_poll_{false};  // booted from the cache: season list after the first board
+  bool load_team_cache_(const ::espn::Team *team);
+  void save_team_cache_(const ::espn::Team *team);
   std::string favorite_option_(uint8_t slot) const;
   // Favorite Teams mode: one cached next-game card per set slot, in slot
   // order. The worker refreshes one entry per cycle; the main loop picks

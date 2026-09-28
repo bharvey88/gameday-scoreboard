@@ -151,6 +151,8 @@ void GamedayComponent::setup() {
     this->prefs4_.release_seconds = 30;
     this->prefs4_.collide = 0;
   }
+  this->team_cache_pref_ =
+      global_preferences->make_preference<::espn::TeamCache>(fnv1_hash("gameday_team_cache_v1"));
   this->rebuild_favorites_(false);
   this->apply_timezone_();
   this->publish_selects_();
@@ -773,6 +775,8 @@ void GamedayComponent::reset_game_() {
   this->force_schedule_ = false;
   this->upcoming_.clear();
   this->upcoming_due_ = false;
+  this->upcoming_after_poll_ = false;
+  this->cache_unconfirmed_ = false;
   this->game_ = GameSnapshot{};
   this->prev_ = GameSnapshot{};
   this->post_since_ms_ = 0;
@@ -944,6 +948,16 @@ void GamedayComponent::start_job_() {
     // In the fallback with the rescan not due: fall through to the My team
     // path below, so the card is fetched and polled by that code and not by
     // a copy of it.
+  }
+  if (!this->schedule_.valid && !this->team_cache_tried_) {
+    this->team_cache_tried_ = true;
+    if (this->load_team_cache_(j.team)) {
+      this->schedule_fetched_ms_ = now == 0 ? 1 : now;
+      this->cache_unconfirmed_ = true;
+      // Not upcoming_due_ yet: that would put the season download in front
+      // of the scoreboard, which is what the cache is here to skip.
+      this->upcoming_after_poll_ = true;
+    }
   }
   j.need_schedule = ::espn::schedule_due(this->schedule_.valid, this->force_schedule_, now,
                                          this->schedule_fetched_ms_, SCHEDULE_INTERVAL);
@@ -1160,6 +1174,8 @@ void GamedayComponent::apply_job_() {
     this->schedule_fetched_ms_ = now;
     this->force_schedule_ = false;
     this->upcoming_due_ = true;  // refreshed on the next cycle, once the board is drawn
+    this->cache_unconfirmed_ = false;
+    this->save_team_cache_(j.team);
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
@@ -1174,13 +1190,27 @@ void GamedayComponent::apply_job_() {
   }
   if (!j.game_ok) {
     this->misses_++;
+    if (this->cache_unconfirmed_) {
+      // The cached game is not on that day's scoreboard (moved, or the cache
+      // is simply wrong): read the team endpoint now, not in six hours.
+      ESP_LOGI(TAG, "Cached game not found: reading the team again");
+      this->cache_unconfirmed_ = false;
+      this->force_schedule_ = true;
+      this->schedule_next_(0);
+      return;
+    }
     this->emit_({});
     this->schedule_next_(RETRY_INTERVAL);
     return;
   }
+  this->cache_unconfirmed_ = false;
   this->prev_ = this->game_;
   this->game_ = j.game;
   this->mark_good_poll_();
+  if (this->upcoming_after_poll_) {
+    this->upcoming_after_poll_ = false;
+    this->upcoming_due_ = true;
+  }
   ::espn::Splash splash =
       ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(),
                             this->live_mode_() && !this->live_fallback_);
@@ -1287,6 +1317,30 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   this->rebuild_state_(&f);
   for (auto &cb : this->callbacks_)
     cb(f);
+}
+
+// ---- startup ------------------------------------------------------------------
+
+// Only while it can still be right (startup.h): this team, saved in the last
+// day, and a game that has not been over for hours.
+bool GamedayComponent::load_team_cache_(const ::espn::Team *team) {
+  ::espn::TeamCache c{};
+  if (team == nullptr || !this->team_cache_pref_.load(&c))
+    return false;
+  Schedule s;
+  if (!::espn::team_cache_load(c, team->league, team->espn_id, (int64_t) this->time_->timestamp_now(), s))
+    return false;
+  this->schedule_ = s;
+  ESP_LOGI(TAG, "Team info from cache: event %s kickoff %lld", s.event_id.c_str(), (long long) s.kickoff_epoch);
+  return true;
+}
+
+void GamedayComponent::save_team_cache_(const ::espn::Team *team) {
+  ::espn::TeamCache c{};
+  if (team == nullptr || !::espn::team_cache_save(this->schedule_, team->league, team->espn_id,
+                                                  (int64_t) this->time_->timestamp_now(), c))
+    return;
+  this->team_cache_pref_.save(&c);
 }
 
 // ---- demo ---------------------------------------------------------------------
