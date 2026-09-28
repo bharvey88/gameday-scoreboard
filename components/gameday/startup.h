@@ -67,4 +67,15 @@ inline bool team_cache_load(const TeamCache &c, League league, uint32_t team_id,
   return true;
 }
 
+// Once something asks the boot screen to hide, it stays up until the first
+// real scoreboard is ready, and never longer than this after that ask. Then
+// it hides over whatever the board has.
+static const uint32_t BOOT_HOLD_CAP_MS = 10 * 1000;
+
+// since_ms is millis() when the hold started; 0 means no hold is running.
+// Unsigned subtraction keeps the age right across the millis() wrap.
+inline bool boot_hold(bool board_ready, uint32_t since_ms, uint32_t now_ms) {
+  return !board_ready && since_ms != 0 && (uint32_t) (now_ms - since_ms) < BOOT_HOLD_CAP_MS;
+}
+
 }  // namespace espn

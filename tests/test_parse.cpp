@@ -564,6 +564,22 @@ static void test_team_cache() {
   CHECK(!team_cache_load(blank, League::NFL, 0, 0, s));
 }
 
+static void test_boot_hold() {
+  // Holding: no board yet, inside the cap.
+  CHECK(boot_hold(false, 1000, 1000));
+  CHECK(boot_hold(false, 1000, 1000 + BOOT_HOLD_CAP_MS - 1));
+  // The cap ends it whether or not a board came.
+  CHECK(!boot_hold(false, 1000, 1000 + BOOT_HOLD_CAP_MS));
+  // The first scoreboard ends it at once.
+  CHECK(!boot_hold(true, 1000, 1500));
+  // No hold running.
+  CHECK(!boot_hold(false, 0, 1500));
+  // millis() wraps every 49 days: the age is still right.
+  uint32_t before_wrap = 0xFFFFFFFFu - 2000u;
+  CHECK(boot_hold(false, before_wrap, 3000));
+  CHECK(!boot_hold(false, before_wrap, before_wrap + BOOT_HOLD_CAP_MS));
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -582,6 +598,7 @@ int main() {
   test_schedule_league();
   test_schedule_due();
   test_team_cache();
+  test_boot_hold();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
