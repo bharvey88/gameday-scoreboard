@@ -442,6 +442,22 @@ gameday:
           lambda: 'return x == "team_picked";'
         then:
           - script.execute: boot_hide
+    # The boot screen holds until the first scoreboard (boot.yaml, boot_hide).
+    # A team change starts a new hold; board_ready ends one, unless the boot
+    # button owns the screen (its address, or the reset warning).
+    - if:
+        condition:
+          lambda: 'return x == "board_pending";'
+        then:
+          - lambda: 'id(boot_hold_since_ms) = 0;'
+          - script.execute: boot_hide
+    - if:
+        condition:
+          lambda: |-
+            return x == "board_ready" && id(boot_hold_since_ms) != 0 && id(boot_hold_stage) < 2 &&
+                   !id(boot_show_address).is_running();
+        then:
+          - script.execute: boot_hide
     # Picking a team or a mode is somebody standing in front of a dark panel
     # wondering why nothing happened. Light it back up.
     - if:
