@@ -436,6 +436,8 @@ bool GamedayComponent::fav_choose_(int64_t now_epoch) {
   if (c.index >= 0)
     ESP_LOGI(TAG, "Favorites: showing %s%s", this->fav_[c.index].team->abbr, c.locked ? " (locked)" : "");
   this->emit_({});
+  if (this->fav_shown_ >= 0 && this->game_.valid)
+    this->mark_board_ready_();  // a kept card counts as the first board too
   return true;
 }
 
