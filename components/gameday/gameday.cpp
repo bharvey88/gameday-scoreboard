@@ -293,6 +293,10 @@ void GamedayComponent::select_mode(const std::string &option) {
     this->prefs2_.mode = i;
     this->pref2_.save(&this->prefs2_);
     ESP_LOGI(TAG, "Mode: %s", option.c_str());
+    // The new mode's first scoreboard, not the mode switch itself, ends the
+    // boot screen hold (mirrors apply_team_).
+    this->board_ready_ = false;
+    this->board_pending_ms_ = millis() == 0 ? 1 : millis();
     this->mark_setup_done_();
     if (this->mode_select_ != nullptr)
       this->mode_select_->publish_state(option);
