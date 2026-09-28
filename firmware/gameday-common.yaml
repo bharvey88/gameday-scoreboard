@@ -441,6 +441,7 @@ gameday:
         condition:
           lambda: 'return x == "team_picked";'
         then:
+          - script.stop: boot_hide_later
           - script.execute: boot_hide
     # The boot screen holds until the first scoreboard (boot.yaml, boot_hide).
     # A team change starts a new hold; board_ready ends one, unless the boot
@@ -450,7 +451,13 @@ gameday:
           lambda: 'return x == "board_pending";'
         then:
           - lambda: 'id(boot_hold_since_ms) = 0;'
-          - script.execute: boot_hide
+          - script.stop: boot_hide_later
+          - if:
+              condition:
+                lambda: |-
+                  return id(boot_hold_stage) < 2 && !id(boot_show_address).is_running();
+              then:
+                - script.execute: boot_hide
     - if:
         condition:
           lambda: |-
