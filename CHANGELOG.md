@@ -12,7 +12,7 @@ owns the panel, not for the code.
 
 - The panel gets to your scoreboard sooner after it starts. It checks for Wi-Fi and the time every half second instead of every five, and in My team it remembers your team's next game for a day, so it can skip a download on the way.
 - The start-up screen now stays up, saying "Looking up scores", until your scoreboard is ready, for up to 10 seconds. You no longer see a board of dashes with "Loading" underneath first.
-- Changing your team shows "Looking up scores" while the new team's game loads, instead of a half-empty board that says "Loading".
+- Changing your team or the mode shows "Looking up scores" while the new game loads, instead of a half-empty board that says "Loading" or "No upcoming game".
 
 ## v1.4.5
 

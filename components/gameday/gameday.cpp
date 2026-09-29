@@ -303,6 +303,7 @@ void GamedayComponent::select_mode(const std::string &option) {
     this->reset_game_();
     this->generation_++;
     this->emit_({});  // clear the board while the next fetch runs
+    this->fire_action_("board_pending");  // the boot screen holds (gameday-common.yaml)
     this->schedule_next_(0);
     // Somebody asked for a different mode, so they are looking at the panel.
     this->fire_action_("user_pick");
