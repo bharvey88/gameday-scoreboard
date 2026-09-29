@@ -36,7 +36,9 @@ static const uint32_t IN_INTERVAL = 5 * 1000;
 static const uint32_t POST_INTERVAL = MINUTE;
 static const uint32_t POST_LINGER = 30 * MINUTE;
 static const uint32_t RETRY_INTERVAL = MINUTE;
-static const uint32_t NOT_READY_INTERVAL = 5 * 1000;
+// Wi-Fi and the clock are re-checked this often at boot: every second waited
+// here is a second of boot screen.
+static const uint32_t NOT_READY_INTERVAL = 500;
 static const int64_t PRE_NEAR_SECONDS = 60 * 60;
 static const uint32_t NO_LIVE_RESCAN = 2 * MINUTE;
 // How long the loop waits on a worker task before writing it off. A job chains
@@ -149,6 +151,8 @@ void GamedayComponent::setup() {
     this->prefs4_.release_seconds = 30;
     this->prefs4_.collide = 0;
   }
+  this->team_cache_pref_ =
+      global_preferences->make_preference<::espn::TeamCache>(fnv1_hash("gameday_team_cache_v1"));
   this->rebuild_favorites_(false);
   this->apply_timezone_();
   this->publish_selects_();
@@ -289,12 +293,17 @@ void GamedayComponent::select_mode(const std::string &option) {
     this->prefs2_.mode = i;
     this->pref2_.save(&this->prefs2_);
     ESP_LOGI(TAG, "Mode: %s", option.c_str());
+    // The new mode's first scoreboard, not the mode switch itself, ends the
+    // boot screen hold (mirrors apply_team_).
+    this->board_ready_ = false;
+    this->board_pending_ms_ = millis() == 0 ? 1 : millis();
     this->mark_setup_done_();
     if (this->mode_select_ != nullptr)
       this->mode_select_->publish_state(option);
     this->reset_game_();
     this->generation_++;
     this->emit_({});  // clear the board while the next fetch runs
+    this->fire_action_("board_pending");  // the boot screen holds (gameday-common.yaml)
     this->schedule_next_(0);
     // Somebody asked for a different mode, so they are looking at the panel.
     this->fire_action_("user_pick");
@@ -428,6 +437,8 @@ bool GamedayComponent::fav_choose_(int64_t now_epoch) {
   if (c.index >= 0)
     ESP_LOGI(TAG, "Favorites: showing %s%s", this->fav_[c.index].team->abbr, c.locked ? " (locked)" : "");
   this->emit_({});
+  if (this->fav_shown_ >= 0 && this->game_.valid)
+    this->mark_board_ready_();  // a kept card counts as the first board too
   return true;
 }
 
@@ -537,6 +548,8 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
   } else if (!switched) {
     this->rebuild_state_(&this->last_fields_);  // the page's list of favorites' games
   }
+  if (this->fav_shown_ >= 0 && this->game_.valid)
+    this->mark_board_ready_();
   this->schedule_next_(0);
 }
 
@@ -597,6 +610,7 @@ void GamedayComponent::loop() {
   }
   if (!this->selects_published_) {
     this->selects_published_ = true;
+    ESP_LOGI(TAG, "Startup: Wi-Fi and clock ready at %u ms", (unsigned) millis());
     this->publish_selects_();
   }
   this->start_job_();
@@ -670,6 +684,11 @@ void GamedayComponent::apply_team_(const ::espn::Team &t) {
   this->prefs_.team_id = t.espn_id;
   this->save_prefs_();
   ESP_LOGI(TAG, "Team changed to %s", t.name);
+  // The boot screen holds for this team's first scoreboard (board_pending
+  // below). Cleared before mark_setup_done_, whose team_picked hides the
+  // setup screen through that same hold.
+  this->board_ready_ = false;
+  this->board_pending_ms_ = millis() == 0 ? 1 : millis();
   if (this->team_select_ != nullptr)
     this->team_select_->publish_state(this->team_option_());
   this->mark_setup_done_();
@@ -678,16 +697,17 @@ void GamedayComponent::apply_team_(const ::espn::Team &t) {
   this->fire_action_("user_pick");
   this->reset_game_();
   this->generation_++;  // a fetch already in flight belongs to the old team
-  // Show the new team right away; the game data follows in a second or two.
+  // Behind the boot screen: the new team's logo and name, with no "Loading"
+  // text. The game data follows in a second or two.
   GameSnapshot g;
   g.valid = true;
   g.state = GameState::PRE;
   g.team_abbr = t.abbr;
   g.team_id = t.espn_id;
   g.team_logo = ::espn::team_logo_url(t.league, t.espn_id, t.abbr);
-  g.short_detail = "Loading";
   this->game_ = g;
   this->emit_({});
+  this->fire_action_("board_pending");  // the boot screen holds (gameday-common.yaml)
   this->schedule_next_(0);
 }
 
@@ -770,6 +790,8 @@ void GamedayComponent::reset_game_() {
   this->force_schedule_ = false;
   this->upcoming_.clear();
   this->upcoming_due_ = false;
+  this->upcoming_after_poll_ = false;
+  this->cache_unconfirmed_ = false;
   this->game_ = GameSnapshot{};
   this->prev_ = GameSnapshot{};
   this->post_since_ms_ = 0;
@@ -941,6 +963,16 @@ void GamedayComponent::start_job_() {
     // In the fallback with the rescan not due: fall through to the My team
     // path below, so the card is fetched and polled by that code and not by
     // a copy of it.
+  }
+  if (!this->schedule_.valid && !this->team_cache_tried_) {
+    this->team_cache_tried_ = true;
+    if (this->load_team_cache_(j.team)) {
+      this->schedule_fetched_ms_ = now == 0 ? 1 : now;
+      this->cache_unconfirmed_ = true;
+      // Not upcoming_due_ yet: that would put the season download in front
+      // of the scoreboard, which is what the cache is here to skip.
+      this->upcoming_after_poll_ = true;
+    }
   }
   j.need_schedule = ::espn::schedule_due(this->schedule_.valid, this->force_schedule_, now,
                                          this->schedule_fetched_ms_, SCHEDULE_INTERVAL);
@@ -1117,6 +1149,7 @@ void GamedayComponent::apply_job_() {
       // the count here cannot hide a failing game poll.
       this->misses_ = 0;
       this->emit_({});
+      this->mark_board_ready_();
       this->schedule_next_(NO_LIVE_RESCAN);
       return;
     }
@@ -1157,6 +1190,8 @@ void GamedayComponent::apply_job_() {
     this->schedule_fetched_ms_ = now;
     this->force_schedule_ = false;
     this->upcoming_due_ = true;  // refreshed on the next cycle, once the board is drawn
+    this->cache_unconfirmed_ = false;
+    this->save_team_cache_(j.team);
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
@@ -1165,19 +1200,34 @@ void GamedayComponent::apply_job_() {
       // has no score whose age last_good_ms_ could describe.
       this->misses_ = 0;
       this->emit_({});
+      this->mark_board_ready_();
       this->schedule_next_(0);
       return;
     }
   }
   if (!j.game_ok) {
     this->misses_++;
+    if (this->cache_unconfirmed_) {
+      // The cached game is not on that day's scoreboard (moved, or the cache
+      // is simply wrong): read the team endpoint now, not in six hours.
+      ESP_LOGI(TAG, "Cached game not found: reading the team again");
+      this->cache_unconfirmed_ = false;
+      this->force_schedule_ = true;
+      this->schedule_next_(0);
+      return;
+    }
     this->emit_({});
     this->schedule_next_(RETRY_INTERVAL);
     return;
   }
+  this->cache_unconfirmed_ = false;
   this->prev_ = this->game_;
   this->game_ = j.game;
   this->mark_good_poll_();
+  if (this->upcoming_after_poll_) {
+    this->upcoming_after_poll_ = false;
+    this->upcoming_due_ = true;
+  }
   ::espn::Splash splash =
       ::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(),
                             this->live_mode_() && !this->live_fallback_);
@@ -1188,6 +1238,7 @@ void GamedayComponent::apply_job_() {
     this->post_since_ms_ = 0;
   }
   this->emit_(splash);
+  this->mark_board_ready_();
   this->schedule_next_(this->upcoming_due_ ? 0 : this->interval_for_phase_());
 }
 
@@ -1284,6 +1335,42 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
   this->rebuild_state_(&f);
   for (auto &cb : this->callbacks_)
     cb(f);
+}
+
+// ---- startup ------------------------------------------------------------------
+
+// The first real scoreboard since boot or since the team changed is on the
+// board: a polled game, or the mode deciding there is none. The boot screen
+// hold (boot.yaml) ends on the board_ready action.
+void GamedayComponent::mark_board_ready_() {
+  if (this->board_ready_)
+    return;
+  this->board_ready_ = true;
+  ESP_LOGI(TAG, "Board ready after %u ms (%s)", (unsigned) (millis() - this->board_pending_ms_),
+           this->board_pending_ms_ == 0 ? "since boot" : "since the team change");
+  this->fire_action_("board_ready");
+}
+
+// Only while it can still be right (startup.h): this team, saved in the last
+// day, and a game that has not been over for hours.
+bool GamedayComponent::load_team_cache_(const ::espn::Team *team) {
+  ::espn::TeamCache c{};
+  if (team == nullptr || !this->team_cache_pref_.load(&c))
+    return false;
+  Schedule s;
+  if (!::espn::team_cache_load(c, team->league, team->espn_id, (int64_t) this->time_->timestamp_now(), s))
+    return false;
+  this->schedule_ = s;
+  ESP_LOGI(TAG, "Team info from cache: event %s kickoff %lld", s.event_id.c_str(), (long long) s.kickoff_epoch);
+  return true;
+}
+
+void GamedayComponent::save_team_cache_(const ::espn::Team *team) {
+  ::espn::TeamCache c{};
+  if (team == nullptr || !::espn::team_cache_save(this->schedule_, team->league, team->espn_id,
+                                                  (int64_t) this->time_->timestamp_now(), c))
+    return;
+  this->team_cache_pref_.save(&c);
 }
 
 // ---- demo ---------------------------------------------------------------------

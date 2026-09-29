@@ -49,6 +49,14 @@
 # instead of LVGL's default 40, which crosses a 64 px panel in a second and
 # a half.
 #
+# Hiding waits for the first real scoreboard. Whatever asks for the hide
+# (the timers above, a team pick, the boot button's 20 s running out), the
+# overlay stays up on Wi-Fi with "Looking up scores" and the bar moving until
+# the gameday component says the board is ready, and never more than 10 s
+# (BOOT_HOLD_CAP_MS in components/gameday/startup.h) after that ask. A team
+# change asks again (board_pending in gameday-common.yaml), so the new team's
+# scores load behind this screen instead of on a half-empty board.
+#
 # esp32_improv (Bluetooth setup, how the Game Day app provisions a panel)
 # also draws the setup or lost lines when it starts advertising, so they are
 # up before the next poll, and JOINING / Wi-Fi once the app hands over
@@ -104,6 +112,11 @@ globals:
   # split of a 128 px chain, 0 for full width.
   - id: boot_layout_side
     type: int
+    initial_value: '0'
+  # millis() when the overlay started holding for the first scoreboard (see
+  # boot_hide), 0 while it is not holding.
+  - id: boot_hold_since_ms
+    type: uint32_t
     initial_value: '0'
 
 script:
@@ -298,6 +311,8 @@ script:
                 id(boot_set_lines).execute("Open", h1, ip, "pick a team", false);
               else
                 id(boot_set_lines).execute(h1, h2, ip, "pick a team", false);
+            } else if (id(boot_hold_since_ms) != 0) {
+              id(boot_hold_view).execute();
             } else {
               // Normal connect. A fresh panel shows the QR for the app, with
               // the address taking a turn when "Show address at boot" is on.
@@ -332,6 +347,11 @@ script:
               else
                 id(boot_hide).execute();
             }
+            // Holding for the first scoreboard: boot_hide ends the hold once
+            // the board is ready or the cap has run out.
+            if (id(boot_hold_since_ms) != 0 && !via_button && !id(boot_show_address).is_running() &&
+                !id(gameday_ctl).boot_hold(id(boot_hold_since_ms)))
+              id(boot_hide).execute();
           } else if (lost) {
             // Tested before the setup branch below on purpose. The fallback AP
             // starts 90 seconds into any outage, so that branch would otherwise
@@ -381,6 +401,19 @@ script:
       - delay: !lambda 'return ms;'
       - script.execute: boot_hide
 
+  # Waiting for the first scoreboard, at boot or after a team change: full
+  # width, no QR, the bar moving.
+  - id: boot_hold_view
+    then:
+      - lambda: |-
+          const bool wide = lv_disp_get_hor_res(lv_disp_get_default()) >= 128;
+          id(boot_qr_cycle).execute(0, false);
+          id(boot_view).execute(false, false);
+          if (wide)
+            id(boot_set_lines).execute("", "Looking up scores", "", "", true);
+          else
+            id(boot_set_lines).execute("", "Looking up", "scores", "", true);
+
   - id: boot_hide
     then:
       - if:
@@ -400,15 +433,33 @@ script:
                 id: boot_refresh
                 via_button: false
           else:
-            - component.suspend: boot_check
-            - component.suspend: boot_anim
-            - script.execute:
-                id: boot_qr_cycle
-                owner: 0
-                extra: false
-            - lvgl.obj.update:
-                id: boot_overlay
-                hidden: true
+            - if:
+                condition:
+                  lambda: |-
+                    // On Wi-Fi, but the first scoreboard is not ready: hold
+                    // until it is, or until the cap runs out, rather than
+                    // uncover an empty board.
+                    if (id(boot_hold_since_ms) == 0 && !id(gameday_ctl).board_ready())
+                      id(boot_hold_since_ms) = millis() == 0 ? 1 : millis();
+                    return id(gameday_ctl).boot_hold(id(boot_hold_since_ms));
+                then:
+                  - component.resume: boot_check
+                  - component.resume: boot_anim
+                  - script.execute: boot_hold_view
+                  - lvgl.obj.update:
+                      id: boot_overlay
+                      hidden: false
+                else:
+                  - lambda: 'id(boot_hold_since_ms) = 0;'
+                  - component.suspend: boot_check
+                  - component.suspend: boot_anim
+                  - script.execute:
+                      id: boot_qr_cycle
+                      owner: 0
+                      extra: false
+                  - lvgl.obj.update:
+                      id: boot_overlay
+                      hidden: true
 
   # Boot button: bring the address back for 20 seconds
   - id: boot_show_address
@@ -485,6 +536,7 @@ script:
       # half a second from now.
       - lambda: |-
           id(boot_ip_shown_ms) = 0;
+          id(boot_hold_since_ms) = 0;
       # Stage 2 is the "keep holding to reset Wi-Fi" warning, which owns both
       # the lines and the bar and stopped boot_check for exactly this reason.
       # Do not repaint over a warning that is about to erase the network.

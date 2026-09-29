@@ -17,6 +17,7 @@
 
 #include "espn_parse.h"
 #include "favorites.h"
+#include "startup.h"
 
 namespace esphome {
 namespace gameday {
@@ -127,6 +128,12 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   bool ticker_odds() const { return this->flag_(FLAG_ODDS); }
   bool opponent_splashes() const { return this->flag_(FLAG_OPP); }
   bool setup_done() const { return this->flag_(FLAG_SETUP); }
+  // The first real scoreboard since boot, or since the team last changed,
+  // is on the board. The boot screen waits for it (boot.yaml, boot_hide).
+  bool board_ready() const { return this->board_ready_; }
+  // True while a boot screen hold that started at since_ms should go on
+  // (startup.h). 0 means no hold is running.
+  bool boot_hold(uint32_t since_ms) const { return ::espn::boot_hold(this->board_ready_, since_ms, millis()); }
   // Stored inverted so panels from before this setting keep showing it.
   bool show_boot_address() const { return !this->flag_(FLAG_NOBOOTADDR); }
   void set_show_boot_address(bool on) { this->set_flag_(FLAG_NOBOOTADDR, !on); }
@@ -280,6 +287,17 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   Prefs3 prefs3_{};
   ESPPreferenceObject pref4_;
   Prefs4 prefs4_{};
+  // The team endpoint's answer for the saved team (startup.h), so a boot can
+  // skip that read and go straight to the scoreboard.
+  ESPPreferenceObject team_cache_pref_;
+  bool team_cache_tried_{false};     // one look per boot
+  bool cache_unconfirmed_{false};    // schedule_ came from the cache and no poll has confirmed it
+  bool upcoming_after_poll_{false};  // booted from the cache: season list after the first board
+  bool load_team_cache_(const ::espn::Team *team);
+  void save_team_cache_(const ::espn::Team *team);
+  bool board_ready_{false};
+  uint32_t board_pending_ms_{0};  // millis() of the last team change, 0 = waiting since boot
+  void mark_board_ready_();
   std::string favorite_option_(uint8_t slot) const;
   // Favorite Teams mode: one cached next-game card per set slot, in slot
   // order. The worker refreshes one entry per cycle; the main loop picks

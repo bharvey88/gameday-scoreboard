@@ -7,6 +7,7 @@
 
 #include "espn_parse.h"
 #include "favorites.h"
+#include "startup.h"
 
 using namespace espn;
 
@@ -505,6 +506,80 @@ static void test_schedule_due() {
   CHECK(schedule_due(true, false, before_wrap + 1000u + kSix, before_wrap, kSix));
 }
 
+static void test_team_cache() {
+  Schedule d;
+  CHECK(parse_team_str(slurp("fixtures/team_nfl_dal.json"), d));
+  // Saved the evening before the game.
+  int64_t saved = d.kickoff_epoch - 20 * 3600;
+  TeamCache c;
+  CHECK(team_cache_save(d, League::NFL, 6, saved, c));
+
+  // Next morning, same team: straight to the scoreboard.
+  Schedule s;
+  CHECK(team_cache_load(c, League::NFL, 6, saved + 12 * 3600, s));
+  CHECK(s.valid);
+  CHECK_EQ(s.event_id, std::string("401872930"));
+  CHECK_EQ(s.kickoff_epoch, d.kickoff_epoch);
+  CHECK_EQ(s.group, d.group);
+  CHECK_EQ(s.league, (uint8_t) League::NFL);
+
+  // Another team, or the same id in the other league: read the team endpoint.
+  CHECK(!team_cache_load(c, League::NFL, 21, saved + 60, s));
+  CHECK(!team_cache_load(c, League::NCAA, 6, saved + 60, s));
+
+  // More than a day old, or saved "in the future" (a clock that jumped back).
+  CHECK(team_cache_load(c, League::NFL, 6, saved + TEAM_CACHE_MAX_AGE, s));
+  CHECK(!team_cache_load(c, League::NFL, 6, saved + TEAM_CACHE_MAX_AGE + 1, s));
+  CHECK(!team_cache_load(c, League::NFL, 6, saved - 1, s));
+
+  // Kicked off more than four hours ago: that game is over.
+  TeamCache late;
+  CHECK(team_cache_save(d, League::NFL, 6, d.kickoff_epoch + 3600, late));
+  CHECK(team_cache_load(late, League::NFL, 6, d.kickoff_epoch + TEAM_CACHE_GAME_OVER, s));
+  CHECK(!team_cache_load(late, League::NFL, 6, d.kickoff_epoch + TEAM_CACHE_GAME_OVER + 1, s));
+
+  // College keeps its conference group for the scoreboard request.
+  Schedule bc;
+  CHECK(parse_team_str(slurp("fixtures/team_ncaa_bc.json"), bc));
+  TeamCache cc;
+  CHECK(team_cache_save(bc, League::NCAA, 103, bc.kickoff_epoch - 3600, cc));
+  Schedule sc;
+  CHECK(team_cache_load(cc, League::NCAA, 103, bc.kickoff_epoch, sc));
+  CHECK_EQ(sc.event_id, std::string("401856777"));
+  CHECK_EQ(sc.group, (uint32_t) 1);
+  CHECK_EQ(sc.league, (uint8_t) League::NCAA);
+
+  // Nothing to keep: no next game, an id too long for the record, no clock.
+  Schedule none;
+  none.valid = true;
+  TeamCache n;
+  CHECK(!team_cache_save(none, League::NFL, 6, saved, n));
+  Schedule longid = d;
+  longid.event_id = "1234567890123456";  // 16 characters, no room for the end
+  CHECK(!team_cache_save(longid, League::NFL, 6, saved, n));
+  CHECK(!team_cache_save(d, League::NFL, 6, 0, n));
+
+  // A blank record (nothing saved yet reads back as zeros) is never used.
+  TeamCache blank{};
+  CHECK(!team_cache_load(blank, League::NFL, 0, 0, s));
+}
+
+static void test_boot_hold() {
+  // Holding: no board yet, inside the cap.
+  CHECK(boot_hold(false, 1000, 1000));
+  CHECK(boot_hold(false, 1000, 1000 + BOOT_HOLD_CAP_MS - 1));
+  // The cap ends it whether or not a board came.
+  CHECK(!boot_hold(false, 1000, 1000 + BOOT_HOLD_CAP_MS));
+  // The first scoreboard ends it at once.
+  CHECK(!boot_hold(true, 1000, 1500));
+  // No hold running.
+  CHECK(!boot_hold(false, 0, 1500));
+  // millis() wraps every 49 days: the age is still right.
+  uint32_t before_wrap = 0xFFFFFFFFu - 2000u;
+  CHECK(boot_hold(false, before_wrap, 3000));
+  CHECK(!boot_hold(false, before_wrap, before_wrap + BOOT_HOLD_CAP_MS));
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -522,6 +597,8 @@ int main() {
   test_favorites();
   test_schedule_league();
   test_schedule_due();
+  test_team_cache();
+  test_boot_hold();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

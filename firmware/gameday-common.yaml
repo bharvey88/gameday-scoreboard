@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.4.5"
+  version: "1.5.0"
   variant: "moonhub75"
 
   display_panel_width: "64"
@@ -440,6 +440,29 @@ gameday:
     - if:
         condition:
           lambda: 'return x == "team_picked";'
+        then:
+          - script.stop: boot_hide_later
+          - script.execute: boot_hide
+    # The boot screen holds until the first scoreboard (boot.yaml, boot_hide).
+    # A team change starts a new hold; board_ready ends one, unless the boot
+    # button owns the screen (its address, or the reset warning).
+    - if:
+        condition:
+          lambda: 'return x == "board_pending";'
+        then:
+          - lambda: 'id(boot_hold_since_ms) = 0;'
+          - script.stop: boot_hide_later
+          - if:
+              condition:
+                lambda: |-
+                  return id(boot_hold_stage) < 2 && !id(boot_show_address).is_running();
+              then:
+                - script.execute: boot_hide
+    - if:
+        condition:
+          lambda: |-
+            return x == "board_ready" && id(boot_hold_since_ms) != 0 && id(boot_hold_stage) < 2 &&
+                   !id(boot_show_address).is_running();
         then:
           - script.execute: boot_hide
     # Picking a team or a mode is somebody standing in front of a dark panel
