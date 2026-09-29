@@ -51,7 +51,7 @@
 #
 # Hiding waits for the first real scoreboard. Whatever asks for the hide
 # (the timers above, a team pick, the boot button's 20 s running out), the
-# overlay stays up on Wi-Fi with "Getting scores" and the bar moving until
+# overlay stays up on Wi-Fi with "Looking up scores" and the bar moving until
 # the gameday component says the board is ready, and never more than 10 s
 # (BOOT_HOLD_CAP_MS in components/gameday/startup.h) after that ask. A team
 # change asks again (board_pending in gameday-common.yaml), so the new team's
@@ -410,9 +410,9 @@ script:
           id(boot_qr_cycle).execute(0, false);
           id(boot_view).execute(false, false);
           if (wide)
-            id(boot_set_lines).execute("", "Getting scores", "", "", true);
+            id(boot_set_lines).execute("", "Looking up scores", "", "", true);
           else
-            id(boot_set_lines).execute("", "Getting", "scores", "", true);
+            id(boot_set_lines).execute("", "Looking up", "scores", "", true);
 
   - id: boot_hide
     then:
