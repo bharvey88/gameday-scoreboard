@@ -41,18 +41,26 @@ jobs:
           path: notes.md
 
   build:
-    # One firmware for every panel count since v0.6.0; "moonhub75" names the
-    # controller pinout and is the manifest folder on the flasher site.
-    name: Build moonhub75
+    # One firmware for every panel count since v0.6.0, built once per
+    # controller pinout. The variant names the manifest folder on the flasher
+    # site, and the updater on a panel only ever looks in its own folder.
+    name: Build ${{ matrix.variant }}
     needs: notes
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - variant: moonhub75
+            yaml: firmware/gameday.yaml
+          - variant: scoreboard75
+            yaml: firmware/gameday-scoreboard75.yaml
     steps:
       - uses: actions/checkout@v4
       - name: Build firmware
         id: esphome
         uses: esphome/build-action@v7
         with:
-          yaml-file: firmware/gameday.yaml
+          yaml-file: ${{ matrix.yaml }}
           version: "2026.8.2"
           complete-manifest: true
           release-summary: ${{ needs.notes.outputs.summary }}
@@ -60,25 +68,33 @@ jobs:
       - name: Stage output under a stable folder name
         run: |
           mkdir -p out
-          cp -r "${{ steps.esphome.outputs.name }}" out/moonhub75
+          cp -r "${{ steps.esphome.outputs.name }}" out/${{ matrix.variant }}
           ls -R out
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-moonhub75
+          name: firmware-${{ matrix.variant }}
           path: out
 
   build-beta:
     # Early warning: the next ESPHome, allowed to fail. Nothing is published
     # from this job.
-    name: Build moonhub75 (ESPHome beta)
+    name: Build ${{ matrix.variant }} (ESPHome beta)
     needs: notes
     runs-on: ubuntu-latest
     continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: moonhub75
+            yaml: firmware/gameday.yaml
+          - variant: scoreboard75
+            yaml: firmware/gameday-scoreboard75.yaml
     steps:
       - uses: actions/checkout@v4
       - uses: esphome/build-action@v7
         with:
-          yaml-file: firmware/gameday.yaml
+          yaml-file: ${{ matrix.yaml }}
           version: beta
 
   host-tests:
@@ -125,15 +141,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p release
+          # MoonHub75 keeps the unsuffixed factory bin name it has always had.
           f=$(ls artifacts/moonhub75/*.factory.bin | head -1)
           cp "$f" "release/gameday-scoreboard-${GITHUB_REF_NAME}.factory.bin"
-          # Also zip the whole moonhub75 manifest folder (manifest.json plus
-          # the OTA and factory bins it references, with relative paths that
+          f=$(ls artifacts/scoreboard75/*.factory.bin | head -1)
+          cp "$f" "release/gameday-scoreboard-${GITHUB_REF_NAME}-scoreboard75.factory.bin"
+          ASSETS="release/gameday-scoreboard-${GITHUB_REF_NAME}.factory.bin release/gameday-scoreboard-${GITHUB_REF_NAME}-scoreboard75.factory.bin"
+          # Also zip each variant's manifest folder (manifest.json plus the
+          # OTA and factory bins it references, with relative paths that
           # resolve the same wherever the folder lands) so site.yml can
-          # rebuild site/firmware/moonhub75/ from a release asset instead of
+          # rebuild site/firmware/<variant>/ from a release asset instead of
           # a Build artifact, which expires after 90 days.
-          (cd artifacts && zip -r "../release/firmware-moonhub75.zip" moonhub75)
-          ASSETS="release/gameday-scoreboard-${GITHUB_REF_NAME}.factory.bin release/firmware-moonhub75.zip"
+          for v in moonhub75 scoreboard75; do
+            (cd artifacts && zip -r "../release/firmware-$v.zip" "$v")
+            ASSETS="$ASSETS release/firmware-$v.zip"
+          done
           PREV=$(gh release list --exclude-drafts --limit 20 --json tagName --jq "[.[].tagName | select(. != \"${GITHUB_REF_NAME}\")][0]")
           {
             cat notes/notes.md

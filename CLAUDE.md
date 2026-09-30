@@ -1,8 +1,10 @@
 # Game Day Scoreboard firmware
 
 ESPHome firmware for a standalone football scoreboard on an ESP32-S3 HUB75
-controller (MoonHub75 pinout). Sibling repo: the iOS companion app at
-~/development/gameday-scoreboard-ios (github.com/bharvey88/gameday-scoreboard-ios).
+controller. One top-level YAML per pinout: gameday.yaml (MoonHub75) and
+gameday-scoreboard75.yaml (our controller board); each picks its pin map from
+firmware/controllers/ and shares everything else via gameday-common.yaml.
+Sibling repo: the iOS companion app at ~/development/gameday-scoreboard-ios (github.com/bharvey88/gameday-scoreboard-ios).
 
 ## Hard rules
 

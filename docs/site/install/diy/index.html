@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Game Day Scoreboard installer</title>
+  <title>DIY installer - Game Day Scoreboard</title>
   <style>
     :root { color-scheme: dark; }
     body { margin: 0; font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0f14; color: #e6edf3; }
@@ -19,8 +19,6 @@
     .note { font-size: 0.9rem; color: #9da7b3; }
     a { color: #7cc4ff; }
     footer { margin-top: 40px; font-size: 0.85rem; color: #6f7a86; }
-    .demo { display: block; width: 100%; border-radius: 12px; border: 1px solid #262e38; background: #000; margin: 0 0 6px; }
-    .demo-note { margin: 0 0 28px; }
   </style>
   <!-- Pinned with an integrity hash. To move versions: fetch the new file, compute
        sha384 (openssl dgst -sha384 -binary | openssl base64 -A) and update both. -->
@@ -30,41 +28,26 @@
 </head>
 <body>
 <main>
-  <h1>Game Day Scoreboard</h1>
-  <p class="sub">Football scoreboard for HUB75 LED matrix panels. Version __VERSION__.</p>
-
-  <video class="demo" src="media/demo.mp4" autoplay muted loop playsinline preload="metadata"></video>
-  <p class="note demo-note">What it looks like during a game. This is the panel's built-in demo mode: a scripted game with the real celebrations.</p>
+  <h1>DIY installer</h1>
+  <p class="sub">Game Day Scoreboard for a controller you built yourself on the MoonHub75 pinout.</p>
 
   <div class="card">
-    <h2>1. Install</h2>
+    <h2>Install</h2>
     <p>Plug the controller into this computer over USB and click Install. One firmware covers a single 64x64 panel and two panels side by side; you pick which on the device page afterwards.</p>
     <p>
-      <esp-web-install-button manifest="firmware/scoreboard75/manifest.json">
-        <button slot="activate">Install Game Day Scoreboard</button>
+      <esp-web-install-button manifest="/firmware/moonhub75/manifest.json">
+        <button slot="activate">Install for MoonHub75</button>
         <span slot="unsupported">This browser cannot talk to the controller over USB. Try a desktop browser.</span>
         <span slot="not-allowed">Open this page over HTTPS to install.</span>
       </esp-web-install-button>
     </p>
-    <p class="note">For the Game Day Scoreboard controller. Built your own on a MoonHub75 board? Use the <a href="/install/diy/">DIY installer</a> instead.</p>
+    <p class="note">Needs an ESP32-S3 HUB75 controller on the <a href="https://github.com/MoonModules/Hardware/tree/main/MOONHUB75">MoonHub75</a> pinout, with 16MB flash and octal PSRAM. Have a Game Day Scoreboard controller? Use the <a href="/">main installer</a>.</p>
     <p class="note">Installing erases whatever firmware was on the controller. Your WiFi details and team choice are asked for afterwards.</p>
   </div>
 
   <div class="card">
-    <h2>2. Join WiFi</h2>
-    <p>When the install finishes the same dialog offers to connect the device to WiFi. Enter your network name and password. If you skip it, the panel starts a hotspot called <code>Game Day Scoreboard</code>; join it and a setup page opens.</p>
-  </div>
-
-  <div class="card">
-    <h2>3. Pick your team</h2>
-    <p>The panel itself tells you where to go once it's online: open the <code>gameday-xxxxxx.local</code> name it shows on your phone, or the address shown under it if your phone doesn't resolve <code>.local</code> names.</p>
-    <ol>
-      <li>Tap <strong>Change team</strong> and pick from the logos, or use the <strong>On now</strong> tab to jump into a game that's already playing. NFL and every FBS college team are there.</li>
-      <li>Two panels side by side? In the <strong>Setup</strong> card, click the two-panel picture. The matrix restarts using both.</li>
-      <li>The timezone follows the phone or computer you opened the page on, so kickoff times read right without setting anything.</li>
-      <li>Optional: the ticker parts, opponent celebrations, favorite teams for a WizMote remote, or a live mode that follows a random game in progress.</li>
-    </ol>
-    <p class="note">The panel shows the next game with the line, TV network and kickoff, switches to the live layout at kickoff, celebrates scores, and lingers on the final. The page mirrors it, lists the next three games, and updates the firmware when a new version is out. Everything is fetched from ESPN by the device itself. No Home Assistant needed, though the device does show up there if you want it.</p>
+    <h2>After installing</h2>
+    <p>Joining WiFi and picking your team work the same as on the Game Day Scoreboard controller. Follow steps 2 and 3 on the <a href="/">main installer page</a>. Updates arrive over WiFi from then on, built for your pinout.</p>
   </div>
 
   <footer>

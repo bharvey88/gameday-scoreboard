@@ -74,16 +74,22 @@ jobs:
           echo "release $TAG"
           mkdir -p site/firmware
           cp -r docs/site/. site/
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx firmware-moonhub75.zip; then
-            echo "firmware from the $TAG release asset firmware-moonhub75.zip"
-            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p firmware-moonhub75.zip -O /tmp/firmware-moonhub75.zip
-            unzip -o /tmp/firmware-moonhub75.zip -d site/firmware
-          else
-            echo "no firmware-moonhub75.zip asset on $TAG, falling back to its Build artifact"
-            RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch "$TAG" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-            echo "build run $RUN"
-            gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n firmware-moonhub75 -D site/firmware
-          fi
+          ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          RUN=""
+          for v in moonhub75 scoreboard75; do
+            if echo "$ASSETS" | grep -qx "firmware-$v.zip"; then
+              echo "$v firmware from the $TAG release asset firmware-$v.zip"
+              gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p "firmware-$v.zip" -O "/tmp/firmware-$v.zip"
+              unzip -o "/tmp/firmware-$v.zip" -d site/firmware
+            else
+              echo "no firmware-$v.zip asset on $TAG, falling back to its Build artifact"
+              if [ -z "$RUN" ]; then
+                RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch "$TAG" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+                echo "build run $RUN"
+              fi
+              gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n "firmware-$v" -D site/firmware || echo "no $v firmware for $TAG"
+            fi
+          done
           test -f site/firmware/moonhub75/manifest.json
           sed -i "s/__VERSION__/${TAG}/g" site/index.html
           ls -laR site

@@ -22,10 +22,10 @@ If you already use Home Assistant and want room lighting to celebrate too, [game
 
 ## Hardware
 
-- An ESP32-S3 HUB75 controller on the [MoonHub75](https://github.com/MoonModules/Hardware/tree/main/MOONHUB75) pinout, with 16MB flash, octal PSRAM, and a button on GPIO0
+- The Game Day Scoreboard controller (build `gameday-scoreboard75.yaml`), or an ESP32-S3 HUB75 controller on the [MoonHub75](https://github.com/MoonModules/Hardware/tree/main/MOONHUB75) pinout, with 16MB flash, octal PSRAM, and a button on GPIO0 (build `gameday.yaml`)
 - One 64x64 HUB75 panel, or two side by side for a 128x64 display (one firmware; pick the count on the device page)
 
-The pinout, under the names ESPHome uses (that board's README calls the upper half R0/G0/B0):
+The MoonHub75 pinout, under the names ESPHome uses (that board's README calls the upper half R0/G0/B0):
 
 | R1 | G1 | B1 | R2 | G2 | B2 | A | B | C | D | E | LAT | OE | CLK |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -69,7 +69,7 @@ cd gameday-scoreboard/firmware
 esphome run gameday.yaml
 ```
 
-`gameday.yaml` only names the build; everything lives in `gameday-common.yaml`. The panel count is a saved preference applied at boot by `components/panel_layout`, so one binary serves both layouts. The scoreboard page is in `pages/gameday-live.yaml`, the ESPN logic in `components/gameday`, and the device web page in `firmware/web` (edit `app.js` or `app.css`, then run `python scripts/build_web.py` to refresh the embedded bundle). The controller, theme and clock packages come from [hub75-studio](https://github.com/pavlov-net/hub75-studio), pinned to a commit.
+`gameday.yaml` only names the build and picks the controller pin map from `firmware/controllers/`; everything else lives in `gameday-common.yaml`. The panel count is a saved preference applied at boot by `components/panel_layout`, so one binary serves both layouts. The scoreboard page is in `pages/gameday-live.yaml`, the ESPN logic in `components/gameday`, and the device web page in `firmware/web` (edit `app.js` or `app.css`, then run `python scripts/build_web.py` to refresh the embedded bundle). The theme and clock packages come from [hub75-studio](https://github.com/pavlov-net/hub75-studio), pinned to a commit.
 
 ## How it works
 
