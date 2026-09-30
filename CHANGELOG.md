@@ -8,6 +8,11 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.5.1
+
+- Adds firmware for the Game Day Scoreboard controller, and the installer at gamedayscoreboard.app now installs that version by default.
+- Built your own panel on a MoonHub75 board? Install from the DIY installer at gamedayscoreboard.app/install/diy/ instead. Panels that are already set up keep updating over WiFi as before, each with the firmware for its own board.
+
 ## v1.5.0
 
 - The panel gets to your scoreboard sooner after it starts. It checks for Wi-Fi and the time every half second instead of every five, and in My team it remembers your team's next game for a day, so it can skip a download on the way.
