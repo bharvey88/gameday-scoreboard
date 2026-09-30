@@ -69,7 +69,7 @@ cd gameday-scoreboard/firmware
 esphome run gameday.yaml
 ```
 
-`gameday.yaml` only names the build; everything lives in `gameday-common.yaml`. The panel count is a saved preference applied at boot by `components/panel_layout`, so one binary serves both layouts. The scoreboard page is in `pages/gameday-live.yaml`, the ESPN logic in `components/gameday`, and the device web page in `firmware/web` (edit `app.js` or `app.css`, then run `python scripts/build_web.py` to refresh the embedded bundle). The controller, theme and clock packages come from [hub75-studio](https://github.com/pavlov-net/hub75-studio), pinned to a commit.
+`gameday.yaml` only names the build and picks the controller pin map from `firmware/controllers/`; everything else lives in `gameday-common.yaml`. The panel count is a saved preference applied at boot by `components/panel_layout`, so one binary serves both layouts. The scoreboard page is in `pages/gameday-live.yaml`, the ESPN logic in `components/gameday`, and the device web page in `firmware/web` (edit `app.js` or `app.css`, then run `python scripts/build_web.py` to refresh the embedded bundle). The theme and clock packages come from [hub75-studio](https://github.com/pavlov-net/hub75-studio), pinned to a commit.
 
 ## How it works
 

@@ -6,6 +6,7 @@ substitutions:
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
   version: "1.5.0"
+  # Set by each board's top-level file; names the manifest folder.
   variant: "moonhub75"
 
   display_panel_width: "64"
@@ -21,7 +22,8 @@ substitutions:
   # commit so a release always builds the same thing.
   hub75_studio_ref: "2c121972321cc1e3c2c87d9647fd3beb9a5e2271"
 
-# The controller package already sets board/framework/psram; this only
+# The controller package (included by each board's top-level file, e.g.
+# gameday.yaml) already sets board/framework/psram; this only
 # adds sdkconfig options, which ESPHome merges into that package's esp32:
 # block. Bluetooth setup (esp32_improv) and HTTPS fetches (ESPN, update
 # manifest) were both starving internal RAM once BT was added, causing
@@ -103,7 +105,6 @@ packages:
       - path: packages/pages/clock.yaml
         vars:
           page_friendly_name: "Clock"
-  controller: !include controllers/moonhub75.yaml
   boot: !include pages/boot.yaml
   scoreboard: !include pages/gameday-live.yaml
   wizmote: !include pages/wizmote.yaml

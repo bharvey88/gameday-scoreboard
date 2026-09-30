@@ -1,0 +1,85 @@
+# Game Day Scoreboard controller board (scoreboard75): ESP32-S3-WROOM-1
+# N16R8, 16MB flash, octal PSRAM, a button on GPIO0 and no microphone. Pin map
+# (ESPHome names):
+#   R1 4, G1 5, B1 6, R2 7, G2 15, B2 16, A 9, B 10, C 11, D 12, E 17,
+#   LAT 14, OE 21, CLK 13
+# E has a 1k series resistor and a 10k pull-down; OE has a 10k pull-up.
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB
+  cpu_frequency: 240MHz
+  framework:
+    type: esp-idf
+    advanced:
+      compiler_optimization: PERF
+      execute_from_psram: true
+      enable_idf_experimental_features: true
+    sdkconfig_options:
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: y
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+display:
+  - platform: hub75
+    id: matrix
+    r1_pin: 4
+    g1_pin: 5
+    b1_pin: 6
+    r2_pin: 7
+    g2_pin: 15
+    b2_pin: 16
+    a_pin: 9
+    b_pin: 10
+    c_pin: 11
+    d_pin: 12
+    e_pin: 17
+    lat_pin: 14
+    oe_pin: 21
+    clk_pin: 13
+
+    panel_width: ${display_panel_width}
+    panel_height: ${display_panel_height}
+    layout: ${display_layout}
+    layout_rows: ${display_layout_rows}
+    layout_cols: ${display_layout_cols}
+    scan_wiring: ${display_scan_wiring}
+
+    clock_phase: false
+    latch_blanking: 1
+    clock_speed: 20MHz
+
+    bit_depth: 8
+
+    # for LVGL
+    double_buffer: false
+    auto_clear_enabled: false
+    update_interval: never
+
+# Boot button (GPIO0) as power toggle. GPIO0 is a strapping pin; it is safe
+# as an input after boot, so the build-time warning is suppressed on purpose.
+binary_sensor:
+  - platform: gpio
+    id: power_button
+    internal: true
+    pin:
+      number: GPIO0
+      ignore_strapping_warning: true
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+    on_click:
+      then:
+        - switch.toggle: power
+
+lvgl:
+  byte_order: little_endian
+  buffer_size: 100%
+  displays:
+    - matrix
