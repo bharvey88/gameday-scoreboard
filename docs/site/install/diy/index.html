@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DIY installer - Game Day Scoreboard</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0f14; color: #e6edf3; }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1 { font-size: 2rem; margin: 0 0 4px; }
+    .sub { color: #9da7b3; margin: 0 0 32px; }
+    .card { background: #151b23; border: 1px solid #262e38; border-radius: 12px; padding: 20px 24px; margin: 0 0 20px; }
+    .card h2 { margin: 0 0 6px; font-size: 1.2rem; }
+    .card p { margin: 0 0 14px; color: #c3ccd6; }
+    esp-web-install-button { --esp-tools-button-color: #f2b632; --esp-tools-button-text-color: #0b0f14; }
+    ol li { margin: 6px 0; }
+    code { background: #1f2731; padding: 1px 6px; border-radius: 4px; }
+    .note { font-size: 0.9rem; color: #9da7b3; }
+    a { color: #7cc4ff; }
+    footer { margin-top: 40px; font-size: 0.85rem; color: #6f7a86; }
+  </style>
+  <!-- Pinned with an integrity hash. To move versions: fetch the new file, compute
+       sha384 (openssl dgst -sha384 -binary | openssl base64 -A) and update both. -->
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"
+          integrity="sha384-f+fR3K1mnKB2tVps4hdEh+qJvLgH2bKw81Yn+eNE3+gE8YpqocjkxQON4k19I3e/"
+          crossorigin="anonymous"></script>
+</head>
+<body>
+<main>
+  <h1>DIY installer</h1>
+  <p class="sub">Game Day Scoreboard for a controller you built yourself on the MoonHub75 pinout.</p>
+
+  <div class="card">
+    <h2>Install</h2>
+    <p>Plug the controller into this computer over USB and click Install. One firmware covers a single 64x64 panel and two panels side by side; you pick which on the device page afterwards.</p>
+    <p>
+      <esp-web-install-button manifest="/firmware/moonhub75/manifest.json">
+        <button slot="activate">Install for MoonHub75</button>
+        <span slot="unsupported">This browser cannot talk to the controller over USB. Try a desktop browser.</span>
+        <span slot="not-allowed">Open this page over HTTPS to install.</span>
+      </esp-web-install-button>
+    </p>
+    <p class="note">Needs an ESP32-S3 HUB75 controller on the <a href="https://github.com/MoonModules/Hardware/tree/main/MOONHUB75">MoonHub75</a> pinout, with 16MB flash and octal PSRAM. Have a Game Day Scoreboard controller? Use the <a href="/">main installer</a>.</p>
+    <p class="note">Installing erases whatever firmware was on the controller. Your WiFi details and team choice are asked for afterwards.</p>
+  </div>
+
+  <div class="card">
+    <h2>After installing</h2>
+    <p>Joining WiFi and picking your team work the same as on the Game Day Scoreboard controller. Follow steps 2 and 3 on the <a href="/">main installer page</a>. Updates arrive over WiFi from then on, built for your pinout.</p>
+  </div>
+
+  <footer>
+    Source, issues and the YAML for building it yourself: <a href="https://github.com/bharvey88/gameday-scoreboard">bharvey88/gameday-scoreboard</a>.
+    Built on <a href="https://github.com/pavlov-net/hub75-studio">hub75-studio</a> and ESPHome.
+    <br>
+    <a href="/setup/">Setup</a> &middot; <a href="/privacy/">Privacy</a> &middot; <a href="/support/">Support</a>
+  </footer>
+</main>
+</body>
+</html>
