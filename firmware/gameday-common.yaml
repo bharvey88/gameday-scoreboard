@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.5.1"
+  version: "1.5.2"
   # Set by each board's top-level file; names the manifest folder.
   variant: "moonhub75"
 
@@ -130,6 +130,9 @@ ota:
 
 wifi:
   power_save_mode: none
+  # Rejoin the last access point on its saved channel with no scan. ESPHome
+  # scans when that access point is gone.
+  fast_connect: true
   ap:
     ssid: "Game Day Scoreboard"
   # Bluetooth (esp32_improv) is only needed to hand the panel Wi-Fi

@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.5.2
+
+- The panel has your scoreboard up sooner after a restart or an update. It now rejoins the Wi-Fi access point it used last time, instead of spending about 8 seconds searching for networks first. A restart goes from about 17 seconds to about 8 before scores show.
+
 ## v1.5.1
 
 - Adds firmware for the Game Day Scoreboard controller, and the installer at gamedayscoreboard.app now installs that version by default.
