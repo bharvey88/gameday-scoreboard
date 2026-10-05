@@ -328,11 +328,16 @@ lvgl:
   pages:
     - id: gameday_live
       bg_color: 0x000000
+      # LVGL defaults scrollbars to AUTO, which draws a bar down the edge
+      # whenever a container's content overflows. Nothing on the panel
+      # scrolls, so turn them off on the page and on every obj below.
+      scrollbar_mode: "OFF"
       widgets:
         # Container for normal game display. All positions and fonts are
         # applied at runtime by tt_apply_layout; the values here are placeholders.
         - obj:
             id: tt_game_container
+            scrollbar_mode: "OFF"
             x: 0
             y: 0
             width: 64
@@ -429,6 +434,7 @@ lvgl:
               # Possession: a gold underline under the side that has the ball
               - obj:
                   id: tt_away_poss
+                  scrollbar_mode: "OFF"
                   x: 0
                   y: 0
                   width: 12
@@ -439,6 +445,7 @@ lvgl:
                   hidden: true
               - obj:
                   id: tt_home_poss
+                  scrollbar_mode: "OFF"
                   x: 0
                   y: 0
                   width: 12
@@ -449,6 +456,7 @@ lvgl:
                   hidden: true
               - obj:
                   id: tt_away_to1
+                  scrollbar_mode: "OFF"
                   x: 0
                   y: 46
                   width: 5
@@ -457,6 +465,7 @@ lvgl:
                   bg_color: 0x202020
               - obj:
                   id: tt_away_to2
+                  scrollbar_mode: "OFF"
                   x: 7
                   y: 46
                   width: 5
@@ -465,6 +474,7 @@ lvgl:
                   bg_color: 0x202020
               - obj:
                   id: tt_away_to3
+                  scrollbar_mode: "OFF"
                   x: 14
                   y: 46
                   width: 5
@@ -473,6 +483,7 @@ lvgl:
                   bg_color: 0x202020
               - obj:
                   id: tt_home_to1
+                  scrollbar_mode: "OFF"
                   x: 44
                   y: 46
                   width: 5
@@ -481,6 +492,7 @@ lvgl:
                   bg_color: 0x202020
               - obj:
                   id: tt_home_to2
+                  scrollbar_mode: "OFF"
                   x: 51
                   y: 46
                   width: 5
@@ -489,6 +501,7 @@ lvgl:
                   bg_color: 0x202020
               - obj:
                   id: tt_home_to3
+                  scrollbar_mode: "OFF"
                   x: 58
                   y: 46
                   width: 5
@@ -509,6 +522,7 @@ lvgl:
         # Full-screen score splash (TOUCHDOWN! etc), shown briefly on scores
         - obj:
             id: tt_splash
+            scrollbar_mode: "OFF"
             x: 0
             y: 0
             width: 64
@@ -537,6 +551,7 @@ lvgl:
         # Container for "no game" display
         - obj:
             id: tt_no_game_container
+            scrollbar_mode: "OFF"
             x: 0
             y: 0
             width: 64
