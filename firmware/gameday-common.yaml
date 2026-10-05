@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.5.2"
+  version: "1.5.3"
   # Set by each board's top-level file; names the manifest folder.
   variant: "moonhub75"
 

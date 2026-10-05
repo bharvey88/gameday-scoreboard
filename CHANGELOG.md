@@ -8,6 +8,15 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.5.3
+
+- The panel has your scoreboard up sooner after a restart or an update. It no longer starts Bluetooth on every boot, which slowed down joining your Wi-Fi. Bluetooth only comes on when the panel needs setting up. This replaces the v1.5.2 change, so the panel picks your strongest Wi-Fi access point again.
+- Setting up a panel in the Game Day app, the list of Wi-Fi networks shows up right away instead of after about 10 seconds, and the panel shows the name of the network it is joining.
+- "Switch every" goes down to 1 minute, and a new panel starts at 1 minute. Choosing 1 minute no longer puts the panel back in My team the next time it restarts.
+- The panel's log no longer shows your Wi-Fi password after you set it up from the app.
+- No more gray or white bar down the right edge of the panel. It was a scrollbar that should have been turned off in v1.4.1.
+- Refresh Now works in Favorites mode. It re-reads the team on the board.
+
 ## v1.5.2
 
 - The panel has your scoreboard up sooner after a restart or an update. It now rejoins the Wi-Fi access point it used last time, instead of spending about 8 seconds searching for networks first. A restart goes from about 17 seconds to about 8 before scores show.
