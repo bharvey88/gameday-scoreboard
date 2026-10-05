@@ -137,9 +137,9 @@ void GamedayComponent::setup() {
     this->prefs_.tz_index = ::espn::kDefaultTimezone;
   this->pref2_ = global_preferences->make_preference<Prefs2>(fnv1_hash("gameday_prefs2_v1"));
   if (!this->pref2_.load(&this->prefs2_) || this->prefs2_.mode > (uint8_t) Mode::FAVORITES ||
-      this->prefs2_.rotate_minutes < 1 || this->prefs2_.rotate_minutes > 30) {
+      !::espn::rotate_minutes_valid(this->prefs2_.rotate_minutes)) {
     this->prefs2_.mode = (uint8_t) Mode::MY_TEAM;
-    this->prefs2_.rotate_minutes = 1;
+    this->prefs2_.rotate_minutes = ::espn::kRotateDefaultMinutes;
   }
   this->pref3_ = global_preferences->make_preference<Prefs3>(fnv1_hash("gameday_prefs3_v1"));
   if (!this->pref3_.load(&this->prefs3_))
@@ -313,10 +313,7 @@ void GamedayComponent::select_mode(const std::string &option) {
 }
 
 void GamedayComponent::set_rotate_minutes(int minutes) {
-  if (minutes < 1)
-    minutes = 1;
-  if (minutes > 30)
-    minutes = 30;
+  minutes = ::espn::clamp_rotate_minutes(minutes);
   if (minutes == this->prefs2_.rotate_minutes)
     return;
   this->prefs2_.rotate_minutes = (uint8_t) minutes;

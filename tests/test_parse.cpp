@@ -580,6 +580,21 @@ static void test_boot_hold() {
   CHECK(!boot_hold(false, before_wrap, before_wrap + BOOT_HOLD_CAP_MS));
 }
 
+static void test_rotate_minutes() {
+  // 1 minute is a real choice on the device page and in the app. Treating it
+  // as corrupt at boot reset the mode to My team.
+  CHECK(espn::rotate_minutes_valid(1));
+  CHECK(espn::rotate_minutes_valid(30));
+  CHECK(!espn::rotate_minutes_valid(0));
+  CHECK(!espn::rotate_minutes_valid(31));
+  CHECK(espn::rotate_minutes_valid(espn::kRotateDefaultMinutes));
+  CHECK(espn::kRotateDefaultMinutes == 1);
+  CHECK(espn::clamp_rotate_minutes(0) == 1);
+  CHECK(espn::clamp_rotate_minutes(-5) == 1);
+  CHECK(espn::clamp_rotate_minutes(1) == 1);
+  CHECK(espn::clamp_rotate_minutes(45) == 30);
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -599,6 +614,7 @@ int main() {
   test_schedule_due();
   test_team_cache();
   test_boot_hold();
+  test_rotate_minutes();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
