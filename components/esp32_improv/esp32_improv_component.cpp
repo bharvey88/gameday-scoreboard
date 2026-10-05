@@ -42,8 +42,6 @@ static constexpr uint8_t IMPROV_PROTOCOL_ID_1 = 0x77;  // 'P' << 1 | 'R' >> 7
 static constexpr uint8_t IMPROV_PROTOCOL_ID_2 = 0x46;  // 'I' << 1 | 'M' >> 7
 
 // GAMEDAY: begin (Get Wi-Fi Networks, RPC 0x04)
-// A scan that finished this recently is reused instead of starting another.
-static constexpr uint32_t NETWORKS_FRESH_MS = 15000;
 // Give up waiting for a scan after this long and send whatever results exist.
 static constexpr uint32_t NETWORKS_SCAN_TIMEOUT_MS = 10000;
 // Every result goes out on the same characteristic, so each notification
@@ -423,8 +421,9 @@ void ESP32ImprovComponent::process_incoming_data_() {
         wifi::global_wifi_component->set_sta(sta);
         wifi::global_wifi_component->start_connecting(sta);
         this->set_state_(improv::STATE_PROVISIONING);
-        ESP_LOGD(TAG, "Received Improv Wi-Fi settings ssid=%s, password=" LOG_SECRET("%s"), command.ssid.c_str(),
-                 command.password.c_str());
+        // GAMEDAY: the web page streams this log to anyone on the network, and
+        // LOG_SECRET only hides text in a terminal, so leave the password out.
+        ESP_LOGD(TAG, "Received Improv Wi-Fi settings ssid=%s", command.ssid.c_str());
 
         this->set_timeout("wifi-connect-timeout", 30000, [this]() { this->on_wifi_connect_timeout_(); });
         this->incoming_data_.clear();
@@ -581,12 +580,11 @@ void ESP32ImprovComponent::handle_get_wifi_networks_() {
     ESP_LOGD(TAG, "Wi-Fi network list already on its way");
     return;
   }
-  const uint32_t now = millis();
   auto *wifi = wifi::global_wifi_component;
-  bool fresh = this->last_scan_done_ != 0 && now - this->last_scan_done_ < NETWORKS_FRESH_MS &&
-               !wifi->get_scan_result().empty();
-  // Never scan in the middle of joining a network, or with Wi-Fi off.
-  if (fresh || this->state_ == improv::STATE_PROVISIONING || wifi->is_disabled()) {
+  // Answer with the networks the Wi-Fi component already found. In setup mode
+  // it has scanned since boot, and a fresh scan with Bluetooth connected takes
+  // about 9 s. Never scan in the middle of joining a network, or with Wi-Fi off.
+  if (!wifi->get_scan_result().empty() || this->state_ == improv::STATE_PROVISIONING || wifi->is_disabled()) {
     this->queue_wifi_networks_();
     return;
   }
@@ -602,18 +600,17 @@ void ESP32ImprovComponent::handle_get_wifi_networks_() {
   config.scan_time.active.max = 300;
   esp_err_t err = esp_wifi_scan_start(&config, false);
   if (err != ESP_OK) {
-    // Busy (a scan or connection attempt is running) or not in station mode.
-    ESP_LOGD(TAG, "Wi-Fi scan not started (%s); sending the last results", esp_err_to_name(err));
-    this->queue_wifi_networks_();
-    return;
+    // Usually the Wi-Fi component's own scan is running. Wait for its results,
+    // which on_wifi_scan_results() receives too, instead of answering empty.
+    ESP_LOGD(TAG, "Wi-Fi scan not started (%s); waiting for the running one", esp_err_to_name(err));
+  } else {
+    ESP_LOGD(TAG, "Scanning for Wi-Fi networks");
   }
-  ESP_LOGD(TAG, "Scanning for Wi-Fi networks");
   this->networks_wait_scan_ = true;
   this->networks_scan_start_ = App.get_loop_component_start_time();
 }
 
 void ESP32ImprovComponent::on_wifi_scan_results(const wifi::wifi_scan_vector_t<wifi::WiFiScanResult> &results) {
-  this->last_scan_done_ = std::max<uint32_t>(millis(), 1);
   if (this->networks_wait_scan_)
     this->queue_wifi_networks_();
 }

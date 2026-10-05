@@ -138,7 +138,6 @@ class ESP32ImprovComponent final : public Component,
   bool networks_wait_scan_{false};   // 0x04 received, waiting for a scan to finish
   uint32_t networks_scan_start_{0};  // when we started waiting for that scan
   uint32_t networks_last_sent_{0};
-  uint32_t last_scan_done_{0};       // millis() of the last completed scan, 0 if none
   // GAMEDAY: end
 #if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_DEBUG
   const char *state_to_string_(improv::State state);
