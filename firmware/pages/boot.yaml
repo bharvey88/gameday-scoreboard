@@ -59,7 +59,7 @@
 #
 # esp32_improv (Bluetooth setup, how the Game Day app provisions a panel)
 # also draws the setup or lost lines when it starts advertising, so they are
-# up before the next poll, and JOINING / Wi-Fi once the app hands over
+# up before the next poll, and JOINING / <network> once the app hands over
 # credentials, which both off-Wi-Fi states keep up until the panel connects.
 # See the esp32_improv block below.
 
@@ -365,9 +365,10 @@ script:
             id(boot_qr_cycle).execute(provisioning ? 0 : 2, false);
             id(boot_view).execute(wide && !provisioning,
                                   !provisioning && (wide || id(boot_qr_frame) == 1));
-            if (provisioning)
-              id(boot_set_lines).execute("JOINING", "Wi-Fi", "", "", true);
-            else
+            if (provisioning) {
+              const auto joining = w->get_sta().get_ssid();
+              id(boot_set_lines).execute("JOINING", joining.empty() ? std::string("Wi-Fi") : joining.str(), "", "", true);
+            } else
               id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
           } else if (!w->has_sta() || w->is_ap_active()) {
             // Setup: no saved network, or a blank one after "Reset Wi-Fi".
@@ -379,9 +380,10 @@ script:
             const int frame = id(boot_qr_frame);
             id(boot_view).execute(wide && !provisioning,
                                   !provisioning && (wide || frame == 1));
-            if (provisioning)
-              id(boot_set_lines).execute("JOINING", "Wi-Fi", "", "", true);
-            else if (frame == 2)
+            if (provisioning) {
+              const auto joining = w->get_sta().get_ssid();
+              id(boot_set_lines).execute("JOINING", joining.empty() ? std::string("Wi-Fi") : joining.str(), "", "", true);
+            } else if (frame == 2)
               id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
             else
               id(boot_set_lines).execute("SETUP", "Game Day", "app", "", true);
@@ -609,7 +611,9 @@ esp32_improv:
     - lambda: |-
         id(boot_qr_cycle).execute(0, false);
         id(boot_view).execute(false, false);
-        id(boot_set_lines).execute("JOINING", "Wi-Fi", "", "", true);
+        // Name the network the app just handed over, so a wrong pick shows here.
+        const auto joining = wifi::global_wifi_component->get_sta().get_ssid();
+        id(boot_set_lines).execute("JOINING", joining.empty() ? std::string("Wi-Fi") : joining.str(), "", "", true);
   on_provisioned:
     # Credentials worked; nudge boot_check's 500ms poll now instead of
     # waiting up to half a second for it to notice and repaint the
@@ -652,6 +656,7 @@ lvgl:
     widgets:
       - obj:
           id: boot_overlay
+          scrollbar_mode: "OFF"
           x: 0
           y: 0
           width: 100%
@@ -673,6 +678,7 @@ lvgl:
                 styles: [boot_st_title]
             - obj:
                 id: boot_rule
+                scrollbar_mode: "OFF"
                 x: 4
                 y: 19
                 width: 120
@@ -751,6 +757,7 @@ lvgl:
             # current than any other screen.
             - obj:
                 id: boot_qr_box
+                scrollbar_mode: "OFF"
                 x: 0
                 y: 0
                 width: 64

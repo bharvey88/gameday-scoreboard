@@ -334,7 +334,7 @@
   });
   const rotateInput = $("#rotate");
   rotateInput.onchange = () => {
-    const v = Math.min(30, Math.max(1, Number(rotateInput.value) || 5));
+    const v = Math.min(30, Math.max(1, Number(rotateInput.value) || 1));
     rotateInput.value = v;
     setGD({ rotate: v });
   };
@@ -359,7 +359,7 @@
     setGD({ collide: collideSelect.value });
   };
   favRotate.onchange = () => {
-    const v = Math.min(30, Math.max(1, Number(favRotate.value) || 5));
+    const v = Math.min(30, Math.max(1, Number(favRotate.value) || 1));
     favRotate.value = v;
     setGD({ rotate: v });
   };

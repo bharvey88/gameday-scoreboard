@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.5.2"
+  version: "1.5.3"
   # Set by each board's top-level file; names the manifest folder.
   variant: "moonhub75"
 
@@ -80,6 +80,19 @@ esphome:
                 esp32_improv::global_improv_component->set_wifi_timeout(1000);
               }
             }
+        # Keep Bluetooth off at boot because it shares the radio with the Wi-Fi
+        # scan. With it on, Wi-Fi was ready 12 s after boot instead of 5.
+        # A panel with no saved network turns it on now for setup.
+        # A panel with a saved network gets the dropout grace, which on_connect cancels.
+        - if:
+            condition:
+              lambda: |-
+                auto *w = wifi::global_wifi_component;
+                return w != nullptr && w->has_sta() && !w->get_sta().get_ssid().empty();
+            then:
+              - script.execute: gd_ble_grace
+            else:
+              - ble.enable:
 
 external_components:
   - source:
@@ -130,9 +143,6 @@ ota:
 
 wifi:
   power_save_mode: none
-  # Rejoin the last access point on its saved channel with no scan. ESPHome
-  # scans when that access point is gone.
-  fast_connect: true
   ap:
     ssid: "Game Day Scoreboard"
   # Bluetooth (esp32_improv) is only needed to hand the panel Wi-Fi
@@ -140,10 +150,9 @@ wifi:
   # ESPN/update HTTPS fetches even after moving BT and TLS to PSRAM (v1.3.4),
   # causing mbedtls_ssl_setup to fail and the panel to reboot. Once Wi-Fi is
   # up there's nothing left for Bluetooth to do, so tear the BLE stack down
-  # and give that memory back. enable_on_boot (default true, unchanged) means
-  # an unprovisioned panel still advertises at boot, and "Reset Wi-Fi" blanks
-  # the saved network, so the panel re-enters setup mode and BLE turns back
-  # on next boot without any extra logic here.
+  # and give that memory back. on_boot turns Bluetooth on for a panel with no
+  # saved network, and "Reset Wi-Fi" blanks the saved network, so the panel
+  # re-enters setup mode with BLE on next boot.
   on_connect:
     - script.stop: gd_ble_grace
     - ble.disable:
@@ -288,6 +297,9 @@ interval:
 captive_portal:
 
 improv_serial:
+
+esp32_ble:
+  enable_on_boot: false
 
 esp32_improv:
   authorizer: none

@@ -11,6 +11,24 @@
 
 namespace espn {
 
+// The "Switch every" setting, in minutes. A saved value outside the range is
+// treated as corrupt at boot and replaced with the default.
+static const int kRotateMinMinutes = 1;
+static const int kRotateMaxMinutes = 30;
+static const int kRotateDefaultMinutes = 1;
+
+inline bool rotate_minutes_valid(int minutes) {
+  return minutes >= kRotateMinMinutes && minutes <= kRotateMaxMinutes;
+}
+
+inline int clamp_rotate_minutes(int minutes) {
+  if (minutes < kRotateMinMinutes)
+    return kRotateMinMinutes;
+  if (minutes > kRotateMaxMinutes)
+    return kRotateMaxMinutes;
+  return minutes;
+}
+
 // The team endpoint's answer for the saved team, kept in flash so a boot can
 // go straight to the scoreboard instead of reading the team endpoint (about
 // 23 KB) first. Only what the scoreboard request needs.
