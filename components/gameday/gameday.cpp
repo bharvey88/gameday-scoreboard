@@ -137,9 +137,9 @@ void GamedayComponent::setup() {
     this->prefs_.tz_index = ::espn::kDefaultTimezone;
   this->pref2_ = global_preferences->make_preference<Prefs2>(fnv1_hash("gameday_prefs2_v1"));
   if (!this->pref2_.load(&this->prefs2_) || this->prefs2_.mode > (uint8_t) Mode::FAVORITES ||
-      this->prefs2_.rotate_minutes < 2 || this->prefs2_.rotate_minutes > 30) {
+      this->prefs2_.rotate_minutes < 1 || this->prefs2_.rotate_minutes > 30) {
     this->prefs2_.mode = (uint8_t) Mode::MY_TEAM;
-    this->prefs2_.rotate_minutes = 5;
+    this->prefs2_.rotate_minutes = 1;
   }
   this->pref3_ = global_preferences->make_preference<Prefs3>(fnv1_hash("gameday_prefs3_v1"));
   if (!this->pref3_.load(&this->prefs3_))
@@ -461,6 +461,18 @@ void GamedayComponent::start_fav_job_(uint32_t now) {
       refresh = (int) i;
       break;
     }
+  }
+  if (this->force_schedule_) {
+    // Refresh Now in Favorites mode. Re-read the team that is on the board,
+    // since that is the one the owner is looking at, and it is one fetch
+    // rather than four. The other three keep their own six hour cycle.
+    // Spend the flag here, not on success: a failed favorites fetch
+    // reschedules at once, so a flag left set would retry in a tight loop.
+    this->force_schedule_ = false;
+    if (this->fav_shown_ >= 0)
+      refresh = this->fav_shown_;
+    else if (!this->fav_.empty())
+      refresh = 0;
   }
   this->fav_choose_(tnow);
   if (refresh < 0 && this->fav_locked_ && this->fav_shown_ >= 0) {
@@ -1163,7 +1175,7 @@ void GamedayComponent::apply_job_() {
     this->schedule_.group = g.group;
     this->schedule_.league = g.league;
     this->schedule_.kickoff_epoch = (int64_t) this->time_->timestamp_now();
-    this->schedule_fetched_ms_ = now;
+    this->schedule_fetched_ms_ = now == 0 ? 1 : now;  // 0 reads as "never fetched"
     this->live_away_id_ = g.away_id;
     this->live_started_ms_ = now == 0 ? 1 : now;
     this->game_ = GameSnapshot{};
@@ -1187,7 +1199,7 @@ void GamedayComponent::apply_job_() {
       return;
     }
     this->schedule_ = j.schedule;
-    this->schedule_fetched_ms_ = now;
+    this->schedule_fetched_ms_ = now == 0 ? 1 : now;  // 0 reads as "never fetched"
     this->force_schedule_ = false;
     this->upcoming_due_ = true;  // refreshed on the next cycle, once the board is drawn
     this->cache_unconfirmed_ = false;
