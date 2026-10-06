@@ -3,6 +3,8 @@
 # MoonHub75 pinout; only the controller package differs.
 substitutions:
   variant: "scoreboard75"
+  # Ships with a single 128x64 panel, so boot (and Factory Reset) as 128 wide.
+  default_panel_cols: "2"
 
 packages:
   controller: !include controllers/scoreboard75.yaml
