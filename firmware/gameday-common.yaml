@@ -14,8 +14,11 @@ substitutions:
   display_layout: HORIZONTAL
   display_layout_rows: "1"
   # The widest chain this firmware supports. The count actually driven comes
-  # from the saved "Panels" choice (default 1), applied by panel_layout at boot.
+  # from the saved "Panels" choice, applied by panel_layout at boot.
   display_layout_cols: "2"
+  # Panels driven before anyone picks: 1 for a DIY 64x64, 2 on boards that ship
+  # with a 128x64. Also what Factory Reset returns to.
+  default_panel_cols: "1"
   display_scan_wiring: STANDARD_TWO_SCAN
 
   # hub75-studio packages (ESPHome version, theme, clock page). Pinned to a
@@ -126,7 +129,7 @@ packages:
 panel_layout:
   id: gd_panels
   display_id: matrix
-  default_cols: 1
+  default_cols: ${default_panel_cols}
   max_cols: 2
 
 logger:
