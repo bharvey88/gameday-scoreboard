@@ -8,6 +8,10 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.5.4
+
+- A Game Day Scoreboard controller with a 128x64 panel now starts up using the whole panel. Before, a freshly installed or factory-reset panel drew the picture twice side by side (two setup QR codes) until you picked the panel size. DIY builds on a 64x64 panel are unchanged.
+
 ## v1.5.3
 
 - The panel has your scoreboard up sooner after a restart or an update. It no longer starts Bluetooth on every boot, which slowed down joining your Wi-Fi. Bluetooth only comes on when the panel needs setting up. This replaces the v1.5.2 change, so the panel picks your strongest Wi-Fi access point again.
