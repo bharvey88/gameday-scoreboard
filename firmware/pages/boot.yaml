@@ -429,6 +429,10 @@ script:
               auto *w = wifi::global_wifi_component;
               return w != nullptr && !w->is_connected();
           then:
+            # Re-arm the hide for when Wi-Fi comes back. A drop shorter than
+            # boot_wifi_lost_later's wait never resets this, so the overlay
+            # would otherwise stay over the scoreboard.
+            - lambda: 'id(boot_ip_shown_ms) = 0;'
             - component.resume: boot_check
             - component.resume: boot_anim
             - script.execute:

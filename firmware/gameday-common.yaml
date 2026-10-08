@@ -172,7 +172,7 @@ wifi:
   # panel and hand it new credentials (a changed router password is the
   # common case, and there is no other way back in), and say so on the
   # screen instead of leaving a stale score up. A drop shorter than
-  # boot_wifi_lost_later's wait never reaches the screen. boot_check's poll
+  # boot_wifi_lost_later's wait never covers the scoreboard. boot_check's poll
   # repaints the normal lines by itself once Wi-Fi returns, so a router
   # reboot resolves with no reboot of our own.
   on_disconnect:
