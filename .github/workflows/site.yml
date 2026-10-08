@@ -90,7 +90,7 @@ jobs:
               gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n "firmware-$v" -D site/firmware || echo "no $v firmware for $TAG"
             fi
           done
-          test -f site/firmware/moonhub75/manifest.json
+          bash scripts/check_site_firmware.sh site "$TAG"
           sed -i "s/__VERSION__/${TAG}/g" site/index.html
           ls -laR site
       - uses: actions/upload-pages-artifact@v3
