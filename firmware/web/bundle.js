@@ -295,6 +295,9 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     const g = game;
     const st = $("#gstate");
     const msg = $("#msg");
+    // misses is top level in the state document, not in game. Three in a row is
+    // where the firmware adds "no update" to the ticker, with or without a game.
+    $("#stale").classList.toggle("on", ((S && S.misses) || 0) >= 3);
     if (!g || g.s === "NOT_FOUND") {
       b.classList.add("empty");
       st.textContent = g ? "NO GAME" : "WAITING";
@@ -321,7 +324,6 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     const d = $("#down");
     d.textContent = g.s === "IN" ? g.d || "" : g.s === "PRE" && g.tv ? "on " + g.tv : "";
     d.classList.toggle("rz", g.s === "IN" && !!g.rz);
-    $("#stale").classList.toggle("on", (g.m || 0) >= 3);
   };
 
   // ---- mode pills ----------------------------------------------------------------
