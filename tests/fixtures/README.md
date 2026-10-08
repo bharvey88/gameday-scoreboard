@@ -92,3 +92,11 @@ NHL, recorded 2026-10-07 and 2026-10-08 UTC from the single-event endpoint
 
 `football_golden.txt` is written by the host tests (`GOLDEN_WRITE=1`) and
 pins football's output; see `golden_football.cpp`.
+
+Next-game look-ahead, recorded 2026-10-08 ~14:50Z:
+
+| File | Source |
+| --- | --- |
+| `team_nhl_pit_post.json` | `.../hockey/nhl/teams/16`, still naming the 10/7 final the next morning |
+| `day_nhl_20261009.json` | `.../hockey/nhl/scoreboard?dates=20261009` (PIT @ CBJ among four games) |
+| `day_mlb_20261009.json` | `.../baseball/mlb/scoreboard?dates=20261009` (an off day: no games) |

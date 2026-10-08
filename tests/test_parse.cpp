@@ -1748,6 +1748,43 @@ static void test_nhl_splash() {
   CHECK_EQ(decide_splash(pre, after(1, 0), true).text, std::string(""));
 }
 
+// ESPN's team endpoint keeps naming a finished game for hours (PIT's still
+// named the 10/7 final at 11 AM Eastern on 10/8). Leagues without a season
+// list find the next game in the coming days' scoreboards.
+static void test_lookahead() {
+  Schedule pit;
+  CHECK(parse_team_str(slurp("fixtures/team_nhl_pit_post.json"), pit));
+  CHECK_EQ(pit.event_id, std::string("401891830"));
+  CHECK(pit.next_final);
+  Schedule atl;
+  CHECK(parse_team_str(slurp("fixtures/team_mlb_atl.json"), atl));
+  CHECK(!atl.next_final);  // its next event was in progress
+  Schedule dal;
+  CHECK(parse_team_str(slurp("fixtures/team_nfl_dal.json"), dal));
+  CHECK(!dal.next_final);
+
+  Schedule next;
+  CHECK(parse_team_game_str(slurp("fixtures/day_nhl_20261009.json"), 16, next));
+  CHECK_EQ(next.event_id, std::string("401892467"));  // PIT @ CBJ
+  CHECK_EQ(next.kickoff_epoch, parse_iso8601_z("2026-10-09T23:00Z"));
+  Schedule none;
+  CHECK(!parse_team_game_str(slurp("fixtures/day_nhl_20261009.json"), 17, none));  // COL is off
+  CHECK(!parse_team_game_str(slurp("fixtures/day_mlb_20261009.json"), 15, none));   // no games at all
+  // Game 2 of a doubleheader, after game 1's final.
+  const char *dh = R"({"events":[
+    {"id":"1","date":"2026-07-04T17:05Z","status":{"type":{"state":"post"}},
+     "competitions":[{"competitors":[{"id":"15"},{"id":"19"}]}]},
+    {"id":"2","date":"2026-07-04T22:10Z","status":{"type":{"state":"pre"}},
+     "competitions":[{"competitors":[{"id":"19"},{"id":"15"}]}]}]})";
+  CHECK(parse_team_game_str(dh, 15, next));
+  CHECK_EQ(next.event_id, std::string("2"));
+
+  CHECK_EQ(team_day_url(League::NHL, 0, parse_iso8601_z("2026-10-09T15:00Z")),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=20261009"));
+  CHECK_EQ(team_day_url(League::MCBB, 8, parse_iso8601_z("2026-12-06T18:00Z")),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=8&dates=20261206"));
+}
+
 int run_football_golden();  // golden_football.cpp
 
 static void test_logo_lru() {
@@ -1800,6 +1837,7 @@ int main() {
   test_soccer_splash();
   test_soccer_text_helpers();
   test_soccer_cups();
+  test_lookahead();
   test_nhl_urls();
   test_nhl_team();
   test_nhl_live();

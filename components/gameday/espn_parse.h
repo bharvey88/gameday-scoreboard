@@ -23,6 +23,7 @@ struct Schedule {
   std::string team_color;
   std::string team_record;
   const char *comp_slug{nullptr};  // a kCups slug when the game is in that cup, nullptr for the league
+  bool next_final{false};          // the team endpoint's next event is already over (ESPN lags)
 };
 
 enum class Half : uint8_t { NONE, TOP, MID, BOTTOM, END };
@@ -157,6 +158,9 @@ std::string scan_url(League league, int64_t now_epoch);  // every game of the da
 // One game on its own (8-18 KB). Leagues with LeagueInfo::per_event poll this
 // instead of the day's whole scoreboard; football does not use it.
 std::string event_url(League league, const std::string &event_id);
+// One day's scoreboard for finding a team's next game (Eastern date of
+// day_epoch). Men's college basketball reads the team's conference only.
+std::string team_day_url(League league, uint32_t group, int64_t day_epoch);
 // The same in a cup of the league (kCups): soccer/uefa.champions/... A null
 // slug gives the league's own URL.
 std::string team_url(League league, uint32_t espn_id, const char *comp_slug);
@@ -169,6 +173,9 @@ bool parse_team_str(const std::string &json, Schedule &out);
 bool parse_upcoming_str(const std::string &json, uint32_t our_team_id, size_t max, std::vector<Upcoming> &out);
 bool parse_scoreboard_str(const std::string &json, const std::string &event_id, uint32_t our_team_id,
                           GameSnapshot &out);
+// The team's next game that is not over yet in a day's scoreboard
+// (team_day_url), into out.event_id and out.kickoff_epoch.
+bool parse_team_game_str(const std::string &json, uint32_t our_team_id, Schedule &out);
 // The single-event document from event_url().
 bool parse_event_str(const std::string &json, Sport sport, uint32_t our_team_id, GameSnapshot &out);
 

@@ -326,6 +326,11 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void schedule_next_(uint32_t ms) { this->next_fetch_ms_ = millis() + ms; }
   uint32_t interval_for_phase_() const;
   uint32_t linger_ms_() const;  // how long a final stays up before the next game
+  std::string lingered_event_;  // the final the last linger ended on (My team)
+  // Non-football leagues without a season list find the next game in the
+  // coming days' scoreboards when the team endpoint names a finished one.
+  bool needs_lookahead_(League league) const;
+  bool fetch_team_day_(const ::espn::Team *team, uint32_t group, int64_t day_epoch, Schedule &out);
   void emit_(const ::espn::Splash &splash);
   void reset_game_();
   // A game poll came back clean: clear the miss count and start the clock over.
@@ -387,6 +392,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     uint32_t fetched_ms{0};  // last schedule attempt
     int64_t final_epoch{0};  // when the panel saw the game go final, 0 if it was fetched final
     bool stale{false};       // released after a final: fetch the next game
+    std::string stuck_event;  // a final the team endpoint kept naming: no minute-by-minute retries
     std::vector<Schedule> comps;  // soccer: reads per competition, as Job::comps
     int comp_next{-1};            // the cup read due next, -1 when none
   };

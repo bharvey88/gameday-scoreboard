@@ -49,6 +49,9 @@ static const uint32_t NO_LIVE_RESCAN = 2 * MINUTE;
 // worst honest case, not over it. 2 x watchdog_timeout for the network plus
 // 60s for handshakes and parsing leaves only a genuinely wedged worker here.
 static const uint32_t WORKER_DEADLINE = 120 * 1000;
+// Days of league scoreboards read to find a team's next game when ESPN's team
+// endpoint still names a finished one (leagues without a season list).
+static const int LOOKAHEAD_DAYS = 3;
 
 static const char *const MODE_OPTIONS[] = {"My team",       "Live NFL",       "Live college",
                                            "Live anything", "Favorite teams", "Live games"};
@@ -563,7 +566,7 @@ void GamedayComponent::start_fav_job_(uint32_t now) {
   ::espn::FavRules rules = this->fav_rules_();
   for (auto &e : this->fav_) {
     if (e.game.valid && e.game.state == GameState::POST && e.final_epoch != 0 && !e.stale &&
-        tnow - e.final_epoch >= rules.release_s)
+        tnow - e.final_epoch >= rules.release_s && e.game.event_id != e.stuck_event)
       e.stale = true;  // released: the team endpoint now points at the next game
   }
   int refresh = -1;
@@ -706,6 +709,11 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
   }
   GameSnapshot old = e.game;
   e.game = j.game;
+  // A refresh that came back with the same final (no next game found ahead)
+  // waits for the six-hour refresh instead of retrying every minute.
+  if (j.need_schedule && old.valid && old.event_id == e.game.event_id && e.game.state == GameState::POST &&
+      this->needs_lookahead_(e.team->league))
+    e.stuck_event = e.game.event_id;
   if (!old.valid || old.event_id != e.game.event_id)
     e.final_epoch = 0;
   if (e.game.state == GameState::POST && old.valid && old.event_id == e.game.event_id && old.state != GameState::POST)
@@ -765,6 +773,9 @@ void GamedayComponent::loop() {
       uint32_t deadline = WORKER_DEADLINE;
       if (this->job_.need_scan && this->job_.scan_leagues.size() > 2)
         deadline = WORKER_DEADLINE / 2 * (uint32_t) this->job_.scan_leagues.size();
+      // A team read can add the look-ahead's day reads (run_job_).
+      if (this->job_.need_schedule && this->job_.team != nullptr && this->needs_lookahead_(this->job_.team->league))
+        deadline = WORKER_DEADLINE / 2 * (2 + LOOKAHEAD_DAYS);
       if (this->busy_since_ms_ != 0 && (millis() - this->busy_since_ms_) >= deadline) {
         ESP_LOGW(TAG, "Fetch task did not finish in %us, giving up on it", (unsigned) (deadline / 1000));
         this->busy_ = false;
@@ -1018,6 +1029,23 @@ bool GamedayComponent::fetch_schedule_(const ::espn::Team *team, Schedule &out, 
   return true;
 }
 
+bool GamedayComponent::needs_lookahead_(League league) const {
+  const ::espn::LeagueInfo *info = ::espn::league_info(league);
+  return info != nullptr && info->sport != ::espn::Sport::FOOTBALL && !info->season_list;
+}
+
+bool GamedayComponent::fetch_team_day_(const ::espn::Team *team, uint32_t group, int64_t day_epoch, Schedule &out) {
+  std::string url = ::espn::team_day_url(team->league, group, day_epoch);
+  ESP_LOGD(TAG, "Looking ahead: %s", url.c_str());
+  auto container = this->open_(url);
+  if (container == nullptr)
+    return false;
+  ContainerReader reader(container);
+  bool ok = ::espn::parse_team_game(reader, team->espn_id, out);
+  container->end();
+  return ok;
+}
+
 bool GamedayComponent::fetch_upcoming_(const ::espn::Team *team, std::vector<::espn::Upcoming> &out) {
   const ::espn::LeagueInfo *info = ::espn::league_info(team->league);
   if (info != nullptr && !info->season_list) {
@@ -1116,6 +1144,10 @@ uint32_t GamedayComponent::linger_ms_() const {
   if (this->live_mode_() && this->schedule_.valid)
     league = (League) this->schedule_.league;
   const ::espn::LeagueInfo *info = ::espn::league_info(league);
+  // The team endpoint named this final again after the last linger and no
+  // next game turned up ahead: check back hourly rather than every linger.
+  if (!this->lingered_event_.empty() && this->game_.event_id == this->lingered_event_ && this->needs_lookahead_(league))
+    return 60 * MINUTE;
   return (uint32_t) (info != nullptr ? info->linger_min : 30) * MINUTE;
 }
 
@@ -1226,6 +1258,7 @@ void GamedayComponent::start_job_() {
     }
     this->prev_ = GameSnapshot{};
     this->done_event_ = this->game_.event_id;
+    this->lingered_event_ = this->game_.event_id;
     this->game_ = GameSnapshot{};
     this->post_since_ms_ = 0;
     if (next != nullptr) {
@@ -1310,6 +1343,23 @@ void GamedayComponent::run_job_() {
       return;
     j.schedule = s;
     ::espn::adopt_league(j.schedule, j.team->league);
+    if (j.schedule.next_final && this->needs_lookahead_(j.team->league)) {
+      // ESPN's team endpoint keeps naming a finished game until the next one
+      // is near (the previous night's finals were still named at 11 AM
+      // Eastern on 2026-10-08). Without a season list, read the next days'
+      // scoreboards for this team's next game.
+      int64_t now = (int64_t) this->time_->timestamp_now();
+      for (int d = 0; d < LOOKAHEAD_DAYS; d++) {
+        Schedule next;
+        if (this->fetch_team_day_(j.team, j.schedule.group, now + (int64_t) d * 86400, next)) {
+          ESP_LOGI(TAG, "Next game for %s: event %s", j.team->abbr, next.event_id.c_str());
+          j.schedule.event_id = next.event_id;
+          j.schedule.kickoff_epoch = next.kickoff_epoch;
+          j.schedule.next_final = false;
+          break;
+        }
+      }
+    }
     if (!j.comps.empty()) {
       // Soccer: the cup reads from the last sweep still count.
       j.comps[0] = j.schedule;

@@ -98,6 +98,15 @@ inline void fill_team_filter(JsonDocument &f) {
   JsonObject ne = f["team"]["nextEvent"].add<JsonObject>();
   ne["id"] = true;
   ne["date"] = true;
+  ne["competitions"].add<JsonObject>()["status"]["type"]["state"] = true;
+}
+
+inline void fill_team_game_filter(JsonDocument &f) {
+  JsonObject ev = f["events"].add<JsonObject>();
+  ev["id"] = true;
+  ev["date"] = true;
+  ev["status"]["type"]["state"] = true;
+  ev["competitions"].add<JsonObject>()["competitors"].add<JsonObject>()["id"] = true;
 }
 
 inline std::string format_over_under(JsonVariantConst v) {
@@ -265,6 +274,7 @@ template<typename TInput> bool parse_team(TInput &input, Schedule &out) {
   if (!ne.isNull()) {
     s.event_id = detail::str_or_empty(ne["id"]);
     s.kickoff_epoch = parse_iso8601_z(detail::str_or_empty(ne["date"]));
+    s.next_final = detail::str_or_empty(ne["competitions"][0]["status"]["type"]["state"]) == "post";
   }
   s.valid = true;
   out = s;
@@ -340,6 +350,31 @@ template<typename TInput, typename TOut> bool parse_live_games(TInput &input, TO
       out.push_back(g);
   }
   return true;
+}
+
+// The first game in a day's scoreboard with our team that is not over yet
+// (game 2 of a doubleheader after game 1's final). Fills event_id and
+// kickoff_epoch; false when the team does not play that day.
+template<typename TInput> bool parse_team_game(TInput &input, uint32_t our_team_id, Schedule &out) {
+  JsonDocument filter;
+  detail::fill_team_game_filter(filter);
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
+                                              DeserializationOption::NestingLimit(40));
+  if (err)
+    return false;
+  for (JsonObjectConst ev : doc["events"].as<JsonArrayConst>()) {
+    if (detail::str_or_empty(ev["status"]["type"]["state"]) == "post")
+      continue;
+    for (JsonObjectConst c : ev["competitions"][0]["competitors"].as<JsonArrayConst>()) {
+      if ((uint32_t) atol(detail::str_or_empty(c["id"]).c_str()) != our_team_id)
+        continue;
+      out.event_id = detail::str_or_empty(ev["id"]);
+      out.kickoff_epoch = parse_iso8601_z(detail::str_or_empty(ev["date"]));
+      return !out.event_id.empty();
+    }
+  }
+  return false;
 }
 
 // Parses a single-event document (event_url): the root object is the event.

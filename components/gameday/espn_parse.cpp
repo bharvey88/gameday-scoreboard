@@ -38,6 +38,21 @@ std::string schedule_url(League league, uint32_t espn_id) {
   return team_url(league, espn_id) + "/schedule";
 }
 
+static void civil_from_epoch(int64_t epoch, int &y, int &m, int &d);
+
+std::string team_day_url(League league, uint32_t group, int64_t day_epoch) {
+  std::string url = site_base(league) + "/scoreboard?";
+  int y, m, d;
+  civil_from_epoch(day_epoch - 5 * 3600, y, m, d);
+  char buf[48];
+  if (league == League::MCBB && group != 0) {
+    snprintf(buf, sizeof(buf), "groups=%u&", (unsigned) group);
+    url += buf;
+  }
+  snprintf(buf, sizeof(buf), "dates=%04d%02d%02d", y, m, d);
+  return url + buf;
+}
+
 std::string event_url(League league, const std::string &event_id) {
   return site_base(league) + "/scoreboard/" + event_id;
 }
@@ -148,6 +163,10 @@ bool parse_upcoming_str(const std::string &json, uint32_t our_team_id, size_t ma
 bool parse_scoreboard_str(const std::string &json, const std::string &event_id, uint32_t our_team_id,
                           GameSnapshot &out) {
   return parse_scoreboard(json, event_id, our_team_id, out);
+}
+
+bool parse_team_game_str(const std::string &json, uint32_t our_team_id, Schedule &out) {
+  return parse_team_game(json, our_team_id, out);
 }
 
 bool parse_event_str(const std::string &json, Sport sport, uint32_t our_team_id, GameSnapshot &out) {
