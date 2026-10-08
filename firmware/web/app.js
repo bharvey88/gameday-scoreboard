@@ -285,6 +285,10 @@
   };
 
   // ---- board rendering ---------------------------------------------------
+  // ESPN also ends a postponed, suspended or canceled game in POST, without
+  // marking it done; its detail says which.
+  const endedAs = (g) => (g.done === false && g.detail ? g.detail : "Final");
+
   const renderTeam = (node, league, id, abbr, rec, timeouts, poss, color) => {
     const img = node.querySelector("img");
     const src = abbr || id ? logoUrl(league, id, abbr) : "";
@@ -329,7 +333,7 @@
     b.classList.remove("empty");
     msg.hidden = true;
     st.classList.toggle("live", g.s === "IN");
-    st.textContent = g.s === "IN" ? "LIVE" : g.s === "POST" ? "FINAL" : "UPCOMING";
+    st.textContent = g.s === "IN" ? "LIVE" : g.s === "POST" ? endedAs(g).toUpperCase() : "UPCOMING";
     const football = !g.sport;
     renderTeam($("#tA"), g.l, g.ti, g.ta, g.tr, football ? g.tt : null, g.p === 1, g.tc);
     renderTeam($("#tB"), g.l, g.oi, g.oa, g.or, football ? g.ot : null, g.p === 2, g.oc);
@@ -337,7 +341,7 @@
     $("#sB").textContent = g.os;
     const clock = $("#clock");
     if (g.s === "IN") clock.textContent = g.c || "In progress";
-    else if (g.s === "POST") clock.textContent = "Final";
+    else if (g.s === "POST") clock.textContent = endedAs(g);
     else clock.textContent = g.k || "Upcoming";
     const d = $("#down");
     d.textContent = g.s === "IN" ? situation(g) : g.s === "PRE" && g.tv ? "on " + g.tv : "";
@@ -633,11 +637,14 @@
             const x = c.competitors.find((k) => k.homeAway === ha) || {};
             return { id: Number(x.team?.id), abbr: x.team?.abbreviation || "", score: x.score || "0", name: x.team?.shortDisplayName || x.team?.displayName || "" };
           };
-          out.push({ league: lg, id: ev.id, state: ev.status?.type?.state || "pre", detail: ev.status?.type?.shortDetail || "", away: side("away"), home: side("home"), date: ev.date });
+          const type = ev.status?.type || {};
+          // "off": ended without being completed, so postponed, canceled or suspended
+          const state = type.state === "post" && type.completed === false ? "off" : type.state || "pre";
+          out.push({ league: lg, id: ev.id, state, detail: type.shortDetail || "", away: side("away"), home: side("home"), date: ev.date });
         }
       } catch (_) { /* one league failing should not hide the other */ }
     }));
-    const rank = { in: 0, pre: 1, post: 2 };
+    const rank = { in: 0, pre: 1, post: 2, off: 3 };
     out.sort((a, b) => (rank[a.state] - rank[b.state]) || (a.date < b.date ? -1 : 1));
     games = out;
     gamesAt = Date.now();
@@ -663,7 +670,8 @@
     for (const g of shown) {
       if (g.state !== lastState) {
         lastState = g.state;
-        tiles.appendChild(el("div", "gh", g.state === "in" ? "Live now" : g.state === "pre" ? "Later today" : "Final"));
+        const heading = { in: "Live now", pre: "Later today", post: "Final", off: "Postponed or canceled" };
+        tiles.appendChild(el("div", "gh", heading[g.state] || "Final"));
       }
       const card = el("div", "game" + (g.state === "in" ? " live" : ""));
       const mkSide = (s) => {
@@ -680,7 +688,7 @@
         txt.appendChild(el("div", "n", s.name));
         txt.appendChild(el("div", "a", s.abbr));
         b.appendChild(txt);
-        b.appendChild(el("div", "sc", g.state === "pre" ? "" : String(s.score)));
+        b.appendChild(el("div", "sc", g.state === "pre" || g.state === "off" ? "" : String(s.score)));
         b.onclick = () => {
           if (!t) return;
           if (pickFav) return choose(t);
@@ -869,7 +877,7 @@
       txt.appendChild(el("div", "n", name));
       let when = "No game scheduled";
       if (n.s === "IN") when = n.ts + " - " + n.os + (n.detail ? " · " + n.detail : "");
-      else if (n.s === "POST") when = "Final " + n.ts + " - " + n.os;
+      else if (n.s === "POST") when = endedAs(n) === "Final" ? "Final " + n.ts + " - " + n.os : endedAs(n);
       else if (n.s === "PRE") when = kickLabel(n.kick) + (n.tv ? " · " + n.tv : "");
       txt.appendChild(el("div", "w", when));
       row.appendChild(txt);

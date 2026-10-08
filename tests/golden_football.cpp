@@ -85,6 +85,7 @@ void dump_splashes(std::ostream &o, const GameSnapshot &base) {
       for (int lead = -1; lead <= 1; lead++) {
         GameSnapshot fin = prev;
         fin.state = GameState::POST;
+        fin.completed = true;
         fin.team_score = prev.opp_score + lead;
         GameSnapshot was = prev;
         was.team_score = fin.team_score;

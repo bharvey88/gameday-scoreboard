@@ -2003,6 +2003,7 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   game["odds"] = g.odds;
   game["ou"] = g.over_under;
   game["detail"] = g.short_detail;
+  game["done"] = g.completed;
   game["kick"] = g.kickoff_epoch;
   game["lp"] = g.last_play;
   game["dd"] = g.down_distance;
@@ -2050,6 +2051,7 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
       o["os"] = e.game.opp_score;
       o["tv"] = e.game.tv;
       o["detail"] = e.game.short_detail;
+      o["done"] = e.game.completed;
     }
   }
   for (const auto &u : this->upcoming_) {

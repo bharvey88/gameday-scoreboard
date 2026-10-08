@@ -483,6 +483,8 @@ Splash soccer_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opp
   if (!prev.valid || !cur.valid || prev.event_id != cur.event_id)
     return none;
   if (prev.state == GameState::IN && cur.state == GameState::POST) {
+    if (!cur.completed)
+      return none;
     int us = cur.team_score, them = cur.opp_score;
     if (us == them && cur.soc.team_shootout >= 0 && cur.soc.opp_shootout >= 0) {
       us = cur.soc.team_shootout;

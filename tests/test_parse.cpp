@@ -173,6 +173,7 @@ static GameSnapshot live(int us, int them, GameState st = GameState::IN) {
   GameSnapshot s;
   s.valid = true;
   s.state = st;
+  s.completed = st == GameState::POST;
   s.event_id = "1";
   s.team_abbr = "DAL";
   s.opp_abbr = "PHI";
@@ -213,6 +214,12 @@ static void test_splash() {
   CHECK_EQ(decide_splash(live(21, 20), live(21, 20, GameState::POST), true).text, std::string("DAL WINS!"));
   CHECK_EQ(decide_splash(live(20, 21), live(20, 21, GameState::POST), true).text, std::string(""));
   CHECK_EQ(decide_splash(live(21, 20, GameState::POST), live(21, 20, GameState::POST), true).text, std::string(""));
+  // Suspended or canceled mid-game: post, but no winner
+  GameSnapshot halted = live(21, 20, GameState::POST);
+  halted.completed = false;
+  halted.short_detail = "Suspended";
+  CHECK_EQ(decide_splash(live(21, 20), halted, true).text, std::string(""));
+  CHECK_EQ(decide_splash(live(20, 21), halted, true, true).text, std::string(""));
 }
 
 static void test_status_text() {
@@ -256,6 +263,19 @@ static void test_status_text() {
   f.team_record = "3-0";
   f.opp_record = "2-1";
   CHECK_EQ(status_text(f, all, ""), std::string("Final | DAL 3-0 | PHI 2-1"));
+  f.short_detail = "Final/OT";
+  CHECK_EQ(status_text(f, all, ""), std::string("Final | DAL 3-0 | PHI 2-1"));
+  // Postponed or canceled: post too, but never called a final
+  GameSnapshot pp = live(0, 0, GameState::POST);
+  pp.completed = false;
+  pp.short_detail = "Postponed";
+  pp.team_record = "3-0";
+  pp.opp_record = "2-1";
+  CHECK_EQ(status_text(pp, all, ""), std::string("Postponed | DAL 3-0 | PHI 2-1"));
+  pp.short_detail = "Canceled";
+  CHECK_EQ(status_text(pp, none, ""), std::string("Canceled | DAL 3-0 | PHI 2-1"));
+  pp.short_detail = "";
+  CHECK_EQ(status_text(pp, all, ""), std::string("Final | DAL 3-0 | PHI 2-1"));
   GameSnapshot nf;
   CHECK_EQ(status_text(nf, all, ""), std::string("No upcoming game"));
 }
@@ -727,6 +747,16 @@ static void test_mlb_pre_post() {
   f.short_detail = "Final/10";
   CHECK(status_text(f, o, "").rfind("Final/10 | ", 0) == 0);
 
+  // A real rainout (CHC @ CLE, 2026-04-04): ESPN sends post with completed false.
+  GameSnapshot ppd = mlb_event("fixtures/event_mlb_postponed.json", 5);
+  CHECK(ppd.state == GameState::POST);
+  CHECK(!ppd.completed);
+  CHECK_EQ(status_text(ppd, o, ""), std::string("Postponed"));
+  GameSnapshot ppd_was = ppd;
+  ppd_was.state = GameState::IN;
+  ppd.team_score = 2;
+  CHECK_EQ(decide_splash(ppd_was, ppd, true, true).text, std::string(""));
+
   GameSnapshot x;
   CHECK(!parse_event_str(slurp("fixtures/event_mlb_top.json"), Sport::BASEBALL, kWhiteSox, x));  // not in it
   CHECK(!parse_event_str("{nope", Sport::BASEBALL, kBraves, x));
@@ -757,6 +787,7 @@ static void test_mlb_splash() {
   CHECK_EQ(decide_splash(prev, after(0, 0, "Ball"), true).text, std::string(""));
   GameSnapshot fin = after(2, 0, "Play Result");
   fin.state = GameState::POST;
+  fin.completed = true;
   GameSnapshot was = fin;
   was.state = GameState::IN;
   CHECK_EQ(decide_splash(was, fin, true).text, std::string("ATL WINS!"));
@@ -1430,6 +1461,7 @@ static void test_nba_splash() {
     c.team_score += us;
     c.opp_score += them;
     c.state = st;
+    c.completed = st == GameState::POST;
     return c;
   };
   // Baskets never splash, whoever scores.
@@ -1737,9 +1769,11 @@ static void test_nhl_splash() {
   // The win, including a shootout decided between two polls
   GameSnapshot fin = after(1, 0);
   fin.state = GameState::POST;
+  fin.completed = true;
   CHECK_EQ(decide_splash(prev, fin, true).text, std::string("WPG WINS!"));
   GameSnapshot lost = after(0, 1);
   lost.state = GameState::POST;
+  lost.completed = true;
   CHECK_EQ(decide_splash(prev, lost, true).text, std::string(""));
   CHECK_EQ(decide_splash(prev, lost, true, true).text, std::string("COL WINS!"));
   GameSnapshot other = after(1, 0);

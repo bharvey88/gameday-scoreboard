@@ -97,6 +97,9 @@ std::string basketball_status_text(const GameSnapshot &s, const TickerOptions &o
       add_part(out, s.venue);
       return out;
     case GameState::POST:
+      // Postponed, Canceled or Suspended: ESPN's post state without a result.
+      if (!s.completed && !s.short_detail.empty())
+        return s.short_detail;
       // "Final/OT", "Final/2OT" after overtime
       out = s.short_detail.rfind("Final", 0) == 0 ? s.short_detail : "Final";
       add_part(out, b.series.empty() ? records_line(s) : b.series);
@@ -149,7 +152,7 @@ Splash basketball_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool
   Splash none;
   if (!prev.valid || !cur.valid || prev.event_id != cur.event_id)
     return none;
-  if (prev.state != GameState::IN || cur.state != GameState::POST)
+  if (prev.state != GameState::IN || cur.state != GameState::POST || !cur.completed)
     return none;
   if (cur.team_score > cur.opp_score)
     return Splash{cur.team_abbr + " WINS!", parse_color(cur.team_color)};

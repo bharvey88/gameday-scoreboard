@@ -213,6 +213,10 @@ Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opp
   if (!prev.valid || !cur.valid || prev.event_id != cur.event_id)
     return none;
   if (prev.state == GameState::IN && cur.state == GameState::POST) {
+    // ESPN also moves a suspended or canceled game to post, with completed
+    // false. Only a completed game has a winner.
+    if (!cur.completed)
+      return none;
     if (cur.team_score > cur.opp_score)
       return Splash{cur.team_abbr + " WINS!", parse_color(cur.team_color)};
     if (neutral && cur.opp_score > cur.team_score)
@@ -280,7 +284,9 @@ std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std
       add_part(out, s.venue);
       return out;
     case GameState::POST:
-      out = "Final";
+      // A game that ended without being completed says why: Postponed,
+      // Canceled or Suspended
+      out = s.completed || s.short_detail.empty() ? std::string("Final") : s.short_detail;
       add_part(out, records_line(s));
       return out;
     case GameState::IN:
