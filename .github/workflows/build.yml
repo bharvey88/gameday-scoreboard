@@ -125,12 +125,14 @@ jobs:
           path: notes
       - name: Assemble site
         run: |
+          set -euo pipefail
           mkdir -p site/firmware
           # docs/site/. (not docs/site/*) so .well-known/ is copied too.
           cp -r docs/site/. site/
           cp -r artifacts/* site/firmware/
           sed -i "s/__VERSION__/${GITHUB_REF_NAME}/g" site/index.html
           ls -R site
+          bash scripts/check_site_firmware.sh site "$GITHUB_REF_NAME"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
