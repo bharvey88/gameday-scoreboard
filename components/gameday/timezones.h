@@ -4,6 +4,10 @@
 // The IANA name is what browsers report; the page uses it to suggest a zone.
 #pragma once
 
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
+
 namespace espn {
 
 struct Timezone {
@@ -31,5 +35,29 @@ constexpr Timezone kTimezones[] = {
 
 constexpr size_t kTimezoneCount = sizeof(kTimezones) / sizeof(kTimezones[0]);
 constexpr size_t kDefaultTimezone = 1;  // US Central
+
+// Index of the zone a tz= value names: a display name ("US Central"), an IANA
+// name ("America/Chicago") or a position in this list ("1"). -1 if nothing
+// matches. Positions move when the list changes, so the app sends a name.
+inline int timezone_index(const char *value) {
+  if (value == nullptr || *value == '\0')
+    return -1;
+  bool digits = true;
+  for (const char *c = value; *c != '\0'; c++) {
+    if (*c < '0' || *c > '9') {
+      digits = false;
+      break;
+    }
+  }
+  if (digits) {
+    unsigned long i = strtoul(value, nullptr, 10);
+    return i < kTimezoneCount ? (int) i : -1;
+  }
+  for (size_t i = 0; i < kTimezoneCount; i++) {
+    if (strcmp(value, kTimezones[i].name) == 0 || strcmp(value, kTimezones[i].iana) == 0)
+      return (int) i;
+  }
+  return -1;
+}
 
 }  // namespace espn
