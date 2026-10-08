@@ -196,35 +196,18 @@ script:
           if (top != nullptr)
             lv_obj_invalidate(top);
 
-  # A logo download that fails leaves a blank square until the team changes,
-  # because the dispatch below only asks for a URL it has not asked for yet.
-  # Ask again for the same one after 15s. mode: restart means a second
-  # failure moves the one pending retry instead of stacking another, so a
-  # logo ESPN keeps refusing is retried every 15s and never piles up.
-  - id: gd_team_logo_retry
-    mode: restart
+  # Point both logo slots at the cached logos. A logo that is still
+  # downloading shows blank until the logo_ready action runs this again.
+  # A failed download is retried by the cache itself on a later board update.
+  - id: gd_show_logos
     then:
-      - delay: 15s
-      - if:
-          condition:
-            lambda: 'return !id(gd_team_logo_url).empty();'
-          then:
-            - online_image.set_url:
-                id: gd_team_logo
-                url: !lambda 'return id(gd_team_logo_url);'
-                update: true
-  - id: gd_opp_logo_retry
-    mode: restart
-    then:
-      - delay: 15s
-      - if:
-          condition:
-            lambda: 'return !id(gd_opp_logo_url).empty();'
-          then:
-            - online_image.set_url:
-                id: gd_opp_logo
-                url: !lambda 'return id(gd_opp_logo_url);'
-                update: true
+      - lambda: |-
+          auto &logos = id(gameday_ctl).logos();
+          logos.pin(id(gd_team_logo_url), id(gd_opp_logo_url));
+          image::Image *team = logos.get(id(gd_team_logo_url));
+          image::Image *opp = logos.get(id(gd_opp_logo_url));
+          lv_image_set_src(id(gd_team_logo_img), team != nullptr ? team : id(gd_logo_blank));
+          lv_image_set_src(id(gd_opp_logo_img), opp != nullptr ? opp : id(gd_logo_blank));
 
   # Bluetooth back on, but not for every two second blip. Bringing Bluedroid
   # up and down is a large internal-RAM alloc and free each time, and that
@@ -351,75 +334,20 @@ time:
     # built when a timezone is configured).
     timezone: "CST6CDT,M3.2.0,M11.1.0"
 
-# Team logos, decoded on the device from ESPN's dark-background PNGs.
+# Team logos come from the gameday component's logo cache (logo_cache.cpp).
+# This blank stands in while one downloads.
 image:
-  - platform: online_image
-    id: gd_team_logo
-    url: https://a.espncdn.com/i/teamlogos/nfl/500-dark/dal.png
+  - file: images/logo-blank.png
+    id: gd_logo_blank
     type: RGB565
-    format: PNG
-    resize: 32x32
     transparency: alpha_channel
-    update_interval: never
-    on_download_finished:
-      - lvgl.image.update:
-          id: gd_team_logo_img
-          src: gd_team_logo
-      # Remember the URL only once it has actually arrived. Recording it when
-      # the request went out was a latch: online_image drops a request made
-      # while it is still decoding (a WARN, neither callback), and the board
-      # update that follows saw a logo it thought it already had.
-      - lambda: 'id(gd_last_team_logo) = id(gd_team_logo_url);'
-      - script.stop: gd_team_logo_retry
-    on_error:
-      - logger.log:
-          level: WARN
-          format: "Team logo download failed: %s"
-          args: ['id(gd_team_logo_url).c_str()']
-      # Forget it, so the next board update asks for it again even though the
-      # team has not changed, and retry on our own in case no update comes.
-      - lambda: 'id(gd_last_team_logo) = "";'
-      - script.execute: gd_team_logo_retry
-  - platform: online_image
-    id: gd_opp_logo
-    url: https://a.espncdn.com/i/teamlogos/nfl/500-dark/phi.png
-    type: RGB565
-    format: PNG
-    resize: 32x32
-    transparency: alpha_channel
-    update_interval: never
-    on_download_finished:
-      - lvgl.image.update:
-          id: gd_opp_logo_img
-          src: gd_opp_logo
-      - lambda: 'id(gd_last_opp_logo) = id(gd_opp_logo_url);'
-      - script.stop: gd_opp_logo_retry
-    on_error:
-      - logger.log:
-          level: WARN
-          format: "Opponent logo download failed: %s"
-          args: ['id(gd_opp_logo_url).c_str()']
-      - lambda: 'id(gd_last_opp_logo) = "";'
-      - script.execute: gd_opp_logo_retry
 
 globals:
   - id: gd_update_checked
     type: bool
     restore_value: no
     initial_value: 'false'
-  # Two URLs per logo: gd_last_* is what actually arrived, set from
-  # on_download_finished, and gd_*_logo_url is what it was last asked for.
-  # The board update below re-asks whenever they differ, which covers a
-  # request online_image dropped as well as a failed one. A failure clears
-  # gd_last_* but not the wanted URL, which is what the retry scripts resend.
-  - id: gd_last_team_logo
-    type: std::string
-    restore_value: no
-    initial_value: '""'
-  - id: gd_last_opp_logo
-    type: std::string
-    restore_value: no
-    initial_value: '""'
+  # The logos the board wants right now, from the latest board update.
   - id: gd_team_logo_url
     type: std::string
     restore_value: no
@@ -456,6 +384,11 @@ gameday:
   time_id: ha_time
   panel_layout_id: gd_panels
   on_action:
+    - if:
+        condition:
+          lambda: 'return x == "logo_ready";'
+        then:
+          - script.execute: gd_show_logos
     - if:
         condition:
           lambda: 'return x == "team_picked";'
@@ -520,38 +453,10 @@ gameday:
         opponent_record: !lambda 'return x.opponent_record;'
         splash_text: !lambda 'return x.splash_text;'
         splash_color: !lambda 'return (int) x.splash_color;'
-    # is_decoding() keeps a second request off a download already running:
-    # online_image would drop it, and set_url would have pointed the image at
-    # the new URL on the way. The next board update asks again.
-    - if:
-        condition:
-          lambda: |-
-            return !x.team_logo.empty() && x.team_logo != id(gd_last_team_logo) &&
-                   !id(gd_team_logo)->is_decoding();
-        then:
-          - lambda: 'id(gd_team_logo_url) = x.team_logo;'
-          - online_image.set_url:
-              id: gd_team_logo
-              url: !lambda 'return x.team_logo;'
-              update: true
-    - if:
-        condition:
-          lambda: 'return x.opponent_logo.empty();'
-        then:
-          - lambda: |-
-              id(gd_last_opp_logo) = "";
-              id(gd_opp_logo_url) = "";  // no opponent on this card, nothing to retry
-    - if:
-        condition:
-          lambda: |-
-            return !x.opponent_logo.empty() && x.opponent_logo != id(gd_last_opp_logo) &&
-                   !id(gd_opp_logo)->is_decoding();
-        then:
-          - lambda: 'id(gd_opp_logo_url) = x.opponent_logo;'
-          - online_image.set_url:
-              id: gd_opp_logo
-              url: !lambda 'return x.opponent_logo;'
-              update: true
+    - lambda: |-
+        id(gd_team_logo_url) = x.team_logo;
+        id(gd_opp_logo_url) = x.opponent_logo;
+    - script.execute: gd_show_logos
 
 lvgl_page_manager:
   sort: by_order

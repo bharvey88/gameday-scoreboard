@@ -6,14 +6,14 @@ from pathlib import Path
 
 from esphome import automation
 import esphome.codegen as cg
-from esphome.components import http_request, time, web_server_base
+from esphome.components import http_request, runtime_image, time, web_server_base
 from esphome.components.panel_layout import PanelLayout
 from esphome.components.web_server_base import CONF_WEB_SERVER_BASE_ID
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_TIME_ID, CONF_TRIGGER_ID, __version__ as ESPHOME_VERSION
 
 DEPENDENCIES = ["network", "http_request", "time"]
-AUTO_LOAD = ["json", "select", "web_server_base"]
+AUTO_LOAD = ["json", "runtime_image", "select", "web_server_base"]
 CODEOWNERS = ["@bharvey88"]
 
 CONF_HTTP_REQUEST_ID = "http_request_id"
@@ -101,6 +101,7 @@ async def to_code(config):
         # 2026.9 removed RealTimeClock::set_timezone and the on-device POSIX
         # parser; the clock takes a pre-parsed struct instead.
         cg.add_define("GAMEDAY_TZ_PARSED")
+    runtime_image.enable_format("PNG")  # logo_cache.cpp decodes ESPN's PNG logos
     cg.add(var.set_http(await cg.get_variable(config[CONF_HTTP_REQUEST_ID])))
     cg.add(var.set_time(await cg.get_variable(config[CONF_TIME_ID])))
     cg.add(
