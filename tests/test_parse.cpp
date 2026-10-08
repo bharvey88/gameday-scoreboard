@@ -653,6 +653,64 @@ static void test_json_allocator() {
   CHECK_EQ(counting.calls, before);  // back on the default heap
 }
 
+// Recorded 2026-10-08 from the 2025-26 postseason, see fixtures/README.md
+static void test_postseason() {
+  TickerOptions all;
+  // CFP quarterfinal at the Rose Bowl, a neutral site, from both sides
+  std::string qf = slurp("fixtures/scoreboard_ncaa_cfp_quarterfinals.json");
+  GameSnapshot ala;
+  CHECK(parse_scoreboard_str(qf, "401769072", 333, ala));
+  CHECK(ala.state == GameState::POST);
+  CHECK(ala.completed);
+  CHECK_EQ(ala.team_score, 3);
+  CHECK_EQ(ala.opp_score, 38);
+  CHECK(!ala.team_winner);
+  CHECK_EQ(ala.venue, std::string("Rose Bowl"));
+  CHECK_EQ(status_text(ala, all, ""), std::string("Final | ALA 11-4 | IU 14-0"));
+  GameSnapshot iu;
+  CHECK(parse_scoreboard_str(qf, "401769072", 84, iu));
+  CHECK(iu.team_winner);
+  CHECK_EQ(iu.opp_abbr, std::string("ALA"));
+  // The My team poll filters by our conference. ESPN lists a game under
+  // both teams' conferences, so SEC (8) finds Alabama's Rose Bowl.
+  CHECK_EQ(scoreboard_url(League::NCAA, 8, ala.kickoff_epoch),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
+                       "?groups=8&dates=20260101"));
+
+  // National championship: 7:30 PM Eastern is 00:30 UTC the next day
+  std::string final_json = slurp("fixtures/scoreboard_ncaa_cfp_final.json");
+  GameSnapshot mia;
+  CHECK(parse_scoreboard_str(final_json, "401769076", 2390, mia));
+  CHECK(mia.completed);
+  CHECK_EQ(mia.team_score, 21);
+  CHECK_EQ(mia.opp_score, 27);
+  CHECK(!mia.team_winner);
+  CHECK(scoreboard_url(League::NCAA, 1, mia.kickoff_epoch).find("&dates=20260119") != std::string::npos);
+
+  // Conference title game that went to overtime
+  GameSnapshot duke;
+  CHECK(parse_scoreboard_str(slurp("fixtures/scoreboard_ncaa_conf_titles.json"), "401777328", 150, duke));
+  CHECK(duke.completed);
+  CHECK(duke.team_winner);
+  CHECK_EQ(duke.short_detail, std::string("Final/OT"));
+  CHECK_EQ(status_text(duke, all, ""), std::string("Final | DUKE 8-5 | UVA 10-3"));
+
+  // NFL wild card and the Super Bowl
+  GameSnapshot chi;
+  CHECK(parse_scoreboard_str(slurp("fixtures/scoreboard_nfl_wild_card.json"), "401772981", 3, chi));
+  CHECK(chi.completed);
+  CHECK(chi.team_winner);
+  CHECK_EQ(chi.team_score, 31);
+  CHECK_EQ(chi.opp_score, 27);
+  GameSnapshot sea;
+  CHECK(parse_scoreboard_str(slurp("fixtures/scoreboard_nfl_super_bowl.json"), "401772988", 26, sea));
+  CHECK(sea.completed);
+  CHECK(sea.team_winner);
+  CHECK_EQ(sea.opp_abbr, std::string("NE"));
+  CHECK_EQ(sea.venue, std::string("Levi's Stadium"));
+  CHECK(scoreboard_url(League::NFL, 0, sea.kickoff_epoch).find("?dates=20260208") != std::string::npos);
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -675,6 +733,7 @@ int main() {
   test_rotate_minutes();
   test_logo_lru();
   test_json_allocator();
+  test_postseason();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

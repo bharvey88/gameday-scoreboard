@@ -417,6 +417,14 @@ void ESP32ImprovComponent::process_incoming_data_() {
         sta.set_ssid(command.ssid.c_str());
         sta.set_password(command.password.c_str());
         this->connecting_sta_ = sta;
+        // GAMEDAY: begin
+        // Only a real network counts: "Reset Wi-Fi" leaves a blank SSID, and
+        // a retry after a failed handover already holds the old network.
+        if (this->state_ != improv::STATE_PROVISIONING) {
+          wifi::WiFiAP current = wifi::global_wifi_component->get_sta();
+          this->restore_sta_ = current.get_ssid().empty() ? wifi::WiFiAP{} : current;
+        }
+        // GAMEDAY: end
 
         wifi::global_wifi_component->set_sta(sta);
         wifi::global_wifi_component->start_connecting(sta);
@@ -460,6 +468,18 @@ void ESP32ImprovComponent::on_wifi_connect_timeout_() {
     this->authorized_start_ = millis();
 #endif
   ESP_LOGW(TAG, "Timed out while connecting to Wi-Fi network");
+  // GAMEDAY: begin
+  // Go back to the network the panel had, which is still the one saved in
+  // flash. Upstream clears the list here, which left a panel with a wrong
+  // password offline until a power cycle and kept the ten minute offline
+  // restart in gameday-common.yaml from firing.
+  if (!this->restore_sta_.get_ssid().empty()) {
+    ESP_LOGI(TAG, "Going back to the saved network");
+    wifi::global_wifi_component->set_sta(this->restore_sta_);
+    wifi::global_wifi_component->start_connecting(this->restore_sta_);
+    return;
+  }
+  // GAMEDAY: end
   wifi::global_wifi_component->clear_sta();
 }
 
@@ -471,6 +491,7 @@ void ESP32ImprovComponent::check_wifi_connection_() {
   if (this->state_ == improv::STATE_PROVISIONING) {
     wifi::global_wifi_component->save_wifi_sta(this->connecting_sta_.get_ssid(), this->connecting_sta_.get_password());
     this->connecting_sta_ = {};
+    this->restore_sta_ = {};  // GAMEDAY
     this->cancel_timeout("wifi-connect-timeout");
 
     // Build URL list with minimal allocations

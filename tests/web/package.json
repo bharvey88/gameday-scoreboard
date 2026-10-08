@@ -1,0 +1,11 @@
+{
+  "name": "gameday-page-tests",
+  "private": true,
+  "description": "Playwright tests for the device page against tests/web/mock_device.py",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
