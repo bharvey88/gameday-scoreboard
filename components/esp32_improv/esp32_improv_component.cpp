@@ -471,7 +471,7 @@ void ESP32ImprovComponent::on_wifi_connect_timeout_() {
   // GAMEDAY: begin
   // Go back to the network the panel had, which is still the one saved in
   // flash. Upstream clears the list here, which left a panel with a wrong
-  // password offline until a power cycle and kept the ten minute offline
+  // password offline until a power cycle and kept the offline
   // restart in gameday-common.yaml from firing.
   if (!this->restore_sta_.get_ssid().empty()) {
     ESP_LOGI(TAG, "Going back to the saved network");
