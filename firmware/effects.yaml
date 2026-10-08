@@ -6,25 +6,69 @@
 
 external_components:
   # Branch hub75-rgb565: hands a hub75 display RGB565 when LVGL is in the build.
-  - source: github://bharvey88/esphome-wled-fx@da9bbf80df67009fb2e3228c00c92befc6151c53
+  - source: github://bharvey88/esphome-wled-fx@16df2b72d91214131451957ddd0f6d28fe5134df
     components: [wled_fx]
 
 wled_fx:
   id: gd_fx
   display_id: matrix
-  # Allow-list: only these are compiled in.
+  # Allow-list: every 2D effect a matrix offers except the twelve audio
+  # reactive ones, which animate to simulated sound without an audio block.
   effects:
     - Matrix
     - Metaballs
+    - Scrolling Text
     - Black Hole
+    - Colored Bursts
     - DNA
+    - DNA Spiral
+    - Drift
+    - Firenoise
+    - Frizzles
+    - Game Of Life
+    - Hiphotic
     - Julia
     - Lissajous
-    - Sun Radiation
+    - Noise2D
     - Plasma Ball
-    - Octopus
+    - Polar Lights
+    - Pulser
+    - Sindots
+    - Squared Swirl
+    - Sun Radiation
+    - Tartan
+    - Spaceships
+    - Crazy Bees
+    - Ghost Rider
+    - Blobs
+    - Drift Rose
+    - Rotozoomer
+    - Distortion Waves
     - Soap
+    - Octopus
+    - Waving Cell
+    - Fireworks
+    - Rain
+    - Ripple
+    - Ripple Rainbow
+    - Palette
+    - Halloween Eyes
+    - Fireworks 1D
+    - PS Fire
+    - PS Fireworks
+    - PS Vortex
+    - PS Volcano
+    - PS Ballpit
+    - PS Waterfall
+    - PS Box
+    - PS Fuzzy Noise
+    - PS Impact
+    - PS Attractor
+    - PS Ghost Rider
+    - PS Galaxy
+    - Snow Fall
   effect: Matrix
+  text: "GAME DAY"
   update_interval: 23ms
   # The hub75 driver keeps its CIE1931 curve for the scoreboard, so wled_fx
   # must not add gamma 2.2 on top of it.
@@ -66,10 +110,13 @@ switch:
     restore_mode: ALWAYS_OFF
     turn_on_action:
       # The off action also fires during this switch's own setup, before LVGL
-      # and wled_fx exist; the on_boot step above lifts the guard.
+      # and wled_fx exist; the on_boot step above lifts the guard. `state` is
+      # still the old value inside these actions (a template switch publishes
+      # after them), so the second test skips a repeated turn_on, which would
+      # otherwise save the 8 ms tick as the one to restore.
       - if:
           condition:
-            lambda: 'return id(gd_fx_boot_done);'
+            lambda: 'return id(gd_fx_boot_done) && !id(gd_effects).state;'
           then:
             - lvgl.pause:
             - lambda: |-
@@ -78,11 +125,14 @@ switch:
                 id(gd_fx_saved_loop_ms) = App.get_loop_interval();
                 App.set_loop_interval(8);
                 id(gd_fx).reset_frame_clock();
+                // Start a fresh profiler window; wled_fx only restarts it on
+                // an effect change.
+                id(gd_fx).reset_profile(millis());
                 id(gd_fx).enable_loop();
     turn_off_action:
       - if:
           condition:
-            lambda: 'return id(gd_fx_boot_done);'
+            lambda: 'return id(gd_fx_boot_done) && id(gd_effects).state;'
           then:
             - lambda: |-
                 id(gd_fx).disable_loop();
@@ -129,13 +179,29 @@ sensor:
     lambda: |-
       if (!id(gd_effects).state) return NAN;
       return id(gd_fx).profile().fps_x10() / 10.0f;
-  - platform: wled_fx
-    wled_fx_id: gd_fx
-    type: render_time
+  # Template sensors gated on the switch, so all three read NA while Effects
+  # is off.
+  - platform: template
     name: "Effect Render Time"
+    id: gd_fx_render_time
+    icon: "mdi:timer-outline"
+    unit_of_measurement: "µs"
+    accuracy_decimals: 0
+    state_class: measurement
     entity_category: diagnostic
-  - platform: wled_fx
-    wled_fx_id: gd_fx
-    type: output_time
+    update_interval: 10s
+    lambda: |-
+      if (!id(gd_effects).state) return NAN;
+      return id(gd_fx).profile().render_avg_us();
+  - platform: template
     name: "Effect Output Time"
+    id: gd_fx_output_time
+    icon: "mdi:timer-outline"
+    unit_of_measurement: "µs"
+    accuracy_decimals: 0
+    state_class: measurement
     entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      if (!id(gd_effects).state) return NAN;
+      return id(gd_fx).profile().output_avg_us();
