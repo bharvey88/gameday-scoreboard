@@ -1,0 +1,141 @@
+# Effects mode: WLED's 2D effects (bharvey88/esphome-wled-fx) full screen in
+# place of the scoreboard. wled_fx needs the display handed over to it, so
+# while the Effects switch is on it draws every frame straight into the HUB75
+# display and LVGL is paused; switching off hands the screen back and repaints
+# the scoreboard. The scoreboard keeps polling ESPN underneath.
+
+external_components:
+  # Branch hub75-rgb565: hands a hub75 display RGB565 when LVGL is in the build.
+  - source: github://bharvey88/esphome-wled-fx@da9bbf80df67009fb2e3228c00c92befc6151c53
+    components: [wled_fx]
+
+wled_fx:
+  id: gd_fx
+  display_id: matrix
+  # Allow-list: only these are compiled in.
+  effects:
+    - Matrix
+    - Metaballs
+    - Black Hole
+    - DNA
+    - Julia
+    - Lissajous
+    - Sun Radiation
+    - Plasma Ball
+    - Octopus
+    - Soap
+  effect: Matrix
+  update_interval: 23ms
+  # The hub75 driver keeps its CIE1931 curve for the scoreboard, so wled_fx
+  # must not add gamma 2.2 on top of it.
+  gamma_correct: 1.0
+  # Internal RAM is what the HTTPS fetches run out of on this panel, so the
+  # canvas and frame buffer stay in PSRAM.
+  canvas_memory: psram
+  # Leave the main loop tick alone while effects are off; the switch below
+  # shortens it only while an effect runs.
+  loop_interval: never
+
+globals:
+  - id: gd_fx_boot_done
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: gd_fx_saved_loop_ms
+    type: int
+    restore_value: no
+    initial_value: '16'
+
+esphome:
+  on_boot:
+    # wled_fx sets up at LATE (-100). Park its loop so an idle panel never
+    # renders a frame, then let the switch actions run.
+    - priority: -200.0
+      then:
+        - lambda: |-
+            id(gd_fx).disable_loop();
+            id(gd_fx_boot_done) = true;
+
+switch:
+  - platform: template
+    name: "Effects"
+    id: gd_effects
+    icon: "mdi:auto-fix"
+    optimistic: true
+    # Always back on the scoreboard after a reboot.
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      # The off action also fires during this switch's own setup, before LVGL
+      # and wled_fx exist; the on_boot step above lifts the guard.
+      - if:
+          condition:
+            lambda: 'return id(gd_fx_boot_done);'
+          then:
+            - lvgl.pause:
+            - lambda: |-
+                // ESPHome's 16 ms tick rounds a 23 ms frame up to 32 ms. Ask
+                // for a shorter tick only while an effect runs.
+                id(gd_fx_saved_loop_ms) = App.get_loop_interval();
+                App.set_loop_interval(8);
+                id(gd_fx).reset_frame_clock();
+                id(gd_fx).enable_loop();
+    turn_off_action:
+      - if:
+          condition:
+            lambda: 'return id(gd_fx_boot_done);'
+          then:
+            - lambda: |-
+                id(gd_fx).disable_loop();
+                App.set_loop_interval(id(gd_fx_saved_loop_ms));
+            - lvgl.resume:
+            # LVGL marked nothing dirty while paused, so the whole scoreboard
+            # must be redrawn over the last effect frame.
+            - script.execute: gd_repaint
+
+select:
+  - platform: wled_fx
+    wled_fx_id: gd_fx
+    type: effect
+    name: "Effect"
+    icon: "mdi:animation-play"
+  - platform: wled_fx
+    wled_fx_id: gd_fx
+    type: palette
+    name: "Effect Palette"
+    icon: "mdi:palette"
+
+number:
+  - platform: wled_fx
+    wled_fx_id: gd_fx
+    type: speed
+    name: "Effect Speed"
+    icon: "mdi:speedometer"
+  - platform: wled_fx
+    wled_fx_id: gd_fx
+    type: intensity
+    name: "Effect Intensity"
+    icon: "mdi:tune"
+
+sensor:
+  - platform: template
+    name: "Effect FPS"
+    id: gd_fx_fps
+    icon: "mdi:film"
+    unit_of_measurement: "fps"
+    accuracy_decimals: 1
+    state_class: measurement
+    entity_category: diagnostic
+    update_interval: 10s
+    lambda: |-
+      if (!id(gd_effects).state) return NAN;
+      return id(gd_fx).profile().fps_x10() / 10.0f;
+  - platform: wled_fx
+    wled_fx_id: gd_fx
+    type: render_time
+    name: "Effect Render Time"
+    entity_category: diagnostic
+  - platform: wled_fx
+    wled_fx_id: gd_fx
+    type: output_time
+    name: "Effect Output Time"
+    entity_category: diagnostic

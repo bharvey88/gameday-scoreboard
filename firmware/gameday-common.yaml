@@ -124,6 +124,7 @@ packages:
   boot: !include pages/boot.yaml
   scoreboard: !include pages/gameday-live.yaml
   wizmote: !include pages/wizmote.yaml
+  effects: !include effects.yaml
 
 # Panel count from the saved preference, applied before the display starts.
 panel_layout:
