@@ -11,6 +11,8 @@
 #include "esphome/components/select/select.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/web_server_base/web_server_base.h"
+
+#include "logo_cache.h"
 #include "esphome/core/automation.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/component.h"
@@ -114,7 +116,12 @@ class GamedaySelect : public select::Select, public Component {
 // Requests arrive on the HTTP task; settings are applied on the main loop.
 class GamedayComponent : public Component, public AsyncWebHandler {
  public:
-  void set_http(http_request::HttpRequestComponent *http) { this->http_ = http; }
+  void set_http(http_request::HttpRequestComponent *http) {
+    this->http_ = http;
+    this->logos_.set_http(http);
+  }
+  // Team logos for the board (gameday-common.yaml, gd_show_logos)
+  LogoCache &logos() { return this->logos_; }
   void set_time(time::RealTimeClock *time) { this->time_ = time; }
   void set_web_server_base(web_server_base::WebServerBase *base) { this->base_ = base; }
   void set_panel_layout(panel_layout::PanelLayout *p) { this->panels_ = p; }
@@ -336,6 +343,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   }
 
   http_request::HttpRequestComponent *http_{nullptr};
+  LogoCache logos_;
   time::RealTimeClock *time_{nullptr};
   select::Select *team_select_{nullptr};
   select::Select *timezone_select_{nullptr};

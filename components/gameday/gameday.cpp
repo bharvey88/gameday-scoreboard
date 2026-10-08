@@ -126,6 +126,7 @@ void GamedaySelect::control(const std::string &value) {
 // ---- GamedayComponent ------------------------------------------------------
 
 void GamedayComponent::setup() {
+  this->logos_.setup();
   this->pref_ = global_preferences->make_preference<Prefs>(fnv1_hash("gameday_prefs_v1"));
   if (!this->pref_.load(&this->prefs_) || this->current_team_() == nullptr) {
     this->prefs_.league = (uint8_t) League::NFL;
@@ -740,6 +741,8 @@ void GamedayComponent::dump_config() {
 }
 
 void GamedayComponent::loop() {
+  if (this->logos_.loop())
+    this->fire_action_("logo_ready");  // gameday-common.yaml redraws the logos
   if (this->demo_active_) {
     this->demo_tick_();
     if (!this->busy_)

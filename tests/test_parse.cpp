@@ -7,6 +7,7 @@
 
 #include "espn_parse.h"
 #include "favorites.h"
+#include "logo_lru.h"
 #include "startup.h"
 
 using namespace espn;
@@ -1523,6 +1524,21 @@ static void test_mcbb() {
 
 int run_football_golden();  // golden_football.cpp
 
+static void test_logo_lru() {
+  using espn::LogoSlot;
+  // Oldest idle, off-screen slot goes first.
+  CHECK_EQ(espn::pick_evict({{300, false, false}, {100, false, false}, {200, false, false}}), 1);
+  // On screen or still downloading: never dropped, even when oldest.
+  CHECK_EQ(espn::pick_evict({{100, false, true}, {150, true, false}, {200, false, false}}), 2);
+  // Nothing droppable.
+  CHECK_EQ(espn::pick_evict({{100, true, false}, {200, false, true}}), -1);
+  CHECK_EQ(espn::pick_evict({}), -1);
+  // Retry after 15 s, including across the millis() wrap.
+  CHECK(!espn::logo_retry_due(1000, 1000 + espn::LOGO_RETRY_MS - 1));
+  CHECK(espn::logo_retry_due(1000, 1000 + espn::LOGO_RETRY_MS));
+  CHECK(espn::logo_retry_due(0xFFFFF000u, 0xFFFFF000u + espn::LOGO_RETRY_MS));
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -1567,6 +1583,7 @@ int main() {
   test_mcbb();
   checks++;
   failures += run_football_golden();
+  test_logo_lru();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
