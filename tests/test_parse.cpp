@@ -9,6 +9,7 @@
 #include "favorites.h"
 #include "logo_lru.h"
 #include "startup.h"
+#include "timezones.h"
 
 using namespace espn;
 
@@ -611,6 +612,32 @@ static void test_logo_lru() {
   CHECK(espn::logo_retry_due(0xFFFFF000u, 0xFFFFF000u + espn::LOGO_RETRY_MS));
 }
 
+static void test_timezone_index() {
+  // Names first: the app sends one, so a reordered list can't pick a wrong zone.
+  CHECK_EQ(espn::timezone_index("US Central"), 1);
+  CHECK_EQ(espn::timezone_index("America/Chicago"), 1);
+  CHECK_EQ(espn::timezone_index("Australia Eastern"), 12);
+  CHECK_EQ(espn::timezone_index("Australia/Sydney"), 12);
+  CHECK_EQ(espn::timezone_index("UTC"), 13);
+  // Positions still work for the device page, which is built from this list.
+  CHECK_EQ(espn::timezone_index("0"), 0);
+  CHECK_EQ(espn::timezone_index("13"), 13);
+  CHECK_EQ(espn::timezone_index("14"), -1);
+  CHECK_EQ(espn::timezone_index("99999999999999999999"), -1);
+  // Nothing close enough to guess at.
+  CHECK_EQ(espn::timezone_index("us central"), -1);
+  CHECK_EQ(espn::timezone_index("America/Detroit"), -1);
+  CHECK_EQ(espn::timezone_index("-1"), -1);
+  CHECK_EQ(espn::timezone_index("1a"), -1);
+  CHECK_EQ(espn::timezone_index(""), -1);
+  CHECK_EQ(espn::timezone_index(nullptr), -1);
+  // Every row answers to its own name and IANA name.
+  for (size_t i = 0; i < espn::kTimezoneCount; i++) {
+    CHECK_EQ(espn::timezone_index(espn::kTimezones[i].name), (int) i);
+    CHECK_EQ(espn::timezone_index(espn::kTimezones[i].iana), (int) i);
+  }
+}
+
 // Recorded 2026-10-08 from the 2025-26 postseason, see fixtures/README.md
 static void test_postseason() {
   TickerOptions all;
@@ -690,6 +717,7 @@ int main() {
   test_boot_hold();
   test_rotate_minutes();
   test_logo_lru();
+  test_timezone_index();
   test_postseason();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
