@@ -113,10 +113,11 @@ switch:
       # and wled_fx exist; the on_boot step above lifts the guard. `state` is
       # still the old value inside these actions (a template switch publishes
       # after them), so the second test skips a repeated turn_on, which would
-      # otherwise save the 8 ms tick as the one to restore.
+      # otherwise save the 8 ms tick as the one to restore. A wled_fx that
+      # failed setup (no canvas) must not take the screen.
       - if:
           condition:
-            lambda: 'return id(gd_fx_boot_done) && !id(gd_effects).state;'
+            lambda: 'return id(gd_fx_boot_done) && !id(gd_effects).state && !id(gd_fx).is_failed();'
           then:
             - lvgl.pause:
             - lambda: |-
@@ -177,10 +178,11 @@ sensor:
     entity_category: diagnostic
     update_interval: 10s
     lambda: |-
-      if (!id(gd_effects).state) return NAN;
+      if (!id(gd_effects).state || id(gd_fx).profile().frames == 0) return NAN;
       return id(gd_fx).profile().fps_x10() / 10.0f;
   # Template sensors gated on the switch, so all three read NA while Effects
-  # is off.
+  # is off, and during wled_fx's one second warm-up after an effect change,
+  # when its averages are still zero.
   - platform: template
     name: "Effect Render Time"
     id: gd_fx_render_time
@@ -191,7 +193,7 @@ sensor:
     entity_category: diagnostic
     update_interval: 10s
     lambda: |-
-      if (!id(gd_effects).state) return NAN;
+      if (!id(gd_effects).state || id(gd_fx).profile().frames == 0) return NAN;
       return id(gd_fx).profile().render_avg_us();
   - platform: template
     name: "Effect Output Time"
@@ -203,5 +205,5 @@ sensor:
     entity_category: diagnostic
     update_interval: 10s
     lambda: |-
-      if (!id(gd_effects).state) return NAN;
+      if (!id(gd_effects).state || id(gd_fx).profile().frames == 0) return NAN;
       return id(gd_fx).profile().output_avg_us();

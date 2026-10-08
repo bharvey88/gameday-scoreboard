@@ -500,6 +500,9 @@ switch:
       - hub75.set_brightness:
           id: matrix
           brightness: 0
+      # Park the effects too, so the loop is not spent on a dark panel and the
+      # scoreboard is what comes back.
+      - switch.turn_off: gd_effects
 number:
   - platform: template
     name: "Brightness"
