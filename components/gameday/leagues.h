@@ -33,6 +33,8 @@ constexpr LeagueInfo kLeagues[] = {
     // A regular-season team schedule is ~2.7 MB, so no Up next list. Game 2
     // of a doubleheader can start half an hour after game 1: short linger.
     {League::MLB, "mlb", "baseball/mlb", "MLB", "mlb", Sport::BASEBALL, true, false, false, 10},
+    // A team's season schedule is ~1.1 MB, so no Up next list
+    {League::NHL, "nhl", "hockey/nhl", "NHL", "nhl", Sport::HOCKEY, true, false, false, 30},
 };
 
 constexpr size_t kLeagueCount = sizeof(kLeagues) / sizeof(kLeagues[0]);

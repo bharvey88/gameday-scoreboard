@@ -28,6 +28,7 @@
     nfl: { prefix: "NFL", tab: "NFL", name: "NFL", path: "football/nfl", logo: "nfl", byId: false, scan: "" },
     ncaa: { prefix: "NCAAF", tab: "College", name: "College football", path: "football/college-football", logo: "ncaa", byId: true, scan: "groups=80&limit=300&" },
     mlb: { prefix: "MLB", tab: "MLB", name: "MLB", path: "baseball/mlb", logo: "mlb", byId: false, scan: "" },
+    nhl: { prefix: "NHL", tab: "NHL", name: "NHL", path: "hockey/nhl", logo: "nhl", byId: false, scan: "" },
   };
   const lgInfo = (lg) => LEAGUES[lg] || LEAGUES.nfl;
   const logoUrl = (league, id, abbr) => {

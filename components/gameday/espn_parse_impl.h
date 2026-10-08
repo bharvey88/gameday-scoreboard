@@ -228,6 +228,10 @@ inline void baseball_from_event(JsonObjectConst ev, GameSnapshot &s) {
   s.possession = we_bat ? 1 : 2;
 }
 
+// Hockey's extra filter fields and their parse (sport_hockey.cpp)
+void fill_hockey_filter(JsonObject ev);
+void hockey_from_event(JsonObjectConst ev, GameSnapshot &s);
+
 }  // namespace detail
 
 // Parses the team endpoint. `input` is anything ArduinoJson can read from:
@@ -336,6 +340,8 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
   detail::fill_event_filter(filter.to<JsonObject>());
   if (sport == Sport::BASEBALL)
     detail::fill_baseball_filter(filter.as<JsonObject>());
+  if (sport == Sport::HOCKEY)
+    detail::fill_hockey_filter(filter.as<JsonObject>());
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
@@ -347,6 +353,8 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
   s.sport = sport;
   if (sport == Sport::BASEBALL)
     detail::baseball_from_event(doc.as<JsonObjectConst>(), s);
+  if (sport == Sport::HOCKEY)
+    detail::hockey_from_event(doc.as<JsonObjectConst>(), s);
   out = s;
   return true;
 }

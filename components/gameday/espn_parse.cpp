@@ -156,6 +156,8 @@ static const char *score_word(int delta, bool ours) {
 Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral) {
   if (cur.sport == Sport::BASEBALL)
     return baseball_splash(prev, cur, opponent_splashes, neutral);
+  if (cur.sport == Sport::HOCKEY)
+    return hockey_splash(prev, cur, opponent_splashes, neutral);
   Splash none;
   if (!prev.valid || !cur.valid || prev.event_id != cur.event_id)
     return none;
@@ -206,6 +208,8 @@ using detail::records_line;
 std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local) {
   if (s.sport == Sport::BASEBALL)
     return baseball_status_text(s, o, kickoff_local);
+  if (s.sport == Sport::HOCKEY)
+    return hockey_status_text(s, o, kickoff_local);
   std::string out;
   switch (s.state) {
     case GameState::NOT_FOUND:
@@ -314,6 +318,8 @@ static std::string period_name(int period) {
 std::string clock_text(const GameSnapshot &s) {
   if (s.sport == Sport::BASEBALL)
     return baseball_clock_text(s);
+  if (s.sport == Sport::HOCKEY)
+    return hockey_clock_text(s);
   bool has_clock = s.display_clock.find(':') != std::string::npos && s.period > 0;
   bool special = s.short_detail.find(':') == std::string::npos;  // Halftime, End of 3rd, Delayed, Final
   if (!has_clock || special) {
