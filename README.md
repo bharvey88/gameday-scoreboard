@@ -64,7 +64,7 @@ The device runs on its own, but it is a normal ESPHome device. If Home Assistant
 ## Build it yourself
 
 ```
-git clone https://github.com/bharvey88/gameday-scoreboard
+git clone https://github.com/gameday-scoreboard/gameday-scoreboard
 cd gameday-scoreboard/firmware
 esphome run gameday.yaml
 ```
