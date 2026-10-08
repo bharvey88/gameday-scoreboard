@@ -179,7 +179,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
 
     <p class="foot">
       <span id="ver"></span><span>·</span>
-      <a href="https://github.com/bharvey88/gameday-scoreboard" target="_blank" rel="noopener">gameday-scoreboard</a>
+      <a href="https://github.com/gameday-scoreboard/gameday-scoreboard" target="_blank" rel="noopener">gameday-scoreboard</a>
       <span>·</span><span>scores from ESPN</span>
     </p>
   </div>
@@ -299,6 +299,9 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     const g = game;
     const st = $("#gstate");
     const msg = $("#msg");
+    // misses is top level in the state document, not in game. Three in a row is
+    // where the firmware adds "no update" to the ticker, with or without a game.
+    $("#stale").classList.toggle("on", ((S && S.misses) || 0) >= 3);
     if (!g || g.s === "NOT_FOUND") {
       b.classList.add("empty");
       st.textContent = g ? "NO GAME" : "WAITING";
@@ -325,7 +328,6 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     const d = $("#down");
     d.textContent = g.s === "IN" ? g.d || "" : g.s === "PRE" && g.tv ? "on " + g.tv : "";
     d.classList.toggle("rz", g.s === "IN" && !!g.rz);
-    $("#stale").classList.toggle("on", (g.m || 0) >= 3);
   };
 
   // ---- mode pills ----------------------------------------------------------------
@@ -945,7 +947,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     if (quick.length) fill(quick);
     if (!tag) return;
     if (notesCache[tag]) { fill(notesCache[tag]); return; }
-    fetch("https://api.github.com/repos/bharvey88/gameday-scoreboard/releases/tags/" + encodeURIComponent(tag), { headers: { Accept: "application/vnd.github+json" } })
+    fetch("https://api.github.com/repos/gameday-scoreboard/gameday-scoreboard/releases/tags/" + encodeURIComponent(tag), { headers: { Accept: "application/vnd.github+json" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         const items = j ? bulletsFrom(j.body) : [];
