@@ -64,7 +64,7 @@ The device runs on its own, but it is a normal ESPHome device. If Home Assistant
 ## Build it yourself
 
 ```
-git clone https://github.com/bharvey88/gameday-scoreboard
+git clone https://github.com/gameday-scoreboard/gameday-scoreboard
 cd gameday-scoreboard/firmware
 esphome run gameday.yaml
 ```
@@ -75,7 +75,7 @@ esphome run gameday.yaml
 
 The `gameday` component asks ESPN's public site API for the team's next event, then polls that day's scoreboard: every 15 minutes while the game is far off, every minute inside the last hour, every 5 seconds during the game, and every minute for half an hour after the final. The JSON is streamed through a filter on the device so a 200KB scoreboard never has to fit in memory at once. Score deltas between polls decide the splashes, the same rules the blueprint uses. Logos are ESPN's dark-background PNGs, decoded and shrunk to 32x32 on the ESP32.
 
-The parser and game logic have host tests: `make -C tests` (needs g++). To refresh the team list at the start of a season, run `python scripts/build_teams.py` and commit the regenerated header.
+The parser and game logic have host tests: `make -C tests` (needs g++). The device page has browser tests against a mock of the panel's web server: in `tests/web`, run `npm ci` and `npx playwright install chromium` once, then `npm test` (needs Node and Python 3). To refresh the team list at the start of a season, run `python scripts/build_teams.py` and commit the regenerated header.
 
 ## Notes
 
