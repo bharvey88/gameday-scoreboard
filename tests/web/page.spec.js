@@ -250,3 +250,27 @@ test("the panel picker posts the new layout", async ({ page, request }) => {
   await expect(page.locator("#toast")).toHaveText("Restarting with one panel");
   await expect(page.locator('#panels .panelpick[data-cols="2"]')).toBeDisabled();
 });
+
+test("the stale tag follows the device's consecutive misses", async ({ page, request }) => {
+  await reset(request, { misses: 2 });
+  await page.goto("/");
+  await expect(page.locator("#gstate")).toHaveText("UPCOMING");
+  await expect(page.locator("#stale")).toBeHidden();
+
+  // Three misses is where the firmware adds "no update" to the ticker.
+  await reset(request, { misses: 3, stale_s: 600 });
+  await page.reload();
+  await expect(page.locator("#gstate")).toHaveText("UPCOMING");
+  await expect(page.locator("#stale")).toBeVisible();
+
+  // The ticker warns with no game too, so the empty board shows it.
+  await reset(request, { misses: 5, game: { s: "NOT_FOUND", l: "nfl" }, next: [] });
+  await page.reload();
+  await expect(page.locator("#gstate")).toHaveText("NO GAME");
+  await expect(page.locator("#stale")).toBeVisible();
+
+  await reset(request, { misses: 0, game: { s: "NOT_FOUND", l: "nfl" }, next: [] });
+  await page.reload();
+  await expect(page.locator("#gstate")).toHaveText("NO GAME");
+  await expect(page.locator("#stale")).toBeHidden();
+});
