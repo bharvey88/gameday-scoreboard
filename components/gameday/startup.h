@@ -48,8 +48,14 @@ static const int64_t TEAM_CACHE_GAME_OVER = 4 * 3600;
 
 // Fills `out` from the schedule just read for this team. False when there is
 // nothing worth keeping: no next game, or an event id too long for the record.
+// A cup game saves a blank record, which never loads. The record has no room
+// for the cup, and an older league game must not load in its place.
 inline bool team_cache_save(const Schedule &s, League league, uint32_t team_id, int64_t now_epoch,
                             TeamCache &out) {
+  if (s.valid && s.comp_slug != nullptr) {
+    out = TeamCache{};
+    return true;
+  }
   if (!s.valid || s.event_id.empty() || s.event_id.size() >= sizeof(out.event_id) || now_epoch <= 0)
     return false;
   out = TeamCache{};

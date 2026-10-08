@@ -60,6 +60,8 @@ struct UpdateFields {
   int outs{-1};            // baseball: outs in the half inning, -1 when none
   uint8_t bases{0};        // baseball: 1 first, 2 second, 4 third
   bool highlight{false};   // the situation row stands out (bases loaded)
+  int team_marks{0};       // soccer: red cards, drawn under each side's logo
+  int opp_marks{0};
 };
 
 enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE, FAVORITE };
@@ -282,12 +284,22 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     // Favorite Teams mode: which cached entry this cycle refreshes or polls
     int fav_index{-1};
     uint32_t our_id{0};
+    // Soccer: the team's reads per competition (comps[0] the league's, then
+    // its kCups in order), and the one cup this cycle reads (1.., -1 none).
+    std::vector<Schedule> comps;
+    int comp{-1};
+    bool defer_game{false};  // first league read for this team: the cups decide before a poll
+    bool need_game{false};   // the board has no game for the current schedule yet
+    bool polled{false};      // a cup read polled the game it picked
+    std::string done_event;  // a game seen to finish, passed over by the pick
   };
   void start_job_();
   static void worker_(void *arg);
   void run_job_();
   void apply_job_();
-  bool fetch_schedule_(const ::espn::Team *team, Schedule &out);
+  bool fetch_schedule_(const ::espn::Team *team, Schedule &out, const char *comp_slug = nullptr);
+  void run_cup_job_();
+  void apply_cup_job_(uint32_t now);
   bool fetch_upcoming_(const ::espn::Team *team, std::vector<::espn::Upcoming> &out);
   bool fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out);
   bool fetch_live_games_(League league, std::vector<::espn::LiveGame> &out);
@@ -362,6 +374,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     uint32_t fetched_ms{0};  // last schedule attempt
     int64_t final_epoch{0};  // when the panel saw the game go final, 0 if it was fetched final
     bool stale{false};       // released after a final: fetch the next game
+    std::vector<Schedule> comps;  // soccer: reads per competition, as Job::comps
+    int comp_next{-1};            // the cup read due next, -1 when none
   };
   using FavList = std::vector<FavEntry, PsramAllocator<FavEntry>>;
   FavList fav_;
@@ -386,6 +400,11 @@ class GamedayComponent : public Component, public AsyncWebHandler {
 
   Schedule schedule_;
   uint32_t schedule_fetched_ms_{0};
+  // Soccer: the saved team's reads per competition (as Job::comps), the cup
+  // read due next (-1 when none) and the last game seen to finish.
+  std::vector<Schedule> comps_;
+  int comp_next_{-1};
+  std::string done_event_;
   // Refresh Now: re-read the team endpoint on the next cycle, whatever
   // the timestamp says. Cleared once that read succeeds, so a refresh
   // that fails on a flaky network is retried rather than dropped.

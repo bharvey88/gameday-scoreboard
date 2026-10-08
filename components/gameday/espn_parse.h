@@ -22,6 +22,7 @@ struct Schedule {
   uint32_t group{0};
   std::string team_color;
   std::string team_record;
+  const char *comp_slug{nullptr};  // a kCups slug when the game is in that cup, nullptr for the league
 };
 
 enum class Half : uint8_t { NONE, TOP, MID, BOTTOM, END };
@@ -38,6 +39,30 @@ struct Baseball {
   std::string team_probable, opp_probable;   // starting pitchers, pre-game
   std::string series;                        // "LAD lead series 2-1", postseason
   std::string play_type;                     // last play's type: "Home Run", "Ball"
+};
+
+// One goal from a soccer event's details. Names are plain ASCII (the panel
+// fonts have no accents) with the initial dropped: "Saka", "Alan Patrick".
+struct SoccerGoal {
+  std::string clock;  // "52'", "45'+3'"
+  std::string name;
+  bool ours{false};  // counts for our side; an own goal counts for the side it helped
+  bool own_goal{false}, penalty{false};
+};
+
+// Soccer's goals and cards (the event's details), form, shootout, match
+// stats and three-way odds. Empty, zero or -1 when the document has none.
+struct Soccer {
+  std::string status;             // ESPN's status name: "STATUS_HALFTIME", "STATUS_FINAL_PEN"
+  std::vector<SoccerGoal> goals;  // in match order
+  int team_reds{0}, opp_reds{0}, team_yellows{0}, opp_yellows{0};
+  std::string last_event;                      // newest goal or card: "85' Yellow Card: R. Garro (COR)"
+  std::string team_form, opp_form;             // last five results, oldest first: "WWWWL"
+  int team_shootout{-1}, opp_shootout{-1};     // penalty shootout goals
+  std::string team_line, draw_line, opp_line;  // moneyline before kickoff: "-275", "+425", "+700"
+  std::string team_possession, opp_possession;  // percent: "58.1"
+  int team_shots{-1}, opp_shots{-1}, team_on_target{-1}, opp_on_target{-1};
+  std::string note;  // "UEFA Champions League, League Phase"
 };
 
 // One scoreboard event, resolved to "us" and "them".
@@ -67,6 +92,7 @@ struct GameSnapshot {
   Sport sport{Sport::FOOTBALL};
   bool team_home{false};
   Baseball mlb;
+  Soccer soc;
 };
 
 // One future game from the team's schedule endpoint, for the "Up next" list.
@@ -110,6 +136,10 @@ std::string scan_url(League league, int64_t now_epoch);  // every game of the da
 // One game on its own (8-18 KB). Leagues with LeagueInfo::per_event poll this
 // instead of the day's whole scoreboard; football does not use it.
 std::string event_url(League league, const std::string &event_id);
+// The same in a cup of the league (kCups): soccer/uefa.champions/... A null
+// slug gives the league's own URL.
+std::string team_url(League league, uint32_t espn_id, const char *comp_slug);
+std::string event_url(League league, const std::string &event_id, const char *comp_slug);
 std::string dark_logo(const std::string &url);
 std::string team_logo_url(League league, uint32_t espn_id, const char *abbr);  // for a team with no game loaded yet
 
@@ -138,6 +168,8 @@ std::string clock_text(const GameSnapshot &s);
 // follow-up scoreboard endpoint from Schedule::league, so it must be stamped
 // from the team the schedule was fetched for.
 inline void adopt_league(Schedule &s, League league) { s.league = (uint8_t) league; }
+// A cup's team endpoint does not name the cup either.
+inline void adopt_comp(Schedule &s, const char *comp_slug) { s.comp_slug = comp_slug; }
 
 // Per-sport text and splashes. status_text, clock_text and decide_splash hand
 // any snapshot that is not football to these (sport_baseball.cpp).
@@ -146,6 +178,24 @@ std::string baseball_clock_text(const GameSnapshot &s);
 Splash baseball_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral);
 // The count while a half inning is on ("2-1"), else "".
 std::string baseball_count(const GameSnapshot &s);
+
+// Soccer (sport_soccer.cpp).
+std::string soccer_status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local);
+std::string soccer_clock_text(const GameSnapshot &s);
+Splash soccer_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral);
+// The latest goal for the 128-wide situation row, at most `max` characters:
+// "52' Saka", "55' Hany OG", "52' Saka (P)". "" before the first goal.
+std::string soccer_situation(const GameSnapshot &s, size_t max = 12);
+// A W-D-L record for the label under a logo (7 characters wide): as is when
+// it fits, else the league points ("38 pts").
+std::string soccer_board_record(const std::string &wdl);
+// Plain ASCII for the panel fonts: accents dropped ("Guimarães" -> "Guimaraes").
+std::string ascii_fold(const std::string &utf8);
+// One club's team reads, the league's first and then each cup's: the index of
+// the one to follow, -1 when none names a game. The earliest kickoff wins. A
+// game that kicked off over four hours ago, or done_event (a game the panel
+// saw finish), only counts when no read names anything else.
+int pick_schedule(const std::vector<Schedule> &comps, int64_t now_epoch, const std::string &done_event);
 
 namespace detail {
 // Ticker helpers shared by the sport files.

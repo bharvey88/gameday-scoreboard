@@ -33,6 +33,10 @@ constexpr LeagueInfo kLeagues[] = {
     // A regular-season team schedule is ~2.7 MB, so no Up next list. Game 2
     // of a doubleheader can start half an hour after game 1: short linger.
     {League::MLB, "mlb", "baseball/mlb", "MLB", "mlb", Sport::BASEBALL, true, false, false, 10},
+    // Soccer logos are named by team id. Up next is the league's own fixture
+    // list (~100-280 KB); cup games come from the kCups reads below.
+    {League::MLS, "mls", "soccer/usa.1", "MLS", "soccer", Sport::SOCCER, true, true, true, 30},
+    {League::EPL, "epl", "soccer/eng.1", "EPL", "soccer", Sport::SOCCER, true, true, true, 30},
 };
 
 constexpr size_t kLeagueCount = sizeof(kLeagues) / sizeof(kLeagues[0]);
@@ -60,6 +64,38 @@ inline const char *league_key(League league) {
 inline Sport league_sport(League league) {
   const LeagueInfo *l = league_info(league);
   return l != nullptr ? l->sport : Sport::FOOTBALL;
+}
+
+// Cups a club in a league can also be playing in. ESPN's team endpoint is
+// per competition (soccer/<slug>/teams/<id>, the same team ids everywhere)
+// and names the next game in that competition only. A club's next game is
+// the earliest across its league and these. Slug first, because the
+// scripts' kLeagues regex must not match these rows.
+struct CupInfo {
+  const char *slug;
+  League league;
+};
+
+constexpr CupInfo kCups[] = {
+    {"uefa.champions", League::EPL},
+    {"uefa.europa", League::EPL},
+    {"uefa.europa.conf", League::EPL},
+    {"concacaf.champions", League::MLS},
+};
+
+// The n-th cup of a league (0-based), nullptr past the last one.
+inline const char *league_cup(League league, size_t n) {
+  for (const auto &c : kCups)
+    if (c.league == league && n-- == 0)
+      return c.slug;
+  return nullptr;
+}
+
+inline size_t league_cup_count(League league) {
+  size_t n = 0;
+  while (league_cup(league, n) != nullptr)
+    n++;
+  return n;
 }
 
 }  // namespace espn

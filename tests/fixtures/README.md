@@ -26,5 +26,29 @@ MLB, recorded 2026-10-07 (postseason) from the single-event endpoint
 | `event_mlb_pre.json` | 401908005 MIL @ SD, pre-game with probable pitchers and odds |
 | `team_mlb_atl.json` | `.../baseball/mlb/teams/15` (next event is the game in progress) |
 
+Soccer, from the single-event endpoint `.../soccer/<league>/scoreboard/<event id>`.
+Brazilian Serie A (`bra.1`, the same document shape as MLS and the Premier
+League) recorded live 2026-10-08; the rest recorded 2026-10-08 from past and
+upcoming games:
+
+| File | Source |
+| --- | --- |
+| `event_soccer_first_half.json` | 401841249 SAO @ CRU, 25', 0-0, a yellow card each |
+| `event_soccer_halftime.json` | 401841257 VAS @ BOT, HT, VAS 1-0 |
+| `event_soccer_second_half.json` | 401841253 MIR @ BRA, 90', 1-1, MIR red card at 28' |
+| `event_soccer_stoppage.json` | 401841255 COR @ INT, 90'+2', INT 2-1, status name `STATUS_IN_PROGRESS` |
+| `event_soccer_full_time.json` | 401841255, FT, INT win 2-1 |
+| `event_epl_pre.json` | `soccer/eng.1` 401879268 LEE @ ARS, pre-game with the three-way moneyline |
+| `event_mls_pre.json` | `soccer/usa.1` 761847 DC @ MIA, pre-game |
+| `event_epl_final.json` | 401878779 ARS @ SUN, FT 0-2, SUN red card, ARS penalty at 90'+7' |
+| `event_mls_final.json` | 761829 SD @ MIA, FT 2-2 (a draw) |
+| `event_soccer_pens.json` | `soccer/uefa.champions` 401862897 ARS @ PSG, 2026 final, 1-1, PSG win 4-3 on penalties |
+| `event_soccer_aet.json` | `soccer/fifa.world` 760500 CPV @ ARG, AET 3-2, own goal at 111' |
+| `team_epl_ars.json` | `.../soccer/eng.1/teams/359` |
+| `team_mls_mia.json` | `.../soccer/usa.1/teams/20232` |
+| `team_ucl_ars.json` | `.../soccer/uefa.champions/teams/359`: the same club's next Champions League game |
+| `team_uel_ars.json` | `.../soccer/uefa.europa/teams/359`: a club not in the competition gets HTTP 200 with no `nextEvent` |
+| `schedule_mls_mia.json` | `.../soccer/usa.1/teams/20232/schedule?fixture=true`, trimmed to the first 2 events (without `fixture=true` the endpoint lists past results) |
+
 `football_golden.txt` is written by the host tests (`GOLDEN_WRITE=1`) and
 pins football's output; see `golden_football.cpp`.

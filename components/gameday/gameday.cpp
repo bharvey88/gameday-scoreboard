@@ -588,11 +588,18 @@ void GamedayComponent::start_fav_job_(uint32_t now) {
     if (this->fav_poll_ms_ == 0 || now - this->fav_poll_ms_ >= due)
       refresh = -2;  // poll the shown game
   }
-  if (refresh == -1) {
+  // Soccer: with nothing else due, one cup's team read per cycle.
+  int cup = -1;
+  for (size_t i = 0; refresh == -1 && cup < 0 && i < this->fav_.size(); i++) {
+    const FavEntry &c = this->fav_[i];
+    if (c.comp_next > 0 && c.comp_next < (int) c.comps.size())
+      cup = (int) i;
+  }
+  if (refresh == -1 && cup < 0) {
     this->schedule_next_(FAV_TICK);
     return;
   }
-  int index = refresh >= 0 ? refresh : this->fav_shown_;
+  int index = cup >= 0 ? cup : refresh >= 0 ? refresh : this->fav_shown_;
   FavEntry &e = this->fav_[index];
   j = Job{};
   j.generation = this->generation_;
@@ -601,6 +608,17 @@ void GamedayComponent::start_fav_job_(uint32_t now) {
   j.fav_index = index;
   j.need_schedule = refresh >= 0;
   j.schedule = e.sched;
+  size_t cups = ::espn::league_cup_count(e.team->league);
+  if ((refresh >= 0 || cup >= 0) && cups > 0) {
+    j.comps = e.comps;
+    j.comps.resize(cups + 1);
+    if (e.game.valid && e.game.state == GameState::POST)
+      j.done_event = e.game.event_id;
+  }
+  if (cup >= 0) {
+    j.comp = e.comp_next;
+    j.need_game = e.game.event_id.empty() || e.game.event_id != e.sched.event_id;
+  }
   if (refresh >= 0)
     e.fetched_ms = now == 0 ? 1 : now;
   this->job_done_ = false;
@@ -634,6 +652,10 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
     e.sched = j.schedule;
     ::espn::adopt_league(e.sched, e.team->league);
     e.stale = false;
+    if (!j.comps.empty()) {
+      e.comps = j.comps;
+      e.comp_next = 1;
+    }
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for %s", e.team->abbr);
       e.game = GameSnapshot{};
@@ -642,6 +664,26 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
         this->game_ = GameSnapshot{};
       if (!this->fav_choose_(tnow))
         this->rebuild_state_(&this->last_fields_);
+      this->schedule_next_(0);
+      return;
+    }
+  }
+  if (j.comp > 0) {
+    e.comps = j.comps;
+    e.comp_next = j.comp + 1 < (int) j.comps.size() ? j.comp + 1 : -1;
+    e.sched = j.schedule;
+    if (j.no_event) {
+      ESP_LOGI(TAG, "No upcoming game for %s", e.team->abbr);
+      e.game = GameSnapshot{};
+      e.final_epoch = 0;
+      if (shown)
+        this->game_ = GameSnapshot{};
+      if (!this->fav_choose_(tnow))
+        this->rebuild_state_(&this->last_fields_);
+      this->schedule_next_(0);
+      return;
+    }
+    if (!j.polled) {
       this->schedule_next_(0);
       return;
     }
@@ -906,6 +948,9 @@ void GamedayComponent::reset_game_() {
   this->live_fallback_ = false;
   this->schedule_ = Schedule{};
   this->schedule_fetched_ms_ = 0;
+  this->comps_.clear();
+  this->comp_next_ = -1;
+  this->done_event_.clear();
   this->force_schedule_ = false;
   this->upcoming_.clear();
   this->upcoming_due_ = false;
@@ -935,8 +980,9 @@ std::shared_ptr<http_request::HttpContainer> GamedayComponent::open_(const std::
   return container;
 }
 
-bool GamedayComponent::fetch_schedule_(const ::espn::Team *team, Schedule &out) {
-  std::string url = ::espn::team_url(team->league, team->espn_id);
+bool GamedayComponent::fetch_schedule_(const ::espn::Team *team, Schedule &out, const char *comp_slug) {
+  std::string url = comp_slug != nullptr ? ::espn::team_url(team->league, team->espn_id, comp_slug)
+                                         : ::espn::team_url(team->league, team->espn_id);
   ESP_LOGD(TAG, "Fetching schedule: %s", url.c_str());
   auto container = this->open_(url);
   if (container == nullptr)
@@ -995,7 +1041,7 @@ bool GamedayComponent::fetch_game_(const ::espn::Team *team, const Schedule &sch
   // Football reads the day's scoreboard; the other leagues read the one game.
   const ::espn::LeagueInfo *info = ::espn::league_info(league);
   bool per_event = info != nullptr && info->per_event;
-  std::string url = per_event ? ::espn::event_url(league, schedule.event_id)
+  std::string url = per_event ? ::espn::event_url(league, schedule.event_id, schedule.comp_slug)
                               : ::espn::scoreboard_url(league, schedule.group, schedule.kickoff_epoch);
   ESP_LOGD(TAG, "Fetching game: %s", url.c_str());
   auto container = this->open_(url);
@@ -1116,6 +1162,23 @@ void GamedayComponent::start_job_() {
   }
   j.need_schedule = ::espn::schedule_due(this->schedule_.valid, this->force_schedule_, now,
                                          this->schedule_fetched_ms_, SCHEDULE_INTERVAL);
+  // Soccer: after each league read, one cup's team read per cycle.
+  if (this->comp_next_ > 0 && this->comp_next_ < (int) this->comps_.size() && !j.need_schedule) {
+    j.comp = this->comp_next_;
+    j.comps = this->comps_;
+    j.schedule = this->schedule_;
+    j.need_game = this->game_.event_id.empty() || this->game_.event_id != this->schedule_.event_id;
+    j.done_event = this->done_event_;
+    this->job_done_ = false;
+    this->busy_ = true;
+    this->busy_since_ms_ = millis() == 0 ? 1 : millis();
+    BaseType_t ok = xTaskCreate(&GamedayComponent::worker_, "gameday_fetch", 16384, this, 1, nullptr);
+    if (ok != pdPASS) {
+      this->busy_ = false;
+      this->schedule_next_(RETRY_INTERVAL);
+    }
+    return;
+  }
   // The season schedule is ~200KB; it is fetched on a cycle of its own right
   // after the board has its game, never in front of it.
   if (this->upcoming_due_ && !j.need_schedule && this->schedule_.valid) {
@@ -1145,6 +1208,7 @@ void GamedayComponent::start_job_() {
       }
     }
     this->prev_ = GameSnapshot{};
+    this->done_event_ = this->game_.event_id;
     this->game_ = GameSnapshot{};
     this->post_since_ms_ = 0;
     if (next != nullptr) {
@@ -1153,6 +1217,17 @@ void GamedayComponent::start_job_() {
       // endpoint and stay valid; only the event moves.
       this->schedule_.event_id = next->event_id;
       this->schedule_.kickoff_epoch = next->kickoff_epoch;
+      this->schedule_.comp_slug = nullptr;  // the list is the league's own
+      if (!this->comps_.empty()) {
+        // A cup game can come before the league's next fixture.
+        this->comps_[0] = this->schedule_;
+        int pick = ::espn::pick_schedule(this->comps_, tnow, this->done_event_);
+        if (pick > 0) {
+          this->schedule_ = this->comps_[pick];
+          ESP_LOGI(TAG, "A cup game is first: event %s in %s", this->schedule_.event_id.c_str(),
+                   this->schedule_.comp_slug);
+        }
+      }
       this->schedule_fetched_ms_ = now == 0 ? 1 : now;
       this->upcoming_due_ = true;  // the list just lost an entry: refresh it
     } else {
@@ -1160,6 +1235,13 @@ void GamedayComponent::start_job_() {
     }
   }
   j.schedule = this->schedule_;
+  size_t cups = ::espn::league_cup_count(j.team->league);
+  if (j.need_schedule && cups > 0) {
+    j.defer_game = this->comps_.empty();
+    j.comps = this->comps_;
+    j.comps.resize(cups + 1);
+    j.done_event = this->done_event_;
+  }
   this->job_done_ = false;
   this->busy_ = true;
   this->busy_since_ms_ = millis() == 0 ? 1 : millis();
@@ -1201,6 +1283,10 @@ void GamedayComponent::run_job_() {
     j.upcoming_ok = this->fetch_upcoming_(j.team, j.upcoming);
     return;
   }
+  if (j.comp > 0) {
+    this->run_cup_job_();
+    return;
+  }
   if (j.need_schedule) {
     Schedule s;
     j.schedule_ok = this->fetch_schedule_(j.team, s);
@@ -1208,7 +1294,16 @@ void GamedayComponent::run_job_() {
       return;
     j.schedule = s;
     ::espn::adopt_league(j.schedule, j.team->league);
-    if (s.event_id.empty()) {
+    if (!j.comps.empty()) {
+      // Soccer: the cup reads from the last sweep still count.
+      j.comps[0] = j.schedule;
+      int pick = ::espn::pick_schedule(j.comps, (int64_t) this->time_->timestamp_now(), j.done_event);
+      if (pick > 0)
+        j.schedule = j.comps[pick];
+      if (j.defer_game)
+        return;  // the first sweep picks the game before any poll
+    }
+    if (j.schedule.event_id.empty()) {
       j.no_event = true;
       return;
     }
@@ -1321,6 +1416,10 @@ void GamedayComponent::apply_job_() {
     this->schedule_next_(this->interval_for_phase_());
     return;
   }
+  if (j.comp > 0) {
+    this->apply_cup_job_(now);
+    return;
+  }
   if (j.need_schedule) {
     if (!j.schedule_ok) {
       this->misses_++;
@@ -1334,6 +1433,14 @@ void GamedayComponent::apply_job_() {
     this->upcoming_due_ = true;  // refreshed on the next cycle, once the board is drawn
     this->cache_unconfirmed_ = false;
     this->save_team_cache_(j.team);
+    if (!j.comps.empty()) {
+      this->comps_ = j.comps;
+      this->comp_next_ = 1;
+    }
+    if (j.defer_game) {
+      this->schedule_next_(0);  // the cup reads, then the game they pick
+      return;
+    }
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
       this->game_ = GameSnapshot{};
@@ -1384,6 +1491,74 @@ void GamedayComponent::apply_job_() {
   this->schedule_next_(this->upcoming_due_ ? 0 : this->interval_for_phase_());
 }
 
+// Worker: one cup's team read, then the pick across every read so far. The
+// game is polled when the pick moves, or at the end of a sweep that left the
+// board without one.
+void GamedayComponent::run_cup_job_() {
+  Job &j = this->job_;
+  const char *slug = ::espn::league_cup(j.team->league, (size_t) (j.comp - 1));
+  Schedule s;
+  if (slug != nullptr && this->fetch_schedule_(j.team, s, slug)) {
+    ::espn::adopt_league(s, j.team->league);
+    ::espn::adopt_comp(s, slug);
+    j.comps[j.comp] = s;
+  }
+  int pick = ::espn::pick_schedule(j.comps, (int64_t) this->time_->timestamp_now(), j.done_event);
+  Schedule next = pick >= 0 ? j.comps[pick] : j.comps[0];
+  bool moved = next.event_id != j.schedule.event_id;
+  bool last = j.comp + 1 >= (int) j.comps.size();
+  j.schedule = next;
+  if (!moved && !(last && j.need_game))
+    return;
+  if (next.event_id.empty()) {
+    j.no_event = true;
+    return;
+  }
+  j.polled = true;
+  j.game_ok = this->fetch_game_(j.team, j.schedule, j.game);
+}
+
+// Main loop, My team: fold a cup read in. A new pick takes the board.
+void GamedayComponent::apply_cup_job_(uint32_t now) {
+  Job &j = this->job_;
+  this->comps_ = j.comps;
+  this->comp_next_ = j.comp + 1 < (int) j.comps.size() ? j.comp + 1 : -1;
+  bool moved = j.schedule.event_id != this->schedule_.event_id;
+  if (moved) {
+    ESP_LOGI(TAG, "Next game: event %s in %s", j.schedule.event_id.c_str(),
+             j.schedule.comp_slug != nullptr ? j.schedule.comp_slug : "the league");
+    this->schedule_ = j.schedule;
+    this->save_team_cache_(j.team);
+    this->post_since_ms_ = 0;
+  }
+  if (j.no_event) {
+    ESP_LOGI(TAG, "No upcoming game for this team");
+    this->game_ = GameSnapshot{};
+    this->prev_ = GameSnapshot{};
+    this->misses_ = 0;
+    this->emit_({});
+    this->mark_board_ready_();
+  } else if (j.polled && !j.game_ok) {
+    this->misses_++;
+    this->emit_({});
+    this->schedule_next_(RETRY_INTERVAL);
+    return;
+  } else if (j.polled) {
+    this->prev_ = moved ? GameSnapshot{} : this->game_;
+    this->game_ = j.game;
+    this->mark_good_poll_();
+    if (this->game_.state == GameState::POST) {
+      if (this->post_since_ms_ == 0)
+        this->post_since_ms_ = now == 0 ? 1 : now;
+    } else {
+      this->post_since_ms_ = 0;
+    }
+    this->emit_(::espn::decide_splash(this->prev_, this->game_, this->opponent_splashes(), false));
+    this->mark_board_ready_();
+  }
+  this->schedule_next_(this->comp_next_ > 0 || this->upcoming_due_ ? 0 : this->interval_for_phase_());
+}
+
 void GamedayComponent::emit_(const ::espn::Splash &splash) {
   const GameSnapshot &g = this->game_;
   UpdateFields f;
@@ -1411,6 +1586,18 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
     f.outs = g.mlb.outs;
     f.bases = g.mlb.bases;
     f.highlight = g.mlb.bases == (::espn::Baseball::FIRST | ::espn::Baseball::SECOND | ::espn::Baseball::THIRD);
+  }
+  if (g.valid && g.sport == ::espn::Sport::SOCCER) {
+    // The latest goal on the situation row, red cards under the logos, and
+    // records that fit the label under a logo.
+    if (g.state == GameState::IN)
+      f.situation = ::espn::soccer_situation(g);
+    if (g.state != GameState::PRE) {
+      f.team_marks = g.soc.team_reds;
+      f.opp_marks = g.soc.opp_reds;
+    }
+    f.team_record = ::espn::soccer_board_record(g.team_record);
+    f.opponent_record = ::espn::soccer_board_record(g.opp_record);
   }
   f.team_color = ::espn::parse_color(g.team_color);
   f.opponent_color = ::espn::parse_color(g.opp_color);
