@@ -347,6 +347,12 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  # The sport on the board (0 football), so the page layout can leave the
+  # timeout pips hidden for other sports until the next board update.
+  - id: gd_sport
+    type: int
+    restore_value: no
+    initial_value: '0'
   # The logos the board wants right now, from the latest board update.
   - id: gd_team_logo_url
     type: std::string

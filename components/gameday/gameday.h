@@ -252,9 +252,13 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   } __attribute__((packed));
   // Favorites 5-16 (1-4 stay in Prefs3, so older panels keep theirs) and the
   // settings that came with the longer list.
+  // Its size is fixed: a blob that changes size fails to load and resets every
+  // setting in it. More favorites would need a new blob, not a bigger one.
+  static constexpr uint8_t PREFS5_FAVS = 12;
+  static_assert(FAV_MAX == 4 + PREFS5_FAVS, "Prefs5 holds favorites 5-16; grow the list with a new blob");
   struct Prefs5 {
-    uint8_t fav_league[FAV_MAX - 4];
-    uint32_t fav_id[FAV_MAX - 4];  // 0 = empty
+    uint8_t fav_league[PREFS5_FAVS];
+    uint32_t fav_id[PREFS5_FAVS];  // 0 = empty
     uint8_t flags;                 // FAV5_TODAY
     uint16_t live_mask;            // Live mode: 1 << League per league, 0 = the leagues you follow
   } __attribute__((packed));
@@ -297,7 +301,6 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     // its kCups in order), and the one cup this cycle reads (1.., -1 none).
     std::vector<Schedule> comps;
     int comp{-1};
-    bool defer_game{false};  // first league read for this team: the cups decide before a poll
     bool need_game{false};   // the board has no game for the current schedule yet
     bool polled{false};      // a cup read polled the game it picked
     std::string done_event;  // a game seen to finish, passed over by the pick

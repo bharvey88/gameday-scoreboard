@@ -135,7 +135,8 @@ inline FavChoice pick_favorite(const std::vector<FavGame> &games, int64_t now, c
       break;
   }
   auto ok = [&](int i) { return ok_at(i, level); };
-  if (ok(current) && now - shown_since < r.dwell_s)
+  // A remote press shows its card for the dwell even when a filter would skip it.
+  if ((ok(current) || (current == pinned && valid(current))) && now - shown_since < r.dwell_s)
     c.index = current;
   else
     c.index = fav_next_(games, current, ok);

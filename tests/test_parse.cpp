@@ -818,6 +818,12 @@ static void test_favorites_filters() {
   CHECK_EQ(c.index, 0);
   c = pick_favorite(winter, now, r, 0, now - 20, -1);
   CHECK_EQ(c.index, 1);
+  // A remote press shows its card for the dwell even when today-only would
+  // skip it, then the playlist moves on.
+  c = pick_favorite(games, now, r, 0, now, 0);
+  CHECK_EQ(c.index, 0);
+  c = pick_favorite(games, now, r, 0, now - 20, 0);
+  CHECK_EQ(c.index, 2);
   // A locked game still wins over everything.
   r.today_only = false;
   std::vector<FavGame> mixed = {saturday, live};

@@ -153,6 +153,9 @@ void GamedayComponent::setup() {
     // With several sports, two favorites playing at once is common: a new
     // panel alternates. One that was set up before keeps sticking.
     this->prefs4_.collide = this->flag_(FLAG_SETUP) ? 0 : 1;
+    // Saved now: the choice depends on FLAG_SETUP, which the first team pick
+    // sets, so recomputing it at the next boot would flip it.
+    this->pref4_.save(&this->prefs4_);
   }
   this->pref5_ = global_preferences->make_preference<Prefs5>(fnv1_hash("gameday_prefs5_v1"));
   if (!this->pref5_.load(&this->prefs5_)) {
@@ -161,6 +164,7 @@ void GamedayComponent::setup() {
     // keeps cycling every favorite until its owner turns this on.
     if (!this->flag_(FLAG_SETUP))
       this->prefs5_.flags |= FAV5_TODAY;
+    this->pref5_.save(&this->prefs5_);  // same reason as Prefs4 above
   }
   this->team_cache_pref_ =
       global_preferences->make_preference<::espn::TeamCache>(fnv1_hash("gameday_team_cache_v1"));
@@ -647,7 +651,8 @@ void GamedayComponent::apply_fav_job_(uint32_t now) {
   FavEntry &e = this->fav_[j.fav_index];
   int64_t tnow = (int64_t) this->time_->timestamp_now();
   bool shown = j.fav_index == this->fav_shown_;
-  if (shown)
+  // A cup read that did not poll the game leaves the poll timer alone.
+  if (shown && (j.comp < 0 || j.polled))
     this->fav_poll_ms_ = now == 0 ? 1 : now;
   if (j.need_schedule) {
     if (!j.schedule_ok) {
@@ -755,8 +760,13 @@ void GamedayComponent::loop() {
       // not before a slow-but-honest job could have finished: abandoning a
       // live worker is what makes the accepted run_job_/job_ write race
       // reachable, and that must stay out of reach on a merely slow network.
-      if (this->busy_since_ms_ != 0 && (millis() - this->busy_since_ms_) >= WORKER_DEADLINE) {
-        ESP_LOGW(TAG, "Fetch task did not finish in %us, giving up on it", (unsigned) (WORKER_DEADLINE / 1000));
+      // A Live games scan reads one scoreboard per league, so past two
+      // leagues it gets the same allowance per request (60 s) as the rest.
+      uint32_t deadline = WORKER_DEADLINE;
+      if (this->job_.need_scan && this->job_.scan_leagues.size() > 2)
+        deadline = WORKER_DEADLINE / 2 * (uint32_t) this->job_.scan_leagues.size();
+      if (this->busy_since_ms_ != 0 && (millis() - this->busy_since_ms_) >= deadline) {
+        ESP_LOGW(TAG, "Fetch task did not finish in %us, giving up on it", (unsigned) (deadline / 1000));
         this->busy_ = false;
         this->busy_since_ms_ = 0;
         this->worker_seq_++;  // a late finisher must not signal job_done_
@@ -1244,7 +1254,6 @@ void GamedayComponent::start_job_() {
   j.schedule = this->schedule_;
   size_t cups = ::espn::league_cup_count(j.team->league);
   if (j.need_schedule && cups > 0) {
-    j.defer_game = this->comps_.empty();
     j.comps = this->comps_;
     j.comps.resize(cups + 1);
     j.done_event = this->done_event_;
@@ -1307,8 +1316,6 @@ void GamedayComponent::run_job_() {
       int pick = ::espn::pick_schedule(j.comps, (int64_t) this->time_->timestamp_now(), j.done_event);
       if (pick > 0)
         j.schedule = j.comps[pick];
-      if (j.defer_game)
-        return;  // the first sweep picks the game before any poll
     }
     if (j.schedule.event_id.empty()) {
       j.no_event = true;
@@ -1443,10 +1450,6 @@ void GamedayComponent::apply_job_() {
     if (!j.comps.empty()) {
       this->comps_ = j.comps;
       this->comp_next_ = 1;
-    }
-    if (j.defer_game) {
-      this->schedule_next_(0);  // the cup reads, then the game they pick
-      return;
     }
     if (j.no_event) {
       ESP_LOGI(TAG, "No upcoming game for this team");
@@ -1779,6 +1782,12 @@ void GamedayComponent::demo_tick_() {
   // Keep the real sides (logos already decoded, colors, records); fall back
   // to a stock matchup on a panel that has nothing loaded yet.
   GameSnapshot g = this->demo_saved_game_;
+  // The script is football's: drop another sport's extras from the saved card.
+  g.sport = ::espn::Sport::FOOTBALL;
+  g.mlb = {};
+  g.soc = {};
+  g.nba = {};
+  g.nhl = {};
   if (!g.valid || g.team_abbr.empty()) {
     const ::espn::Team *t = this->current_team_();
     g = GameSnapshot{};
@@ -2084,7 +2093,14 @@ void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::
         size_t comma = v.find(',', start);
         std::string ref = v.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
         start = comma == std::string::npos ? v.size() : comma + 1;
-        if (!parse_team_ref(ref, league, id)) {
+        bool known = parse_team_ref(ref, league, id);
+        for (size_t t = 0; known && t < ::espn::kTeamCount; t++) {
+          if ((uint8_t) ::espn::kTeams[t].league == league && ::espn::kTeams[t].espn_id == id)
+            break;
+          if (t + 1 == ::espn::kTeamCount)
+            known = false;  // a team this firmware does not list
+        }
+        if (!known) {
           ESP_LOGW(TAG, "Bad favorite '%s'", ref.c_str());
           continue;
         }

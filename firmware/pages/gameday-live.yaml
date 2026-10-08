@@ -94,8 +94,14 @@ script:
             // Timeout pips centered under each logo
             const int acx = 18, hcx = W - 18;
             for (int i = 0; i < 3; i++) {
-              lv_obj_clear_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
-              lv_obj_clear_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
+              // Timeout pips are football's (gd_update keeps them in step).
+              if (id(gd_sport) == 0) {
+                lv_obj_clear_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
+              } else {
+                lv_obj_add_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
+              }
               lv_obj_set_pos(abars[i], acx - 9 + i * 7, 48);
               lv_obj_set_pos(hbars[i], hcx - 9 + i * 7, 48);
             }
@@ -151,7 +157,7 @@ script:
             lv_obj_set_width(id(tt_count_lbl), cx - 9 - 32);
             lv_obj_set_style_text_font(id(tt_outs_lbl), id(spleen_8), 0);
             lv_obj_set_pos(id(tt_outs_lbl), cx + 9, 48);
-            lv_obj_set_width(id(tt_outs_lbl), W - 32 - (cx + 9));
+            lv_obj_set_width(id(tt_outs_lbl), 28);  // "2 OUT" is 25 px in spleen_8
             for (int i = 0; i < 3; i++)
               lv_obj_add_flag(outs[i], LV_OBJ_FLAG_HIDDEN);
           } else {
@@ -196,6 +202,7 @@ script:
       opp_marks: int
     then:
       - lambda: |-
+          id(gd_sport) = sport;
           // A side with no team yet (just after a team change) shows no logo
           if (team_abbr.empty()) lv_obj_add_flag(id(gd_team_logo_img), LV_OBJ_FLAG_HIDDEN);
           else lv_obj_clear_flag(id(gd_team_logo_img), LV_OBJ_FLAG_HIDDEN);
