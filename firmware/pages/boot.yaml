@@ -248,10 +248,13 @@ script:
           auto *w = wifi::global_wifi_component;
           if (w == nullptr) return;
           // The app is mid-handover: no QR and no turns, just JOINING.
+          #ifdef USE_IMPROV_BLE
+          auto *ble_setup = improv_ble::global_improv_component;
+          #else
+          auto *ble_setup = esp32_improv::global_improv_component;
+          #endif
           const bool provisioning =
-              esp32_improv::global_improv_component != nullptr &&
-              esp32_improv::global_improv_component->get_improv_state() ==
-                  improv::STATE_PROVISIONING;
+              ble_setup != nullptr && ble_setup->get_improv_state() == improv::STATE_PROVISIONING;
           // Lost means: there is a real saved network and the panel is not on
           // it. Derived from the live Wi-Fi state every time rather than
           // latched, so it is still right after the ten minute offline restart
