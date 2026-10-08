@@ -294,7 +294,16 @@
     a.classList.toggle("poss", !!poss);
     a.style.color = "#" + (color || "ffffff");
     node.querySelector(".rec").textContent = rec || "";
+    // Timeout pips are football's (other sports send no timeouts).
+    node.querySelector(".pips").style.display = timeouts === null ? "none" : "";
     node.querySelectorAll(".pips i").forEach((p, i) => p.classList.toggle("on", i < (timeouts || 0)));
+  };
+  // The situation line under the clock: down and distance for football, the
+  // count and outs for baseball, the latest goal or a playoff series otherwise.
+  const situation = (g) => {
+    if (!g.sport) return g.d || "";
+    if (g.sport === 1 && g.outs >= 0) return (g.sit ? g.sit + ", " : "") + g.outs + (g.outs === 1 ? " out" : " outs");
+    return g.sit || "";
   };
 
   const renderBoard = () => {
@@ -317,8 +326,9 @@
     msg.hidden = true;
     st.classList.toggle("live", g.s === "IN");
     st.textContent = g.s === "IN" ? "LIVE" : g.s === "POST" ? "FINAL" : "UPCOMING";
-    renderTeam($("#tA"), g.l, g.ti, g.ta, g.tr, g.tt, g.p === 1, g.tc);
-    renderTeam($("#tB"), g.l, g.oi, g.oa, g.or, g.ot, g.p === 2, g.oc);
+    const football = !g.sport;
+    renderTeam($("#tA"), g.l, g.ti, g.ta, g.tr, football ? g.tt : null, g.p === 1, g.tc);
+    renderTeam($("#tB"), g.l, g.oi, g.oa, g.or, football ? g.ot : null, g.p === 2, g.oc);
     $("#sA").textContent = g.ts;
     $("#sB").textContent = g.os;
     const clock = $("#clock");
@@ -326,7 +336,7 @@
     else if (g.s === "POST") clock.textContent = "Final";
     else clock.textContent = g.k || "Upcoming";
     const d = $("#down");
-    d.textContent = g.s === "IN" ? g.d || "" : g.s === "PRE" && g.tv ? "on " + g.tv : "";
+    d.textContent = g.s === "IN" ? situation(g) : g.s === "PRE" && g.tv ? "on " + g.tv : "";
     d.classList.toggle("rz", g.s === "IN" && !!g.rz);
     $("#stale").classList.toggle("on", (g.m || 0) >= 3);
   };
