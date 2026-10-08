@@ -525,6 +525,8 @@ gameday:
         outs: !lambda 'return x.outs;'
         bases: !lambda 'return (int) x.bases;'
         highlight: !lambda 'return x.highlight;'
+        team_marks: !lambda 'return x.team_marks;'
+        opp_marks: !lambda 'return x.opp_marks;'
     # is_decoding() keeps a second request off a download already running:
     # online_image would drop it, and set_url would have pointed the image at
     # the new URL on the way. The next board update asks again.

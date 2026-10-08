@@ -228,6 +228,11 @@ inline void baseball_from_event(JsonObjectConst ev, GameSnapshot &s) {
   s.possession = we_bat ? 1 : 2;
 }
 
+// Soccer (sport_soccer.cpp): the status name, details, form, stats and
+// moneyline on top of the shared event filter, read into s.soc.
+void fill_soccer_filter(JsonObject ev);
+void soccer_from_event(JsonObjectConst ev, GameSnapshot &s);
+
 }  // namespace detail
 
 // Parses the team endpoint. `input` is anything ArduinoJson can read from:
@@ -336,6 +341,8 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
   detail::fill_event_filter(filter.to<JsonObject>());
   if (sport == Sport::BASEBALL)
     detail::fill_baseball_filter(filter.as<JsonObject>());
+  if (sport == Sport::SOCCER)
+    detail::fill_soccer_filter(filter.as<JsonObject>());
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
@@ -347,6 +354,8 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
   s.sport = sport;
   if (sport == Sport::BASEBALL)
     detail::baseball_from_event(doc.as<JsonObjectConst>(), s);
+  if (sport == Sport::SOCCER)
+    detail::soccer_from_event(doc.as<JsonObjectConst>(), s);
   out = s;
   return true;
 }

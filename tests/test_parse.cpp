@@ -753,6 +753,325 @@ static void test_mlb_splash() {
   CHECK_EQ(decide_splash(was, fin, true).text, std::string("ATL WINS!"));
 }
 
+// Soccer single-event documents (see fixtures/README.md): Brazilian Serie A
+// recorded live 2026-10-08, MLS and Premier League pre-game and finals, a
+// Champions League final on penalties and a World Cup game after extra time.
+static const uint32_t kArsenal = 359, kLeeds = 357, kSunderland = 366, kMiami = 20232, kDcUnited = 193,
+                      kInter = 1936, kCorinthians = 874, kVasco = 3454, kMirassol = 9169, kBragantino = 6079,
+                      kPsg = 160, kArgentina = 202, kCruzeiro = 2022;
+
+static GameSnapshot soccer_event(const char *file, uint32_t team) {
+  GameSnapshot s;
+  CHECK(parse_event_str(slurp(file), Sport::SOCCER, team, s));
+  return s;
+}
+
+static void test_soccer_urls() {
+  CHECK_EQ(team_url(League::EPL, kArsenal), std::string("https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/teams/359"));
+  CHECK_EQ(team_url(League::MLS, kMiami), std::string("https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/teams/20232"));
+  CHECK_EQ(event_url(League::EPL, "401879268"),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard/401879268"));
+  // A soccer schedule lists past results unless asked for fixtures.
+  CHECK_EQ(schedule_url(League::EPL, kArsenal),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/teams/359/schedule?fixture=true"));
+  CHECK_EQ(schedule_url(League::MLB, 15), std::string("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/15/schedule"));
+  CHECK_EQ(team_logo_url(League::EPL, kArsenal, "ARS"),
+           std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500-dark/359.png&w=64&h=64"));
+  CHECK_EQ(team_logo_url(League::MLS, kMiami, "MIA"),
+           std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500-dark/20232.png&w=64&h=64"));
+  CHECK_EQ(std::string(league_key(League::EPL)), std::string("epl"));
+  CHECK_EQ(std::string(league_key(League::MLS)), std::string("mls"));
+  CHECK(league_by_key("epl") != nullptr && league_by_key("epl")->per_event && league_by_key("epl")->season_list);
+  CHECK(league_by_key("mls") != nullptr && league_by_key("mls")->logo_by_id);
+  CHECK(league_sport(League::EPL) == Sport::SOCCER);
+  CHECK(league_sport(League::MLS) == Sport::SOCCER);
+  int epl = 0, mls = 0;
+  for (size_t i = 0; i < kTeamCount; i++) {
+    const Team &t = kTeams[i];
+    epl += t.league == League::EPL;
+    mls += t.league == League::MLS;
+    if (t.league == League::EPL && t.espn_id == kArsenal)
+      CHECK_EQ(team_option(t), std::string("EPL: Arsenal"));
+    if (t.league == League::MLS && t.espn_id == kMiami)
+      CHECK_EQ(team_option(t), std::string("MLS: Inter Miami CF"));
+  }
+  CHECK_EQ(epl, 20);
+  CHECK_EQ(mls, 30);
+}
+
+static void test_soccer_team() {
+  Schedule s;
+  CHECK(parse_team_str(slurp("fixtures/team_epl_ars.json"), s));
+  CHECK_EQ(s.event_id, std::string("401879268"));
+  CHECK_EQ(s.kickoff_epoch, parse_iso8601_z("2026-10-10T11:30Z"));
+  CHECK_EQ(s.team_color, std::string("e20520"));
+  CHECK_EQ(s.team_record, std::string("4-0-1"));
+  CHECK(parse_team_str(slurp("fixtures/team_mls_mia.json"), s));
+  CHECK_EQ(s.event_id, std::string("761847"));
+  CHECK_EQ(s.team_record, std::string("12-10-5"));
+
+  // The fixture list feeds Up next the same way football's schedule does.
+  std::vector<Upcoming> up;
+  CHECK(parse_upcoming_str(slurp("fixtures/schedule_mls_mia.json"), kMiami, 4, up));
+  CHECK_EQ(up.size(), (size_t) 2);
+  CHECK_EQ(up[0].event_id, std::string("761847"));
+  CHECK_EQ(up[0].opp_id, kDcUnited);
+  CHECK_EQ(up[0].opp_abbr, std::string("DC"));
+  CHECK(up[0].home);
+  CHECK_EQ(up[0].tv, std::string("Apple TV"));
+  CHECK_EQ(up[1].opp_abbr, std::string("NYC"));
+  CHECK_EQ(up[1].kickoff_epoch, parse_iso8601_z("2026-10-14T23:30Z"));
+}
+
+static void test_soccer_pre() {
+  GameSnapshot a = soccer_event("fixtures/event_epl_pre.json", kArsenal);
+  CHECK(a.valid);
+  CHECK(a.sport == Sport::SOCCER);
+  CHECK(a.state == GameState::PRE);
+  CHECK(a.team_home);
+  CHECK_EQ(a.opp_abbr, std::string("LEE"));
+  CHECK_EQ(a.team_record, std::string("4-0-1"));  // W-D-L, the order of ESPN's standings
+  // ESPN sends the newest result first ("LWWWW": Arsenal lost their last
+  // game); the ticker prints it oldest first like a league table.
+  CHECK_EQ(a.soc.team_form, std::string("WWWWL"));
+  CHECK_EQ(a.soc.opp_form, std::string("DDLWD"));
+  CHECK_EQ(a.soc.team_line, std::string("-275"));
+  CHECK_EQ(a.soc.draw_line, std::string("+425"));
+  CHECK_EQ(a.soc.opp_line, std::string("+750"));
+  CHECK(a.soc.goals.empty());
+  CHECK_EQ(a.team_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500-dark/359.png&w=64&h=64"));
+  TickerOptions o;
+  CHECK_EQ(status_text(a, o, "Sat 7:30 AM"),
+           std::string("Sat 7:30 AM | Form ARS WWWWL, LEE DDLWD | ARS -275, draw +425, LEE +750 | O/U 2.5 | USA Net | "
+                       "Emirates Stadium"));
+  // From the visitors' side the line turns around.
+  GameSnapshot l = soccer_event("fixtures/event_epl_pre.json", kLeeds);
+  CHECK(!l.team_home);
+  CHECK_EQ(l.soc.team_line, std::string("+750"));
+  CHECK_EQ(l.soc.opp_line, std::string("-275"));
+
+  GameSnapshot m = soccer_event("fixtures/event_mls_pre.json", kMiami);
+  CHECK_EQ(m.team_record, std::string("12-10-5"));
+  CHECK_EQ(status_text(m, o, "Sat 7:30 PM"),
+           std::string("Sat 7:30 PM | Form MIA DDWDL, DC DWDLD | MIA -270, draw +425, DC +500 | O/U 3.5 | Apple TV | "
+                       "Nu Stadium"));
+  TickerOptions no_odds = o;
+  no_odds.odds = false;
+  CHECK_EQ(status_text(m, no_odds, ""),
+           std::string("Scheduled | Form MIA DDWDL, DC DWDLD | Nu Stadium"));
+  // Only the favorite's line without the three-way one.
+  GameSnapshot partial = m;
+  partial.soc.opp_line.clear();
+  CHECK_EQ(status_text(partial, o, "Sat 7:30 PM").find("MIA -270, draw +425 | O/U 3.5") != std::string::npos, true);
+
+  GameSnapshot none;
+  none.sport = Sport::SOCCER;
+  CHECK_EQ(status_text(none, o, ""), std::string("No upcoming game"));
+}
+
+static void test_soccer_live() {
+  TickerOptions o;
+  o.clock = false;  // as the component asks: the clock has its own row
+
+  // First half, no goals yet: an empty situation row.
+  GameSnapshot fh = soccer_event("fixtures/event_soccer_first_half.json", kCruzeiro);
+  CHECK(fh.state == GameState::IN);
+  CHECK_EQ(fh.soc.status, std::string("STATUS_FIRST_HALF"));
+  CHECK_EQ(clock_text(fh), std::string("25'"));
+  CHECK_EQ(soccer_situation(fh), std::string(""));
+  CHECK_EQ(status_text(fh, o, ""),
+           std::string("Cards CRU 1Y, SAO 1Y | Possession CRU 64.1%, SAO 35.9% | Shots (on target) CRU 4 (0), SAO 4 (1) | "
+                       "24' Yellow Card: G. Rojas (CRU)"));
+  TickerOptions with_clock;
+  with_clock.down_distance = with_clock.last_play = false;
+  CHECK_EQ(status_text(fh, with_clock, ""), std::string("25'"));
+
+  // Half time, Vasco (away) lead 1-0.
+  GameSnapshot h = soccer_event("fixtures/event_soccer_halftime.json", kVasco);
+  CHECK(h.state == GameState::IN);
+  CHECK_EQ(h.soc.status, std::string("STATUS_HALFTIME"));
+  CHECK_EQ(h.display_clock, std::string("45'+5'"));  // the clock stops where the half ended
+  CHECK_EQ(clock_text(h), std::string("HT"));
+  CHECK_EQ(soccer_situation(h), std::string("28' Lescano"));
+  CHECK_EQ(status_text(h, o, ""),
+           std::string("Half time | Goals VAS 28' Lescano | Possession VAS 54.8%, BOT 45.2% | "
+                       "Shots (on target) VAS 8 (4), BOT 6 (1) | W-D-L VAS 8-7-12, BOT 9-8-11"));
+
+  // Stoppage time, Internacional (home) 2-1 up. ESPN's status name flips
+  // between STATUS_SECOND_HALF and STATUS_IN_PROGRESS from poll to poll.
+  GameSnapshot s = soccer_event("fixtures/event_soccer_stoppage.json", kInter);
+  CHECK_EQ(s.soc.status, std::string("STATUS_IN_PROGRESS"));
+  CHECK_EQ(clock_text(s), std::string("90'+2'"));
+  CHECK_EQ(s.team_score, 2);
+  CHECK_EQ(s.opp_score, 1);
+  CHECK_EQ(s.soc.goals.size(), (size_t) 3);
+  CHECK(s.soc.goals[0].ours);
+  CHECK(!s.soc.goals[2].ours);
+  CHECK_EQ(s.soc.goals[2].name, std::string("Andre"));  // "André", folded for the panel font
+  CHECK_EQ(s.soc.team_yellows, 3);
+  CHECK_EQ(s.soc.opp_yellows, 4);
+  CHECK_EQ(s.soc.team_reds + s.soc.opp_reds, 0);
+  CHECK_EQ(soccer_situation(s), std::string("80' Andre"));
+  CHECK_EQ(s.soc.last_event, std::string("85' Yellow Card: R. Garro (COR)"));
+  CHECK_EQ(status_text(s, o, ""),
+           std::string("Goals INT 1' Vitinho, 77' Alan Patrick; COR 80' Andre | Cards INT 3Y, COR 4Y | "
+                       "Possession INT 28%, COR 72% | Shots (on target) INT 17 (7), COR 21 (6) | "
+                       "85' Yellow Card: R. Garro (COR)"));
+  TickerOptions quiet = o;
+  quiet.down_distance = quiet.last_play = false;
+  CHECK_EQ(status_text(s, quiet, ""), std::string("90'+2'"));
+
+  // Second half with a red card: Mirassol (away) down to ten.
+  GameSnapshot r = soccer_event("fixtures/event_soccer_second_half.json", kMirassol);
+  CHECK_EQ(clock_text(r), std::string("90'"));
+  CHECK_EQ(r.soc.team_reds, 1);
+  CHECK_EQ(r.soc.opp_reds, 0);
+  CHECK_EQ(r.soc.last_event, std::string("70' Goal: Andre Luis (MIR)"));
+  // 14 characters is too wide for the row: the last word of the name stays.
+  CHECK_EQ(soccer_situation(r), std::string("70' Luis"));
+  CHECK(status_text(r, o, "").rfind("Goals MIR 70' Andre Luis; BRA 51' Eduardo Sasha | Cards MIR 1R | ", 0) == 0);
+  GameSnapshot b = soccer_event("fixtures/event_soccer_second_half.json", kBragantino);
+  CHECK_EQ(b.soc.team_reds, 0);
+  CHECK_EQ(b.soc.opp_reds, 1);
+
+  // Full time in the same game as the stoppage-time poll.
+  GameSnapshot f = soccer_event("fixtures/event_soccer_full_time.json", kInter);
+  CHECK(f.state == GameState::POST);
+  CHECK(f.team_winner);
+  CHECK_EQ(clock_text(f), std::string("FT"));
+  CHECK_EQ(status_text(f, o, ""),
+           std::string("Full time | Goals INT 1' Vitinho, 77' Alan Patrick; COR 80' Andre | W-D-L INT 6-10-12, COR 8-8-12"));
+  CHECK_EQ(decide_splash(s, f, true).text, std::string("INT WINS!"));
+  CHECK_EQ(decide_splash(s, f, true).color, (uint32_t) 0xC60000);
+  GameSnapshot sc = soccer_event("fixtures/event_soccer_stoppage.json", kCorinthians);
+  GameSnapshot fc = soccer_event("fixtures/event_soccer_full_time.json", kCorinthians);
+  CHECK_EQ(decide_splash(sc, fc, true).text, std::string(""));
+  CHECK_EQ(decide_splash(sc, fc, true, true).text, std::string("INT WINS!"));  // live modes: the winner, either side
+}
+
+static void test_soccer_finals() {
+  TickerOptions o;
+  // Premier League: Arsenal win 2-0 away with a stoppage-time penalty; Sunderland had a man sent off.
+  GameSnapshot a = soccer_event("fixtures/event_epl_final.json", kArsenal);
+  CHECK(a.state == GameState::POST);
+  CHECK(a.team_winner);
+  CHECK_EQ(a.soc.opp_reds, 1);
+  CHECK(a.soc.goals.back().penalty);
+  CHECK_EQ(status_text(a, o, ""),
+           std::string("Full time | Goals ARS 58' Guimaraes, 90'+7' Saka (P) | Red cards SUN 1 | W-D-L ARS 4-0-0, SUN 1-1-2"));
+  // "90'+7' Saka (P)" is 15 characters: the penalty mark gives way.
+  CHECK_EQ(soccer_situation(a), std::string("90'+7' Saka"));
+  CHECK_EQ(soccer_situation(a, 16), std::string("90'+7' Saka (P)"));
+  GameSnapshot sun = soccer_event("fixtures/event_epl_final.json", kSunderland);
+  CHECK_EQ(sun.soc.team_reds, 1);
+
+  // MLS: a 2-2 draw. Both sides have winner false and nobody gets a splash.
+  GameSnapshot d = soccer_event("fixtures/event_mls_final.json", kMiami);
+  CHECK(!d.team_winner);
+  CHECK_EQ(d.team_score, 2);
+  CHECK_EQ(d.opp_score, 2);
+  CHECK_EQ(clock_text(d), std::string("FT"));
+  CHECK_EQ(status_text(d, o, ""),
+           std::string("Full time | Goals MIA 24' Messi, 74' Suarez; SD 12' Dreyer, 82' Dreyer | W-D-L MIA 12-10-4, SD 8-7-11"));
+  GameSnapshot live = d;
+  live.state = GameState::IN;
+  CHECK_EQ(decide_splash(live, d, true).text, std::string(""));
+  CHECK_EQ(decide_splash(live, d, true, true).text, std::string(""));
+
+  // Champions League final on penalties: 1-1, PSG win the shootout 4-3.
+  GameSnapshot p = soccer_event("fixtures/event_soccer_pens.json", kArsenal);
+  CHECK_EQ(p.soc.status, std::string("STATUS_FINAL_PEN"));
+  CHECK_EQ(p.soc.team_shootout, 3);
+  CHECK_EQ(p.soc.opp_shootout, 4);
+  CHECK_EQ(p.soc.goals.size(), (size_t) 2);  // shootout kicks are not goals
+  CHECK_EQ(clock_text(p), std::string("PENS"));
+  CHECK_EQ(p.soc.last_event, std::string("Shootout Penalty - Scored: L. Beraldo (PSG)"));
+  CHECK_EQ(status_text(p, o, ""),
+           std::string("PSG win 4-3 on penalties | UEFA Champions League, Final | Goals ARS 6' Havertz; PSG 65' Dembele (P)"));
+  GameSnapshot pl = p;
+  pl.state = GameState::IN;
+  pl.soc.status = "STATUS_SHOOTOUT";
+  CHECK_EQ(clock_text(pl), std::string("PENS 3-4"));
+  CHECK_EQ(decide_splash(pl, p, true).text, std::string(""));
+  CHECK_EQ(decide_splash(pl, p, true, true).text, std::string("PSG WINS!"));
+  GameSnapshot psg = soccer_event("fixtures/event_soccer_pens.json", kPsg);
+  GameSnapshot psg_live = psg;
+  psg_live.state = GameState::IN;
+  CHECK_EQ(decide_splash(psg_live, psg, true).text, std::string("PSG WINS!"));
+
+  // World Cup round of 32 after extra time, with an own goal at 111'.
+  GameSnapshot e = soccer_event("fixtures/event_soccer_aet.json", kArgentina);
+  CHECK_EQ(clock_text(e), std::string("AET"));
+  CHECK(e.soc.goals.back().own_goal);
+  CHECK(e.soc.goals.back().ours);  // an own goal counts for the side it helped
+  CHECK_EQ(e.soc.goals.back().name, std::string("Borges"));
+  CHECK_EQ(status_text(e, o, ""),
+           std::string("After extra time | FIFA World Cup, Round of 32 | Goals ARG 29' Messi, 92' Martinez, "
+                       "111' Borges (OG); CPV 59' Duarte, 103' Lopes Cabral"));
+  CHECK_EQ(soccer_situation(e), std::string("111' Borges"));
+  GameSnapshot og = e;
+  og.soc.goals.back().clock = "55'";
+  CHECK_EQ(soccer_situation(og), std::string("55' Borges"));  // "55' Borges OG" is 13
+  CHECK_EQ(soccer_situation(og, 13), std::string("55' Borges OG"));
+  og.soc.goals.back().name = "Hany";
+  CHECK_EQ(soccer_situation(og), std::string("55' Hany OG"));
+
+  // Extra time while it is played (no recording yet: built from the final).
+  GameSnapshot et = e;
+  et.state = GameState::IN;
+  et.soc.status = "STATUS_SECOND_HALF_EXTRA_TIME";
+  et.period = 3;
+  et.display_clock = "105'+1'";
+  CHECK_EQ(clock_text(et), std::string("ET 105'+1'"));
+  et.period = 4;
+  et.display_clock = "120'+12'";
+  CHECK_EQ(clock_text(et), std::string("120'+12'"));
+  et.period = 3;
+  et.soc.status = "STATUS_HALFTIME_ET";
+  CHECK_EQ(clock_text(et), std::string("ET HT"));
+  GameSnapshot x;
+  CHECK(!parse_event_str(slurp("fixtures/event_soccer_aet.json"), Sport::SOCCER, kArsenal, x));  // not in it
+}
+
+static void test_soccer_splash() {
+  GameSnapshot prev = soccer_event("fixtures/event_soccer_stoppage.json", kInter);
+  auto after = [&](int us, int them) {
+    GameSnapshot c = prev;
+    c.team_score += us;
+    c.opp_score += them;
+    return c;
+  };
+  CHECK_EQ(decide_splash(prev, after(1, 0), true).text, std::string("GOAL!"));
+  CHECK_EQ(decide_splash(prev, after(1, 0), true).color, (uint32_t) 0xC60000);
+  CHECK_EQ(decide_splash(prev, after(0, 1), true).text, std::string("COR GOAL"));
+  CHECK_EQ(decide_splash(prev, after(0, 1), false).text, std::string(""));
+  CHECK_EQ(decide_splash(prev, after(1, 0), true, true).text, std::string("INT GOAL"));
+  CHECK_EQ(decide_splash(prev, after(0, 0), true).text, std::string(""));
+  CHECK_EQ(decide_splash(prev, after(-1, 0), true).text, std::string(""));  // a goal taken back
+  GameSnapshot pre = prev;
+  pre.state = GameState::PRE;
+  CHECK_EQ(decide_splash(pre, after(1, 0), true).text, std::string(""));
+  for (const char *word : {"GOAL!", "REMO GOAL", "INT WINS!"})
+    CHECK(strlen(word) <= 10);
+}
+
+static void test_soccer_text_helpers() {
+  CHECK_EQ(ascii_fold("Guimar\xC3\xA3" "es"), std::string("Guimaraes"));
+  CHECK_EQ(ascii_fold("Gy\xC3\xB6keres"), std::string("Gyokeres"));
+  CHECK_EQ(ascii_fold("\xC3\x98" "degaard"), std::string("Odegaard"));
+  CHECK_EQ(ascii_fold("Demb\xC3\xA9l\xC3\xA9"), std::string("Dembele"));
+  CHECK_EQ(ascii_fold("\xC5\x81ukasz \xC5\x9E" "ahin"), std::string("Lukasz Sahin"));
+  CHECK_EQ(ascii_fold("\xC8\x98tefan"), std::string("Stefan"));
+  CHECK_EQ(ascii_fold("O\xE2\x80\x99Reilly"), std::string("O'Reilly"));
+  CHECK_EQ(ascii_fold("Stra\xC3\x9F" "e \xC3\x86"), std::string("Strasse AE"));
+  CHECK_EQ(ascii_fold("Plain ASCII 1-0"), std::string("Plain ASCII 1-0"));
+  CHECK_EQ(ascii_fold("bad\xFF\xC3"), std::string("bad"));
+  CHECK_EQ(ascii_fold("\xE6\x97\xA5\xE6\x9C\xAC"), std::string(""));
+  CHECK_EQ(soccer_board_record("6-10-12"), std::string("6-10-12"));
+  CHECK_EQ(soccer_board_record("12-10-12"), std::string("46 pts"));  // too wide under a logo
+  CHECK_EQ(soccer_board_record(""), std::string(""));
+}
+
 int run_football_golden();  // golden_football.cpp
 
 int main() {
@@ -780,6 +1099,13 @@ int main() {
   test_mlb_live();
   test_mlb_pre_post();
   test_mlb_splash();
+  test_soccer_urls();
+  test_soccer_team();
+  test_soccer_pre();
+  test_soccer_live();
+  test_soccer_finals();
+  test_soccer_splash();
+  test_soccer_text_helpers();
   checks++;
   failures += run_football_golden();
   printf("%d checks, %d failures\n", checks, failures);

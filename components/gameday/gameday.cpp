@@ -1296,6 +1296,18 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
     f.bases = g.mlb.bases;
     f.highlight = g.mlb.bases == (::espn::Baseball::FIRST | ::espn::Baseball::SECOND | ::espn::Baseball::THIRD);
   }
+  if (g.valid && g.sport == ::espn::Sport::SOCCER) {
+    // The latest goal on the situation row, red cards under the logos, and
+    // records that fit the label under a logo.
+    if (g.state == GameState::IN)
+      f.situation = ::espn::soccer_situation(g);
+    if (g.state != GameState::PRE) {
+      f.team_marks = g.soc.team_reds;
+      f.opp_marks = g.soc.opp_reds;
+    }
+    f.team_record = ::espn::soccer_board_record(g.team_record);
+    f.opponent_record = ::espn::soccer_board_record(g.opp_record);
+  }
   f.team_color = ::espn::parse_color(g.team_color);
   f.opponent_color = ::espn::parse_color(g.opp_color);
   f.splash_text = splash.text;

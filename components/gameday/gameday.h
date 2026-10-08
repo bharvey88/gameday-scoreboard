@@ -59,6 +59,8 @@ struct UpdateFields {
   int outs{-1};            // baseball: outs in the half inning, -1 when none
   uint8_t bases{0};        // baseball: 1 first, 2 second, 4 third
   bool highlight{false};   // the situation row stands out (bases loaded)
+  int team_marks{0};       // soccer: red cards, drawn under each side's logo
+  int opp_marks{0};
 };
 
 enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE, FAVORITE };
