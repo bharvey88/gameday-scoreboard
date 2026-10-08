@@ -40,6 +40,18 @@ struct Baseball {
   std::string play_type;                     // last play's type: "Home Run", "Ball"
 };
 
+// Where a basketball game is, from ESPN's status name.
+enum class Phase : uint8_t { OTHER, PLAY, END_PERIOD, HALFTIME };
+
+// Basketball (NBA, WNBA, men's college). The series fields are set only for
+// a playoff game.
+struct Basketball {
+  uint8_t regulation{4};  // periods before overtime: 4 quarters, or 2 halves in college
+  Phase phase{Phase::OTHER};
+  std::string series;                  // ESPN's line: "ATL leads series 1-0"
+  int8_t team_wins{-1}, opp_wins{-1};  // series wins so far, -1 outside a series
+};
+
 // One scoreboard event, resolved to "us" and "them".
 struct GameSnapshot {
   bool valid{false};
@@ -67,6 +79,7 @@ struct GameSnapshot {
   Sport sport{Sport::FOOTBALL};
   bool team_home{false};
   Baseball mlb;
+  Basketball nba;  // every basketball league
 };
 
 // One future game from the team's schedule endpoint, for the "Up next" list.
@@ -146,6 +159,15 @@ std::string baseball_clock_text(const GameSnapshot &s);
 Splash baseball_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral);
 // The count while a half inning is on ("2-1"), else "".
 std::string baseball_count(const GameSnapshot &s);
+
+// Basketball (sport_basketball.cpp). The JSON filter and extras parse are
+// declared in espn_parse_impl.h, next to ArduinoJson.
+std::string basketball_status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local);
+std::string basketball_clock_text(const GameSnapshot &s);
+Splash basketball_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral);
+// The playoff series in at most 12 characters for the situation row
+// ("NY lead 2-1", "Series 2-2"), else "".
+std::string basketball_series(const GameSnapshot &s);
 
 namespace detail {
 // Ticker helpers shared by the sport files.

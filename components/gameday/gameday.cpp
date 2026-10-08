@@ -1296,6 +1296,8 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
     f.bases = g.mlb.bases;
     f.highlight = g.mlb.bases == (::espn::Baseball::FIRST | ::espn::Baseball::SECOND | ::espn::Baseball::THIRD);
   }
+  if (g.valid && g.state == GameState::IN && g.sport == ::espn::Sport::BASKETBALL)
+    f.situation = ::espn::basketball_series(g);
   f.team_color = ::espn::parse_color(g.team_color);
   f.opponent_color = ::espn::parse_color(g.opp_color);
   f.splash_text = splash.text;

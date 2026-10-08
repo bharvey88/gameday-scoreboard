@@ -340,6 +340,14 @@ script:
           } else {
             lv_obj_add_flag(id(tt_outs_lbl), LV_OBJ_FLAG_HIDDEN);
           }
+          // Basketball (sport 2): the playoff series ("NY lead 2-1") on the
+          // situation row of a wide display. down_distance is always empty
+          // for it, so the football branch above has hidden the label.
+          if (sport == 2 && W >= 128 && game_state == "IN" && !situation.empty()) {
+            lv_label_set_text(id(tt_down_lbl), situation.c_str());
+            lv_obj_set_style_text_color(id(tt_down_lbl), lv_color_hex(0xFFFFFF), 0);
+            lv_obj_clear_flag(id(tt_down_lbl), LV_OBJ_FLAG_HIDDEN);
+          }
           if (W >= 128) {
             lv_obj_t *pips[6] = {id(tt_away_to1), id(tt_away_to2), id(tt_away_to3),
                                  id(tt_home_to1), id(tt_home_to2), id(tt_home_to3)};
