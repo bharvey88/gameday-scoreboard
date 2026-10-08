@@ -1537,6 +1537,211 @@ static void test_mlb_home_run() {
   CHECK_EQ(decide_splash(nyy_before, nyy_after, true).text, std::string("TB HOME RUN"));
 }
 
+// NHL single-event documents (see fixtures/README.md)
+static const uint32_t kJets = 28, kAvalanche = 17, kPenguins = 16, kCapitals = 23, kOilers = 6, kHurricanes = 7;
+
+static GameSnapshot nhl_event(const char *file, uint32_t team) {
+  GameSnapshot s;
+  CHECK(parse_event_str(slurp(file), Sport::HOCKEY, team, s));
+  return s;
+}
+
+static void test_nhl_urls() {
+  CHECK_EQ(team_url(League::NHL, 6), std::string("https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams/6"));
+  CHECK_EQ(event_url(League::NHL, "401891830"),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard/401891830"));
+  CHECK_EQ(team_logo_url(League::NHL, 129764, "UTAH"),
+           std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/nhl/500-dark/utah.png&w=64&h=64"));
+  CHECK_EQ(std::string(league_key(League::NHL)), std::string("nhl"));
+  const LeagueInfo *nhl = league_by_key("nhl");
+  CHECK(nhl != nullptr && nhl->per_event && !nhl->season_list && nhl->linger_min == 30);
+  CHECK(league_sport(League::NHL) == Sport::HOCKEY);
+  int count = 0;
+  for (size_t i = 0; i < kTeamCount; i++) {
+    if (kTeams[i].league != League::NHL)
+      continue;
+    count++;
+    if (kTeams[i].espn_id == kPenguins)
+      CHECK_EQ(team_option(kTeams[i]), std::string("NHL: Pittsburgh Penguins"));
+  }
+  CHECK_EQ(count, 32);
+}
+
+static void test_nhl_team() {
+  Schedule s;
+  CHECK(parse_team_str(slurp("fixtures/team_nhl_edm.json"), s));
+  CHECK_EQ(s.event_id, std::string("401892456"));
+  CHECK_EQ(s.kickoff_epoch, parse_iso8601_z("2026-10-08T02:00Z"));
+  CHECK_EQ(s.team_color, std::string("00205b"));
+  CHECK_EQ(s.team_record, std::string("2-0-1"));  // W-L-OTL
+}
+
+static void test_nhl_live() {
+  // COL @ WPG, 3:21 left in the 1st, a delay of game penalty the last play
+  GameSnapshot g = nhl_event("fixtures/event_nhl_live.json", kJets);
+  CHECK(g.valid);
+  CHECK(g.sport == Sport::HOCKEY);
+  CHECK(g.state == GameState::IN);
+  CHECK(g.team_home);
+  CHECK(!g.nhl.playoffs);
+  CHECK_EQ(g.nhl.series, std::string(""));
+  CHECK_EQ(g.team_abbr, std::string("WPG"));
+  CHECK_EQ(g.opp_abbr, std::string("COL"));
+  CHECK_EQ(g.team_score, 0);
+  CHECK_EQ(g.opp_score, 0);
+  CHECK_EQ(g.period, 1);
+  CHECK_EQ(g.possession, 0);
+  CHECK_EQ(g.team_timeouts, 0);
+  CHECK_EQ(g.down_distance, std::string(""));
+  CHECK_EQ(g.team_record, std::string("2-0-1"));
+  CHECK_EQ(g.opp_record, std::string("2-0-0"));
+  CHECK_EQ(g.team_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/nhl/500-dark/scoreboard/wpg.png&w=64&h=64"));
+  CHECK_EQ(clock_text(g), std::string("3:21 1st"));
+  const std::string penalty = "Delaying Game - Puck over glass served by Fedor Svechkov";
+  CHECK_EQ(g.last_play, penalty);
+  TickerOptions o;
+  o.clock = false;
+  CHECK_EQ(status_text(g, o, ""), penalty);
+  TickerOptions with_clock;
+  CHECK_EQ(status_text(g, with_clock, ""), "3:21 - 1st | " + penalty);
+  TickerOptions quiet = o;
+  quiet.last_play = false;
+  CHECK_EQ(status_text(g, quiet, ""), std::string("3:21 - 1st"));
+  GameSnapshot nameless = g;  // seen live: a goal before ESPN had the scorer
+  nameless.last_play = ", assists: Neal Pionk (1), Dylan Samberg (1)";
+  CHECK_EQ(status_text(nameless, o, ""), std::string("assists: Neal Pionk (1), Dylan Samberg (1)"));
+
+  // The same game from the visitors' side
+  GameSnapshot c = nhl_event("fixtures/event_nhl_live.json", kAvalanche);
+  CHECK(!c.team_home);
+  CHECK_EQ(c.team_abbr, std::string("COL"));
+  CHECK_EQ(c.team_record, std::string("2-0-0"));
+
+  // Intermission: PIT @ WSH after the 1st, the ticker shows the records
+  GameSnapshot e = nhl_event("fixtures/event_nhl_end.json", kPenguins);
+  CHECK(e.state == GameState::IN);
+  CHECK(!e.team_home);
+  CHECK_EQ(e.team_score, 1);
+  CHECK_EQ(e.opp_score, 2);
+  CHECK_EQ(clock_text(e), std::string("End of 1st"));
+  CHECK_EQ(status_text(e, o, ""), std::string("PIT 2-1-0 | WSH 1-1-0"));
+  CHECK_EQ(status_text(e, quiet, ""), std::string("PIT 2-1-0 | WSH 1-1-0"));
+  GameSnapshot w = nhl_event("fixtures/event_nhl_end.json", kCapitals);
+  CHECK_EQ(w.team_score, 2);
+  CHECK_EQ(status_text(w, o, ""), std::string("WSH 1-1-0 | PIT 2-1-0"));
+
+  // Overtime, then the shootout (regular season) or more overtime (playoffs)
+  GameSnapshot ot = g;
+  ot.period = 4;
+  ot.display_clock = "3:10";
+  ot.short_detail = "3:10 - OT";
+  CHECK_EQ(clock_text(ot), std::string("3:10 OT"));
+  ot.display_clock = "0:00";
+  ot.short_detail = "End of OT";
+  CHECK_EQ(clock_text(ot), std::string("End of OT"));
+  GameSnapshot so = ot;
+  so.period = 5;
+  so.short_detail = "Shootout";
+  CHECK_EQ(clock_text(so), std::string("SO"));
+  so.short_detail = "0:00 - SO";
+  CHECK_EQ(clock_text(so), std::string("SO"));
+  GameSnapshot ot2 = so;
+  ot2.nhl.playoffs = true;
+  ot2.display_clock = "12:00";
+  ot2.short_detail = "12:00 - 2OT";
+  CHECK_EQ(clock_text(ot2), std::string("12:00 2OT"));
+  ot2.period = 6;
+  CHECK_EQ(clock_text(ot2), std::string("12:00 3OT"));
+}
+
+static void test_nhl_pre_post() {
+  GameSnapshot p = nhl_event("fixtures/event_nhl_pre.json", kOilers);
+  CHECK(p.state == GameState::PRE);
+  CHECK(!p.team_home);
+  CHECK_EQ(p.odds, std::string("EDM -135"));
+  CHECK_EQ(p.over_under, std::string("6.5"));
+  CHECK_EQ(p.tv, std::string("ESPN+"));
+  TickerOptions o;
+  CHECK_EQ(status_text(p, o, "Today 10:00 PM"), std::string("Today 10:00 PM | EDM -135 | O/U 6.5 | ESPN+ | Honda Center"));
+  TickerOptions no_odds;
+  no_odds.odds = false;
+  CHECK_EQ(status_text(p, no_odds, ""), std::string("10/7 - 10:00 PM EDT | Honda Center"));
+
+  // Tonight's final, and the win splash from the intermission document of the same game
+  GameSnapshot f = nhl_event("fixtures/event_nhl_final.json", kCapitals);
+  CHECK(f.state == GameState::POST);
+  CHECK(f.team_winner);
+  CHECK_EQ(f.team_score, 5);
+  CHECK_EQ(f.opp_score, 3);
+  CHECK_EQ(status_text(f, o, ""), std::string("Final | WSH 2-1-0 | PIT 2-2-0"));
+  GameSnapshot w = nhl_event("fixtures/event_nhl_end.json", kCapitals);
+  CHECK_EQ(decide_splash(w, f, true).text, std::string("WSH WINS!"));
+  CHECK_EQ(decide_splash(w, f, true).color, (uint32_t) 0xd71830);
+  GameSnapshot lost_prev = nhl_event("fixtures/event_nhl_end.json", kPenguins);
+  GameSnapshot lost = nhl_event("fixtures/event_nhl_final.json", kPenguins);
+  CHECK_EQ(decide_splash(lost_prev, lost, true).text, std::string(""));
+  CHECK_EQ(decide_splash(lost_prev, lost, true, true).text, std::string("WSH WINS!"));
+
+  // A regular-season shootout: CAR won it 5-4
+  GameSnapshot so = nhl_event("fixtures/event_nhl_final_so.json", kPenguins);
+  CHECK(so.state == GameState::POST);
+  CHECK(!so.team_winner);
+  CHECK_EQ(so.period, 5);
+  CHECK_EQ(so.team_score, 4);
+  CHECK_EQ(so.opp_score, 5);
+  CHECK_EQ(clock_text(so), std::string("Final/SO"));
+  CHECK_EQ(status_text(so, o, ""), std::string("Final/SO | PIT 32-17-15 | CAR 41-17-6"));
+
+  // A playoff game in double overtime: the series line stands in for records
+  GameSnapshot po = nhl_event("fixtures/event_nhl_final_2ot.json", kHurricanes);
+  CHECK(po.nhl.playoffs);
+  CHECK(po.team_winner);
+  CHECK_EQ(po.nhl.series, std::string("CAR leads series 2-0"));
+  CHECK_EQ(status_text(po, o, ""), std::string("Final/2OT | CAR leads series 2-0"));
+  GameSnapshot pre = po;
+  pre.state = GameState::PRE;
+  pre.odds = pre.over_under = pre.tv = "";
+  CHECK_EQ(status_text(pre, o, "Today 7:00 PM"), std::string("Today 7:00 PM | CAR leads series 2-0 | Lenovo Center"));
+
+  GameSnapshot x;
+  CHECK(!parse_event_str(slurp("fixtures/event_nhl_live.json"), Sport::HOCKEY, kPenguins, x));  // not in it
+  CHECK(!parse_event_str("{nope", Sport::HOCKEY, kJets, x));
+}
+
+static void test_nhl_splash() {
+  GameSnapshot prev = nhl_event("fixtures/event_nhl_live.json", kJets);
+  auto after = [&](int us, int them) {
+    GameSnapshot c = prev;
+    c.team_score += us;
+    c.opp_score += them;
+    return c;
+  };
+  CHECK_EQ(decide_splash(prev, after(1, 0), true).text, std::string("GOAL!"));
+  CHECK_EQ(decide_splash(prev, after(1, 0), false).color, (uint32_t) 0x002d62);
+  CHECK_EQ(decide_splash(prev, after(0, 1), true).text, std::string("COL GOAL"));
+  CHECK_EQ(decide_splash(prev, after(0, 1), true).color, (uint32_t) 0x860038);
+  CHECK_EQ(decide_splash(prev, after(0, 1), false).text, std::string(""));
+  CHECK_EQ(decide_splash(prev, after(0, 0), true).text, std::string(""));
+  CHECK_EQ(decide_splash(after(1, 0), prev, true).text, std::string(""));  // goal taken back on review
+  // Live modes: neither side is ours
+  CHECK_EQ(decide_splash(prev, after(1, 0), true, true).text, std::string("WPG GOAL"));
+  CHECK_EQ(decide_splash(prev, after(0, 1), true, true).text, std::string("COL GOAL"));
+  // The win, including a shootout decided between two polls
+  GameSnapshot fin = after(1, 0);
+  fin.state = GameState::POST;
+  CHECK_EQ(decide_splash(prev, fin, true).text, std::string("WPG WINS!"));
+  GameSnapshot lost = after(0, 1);
+  lost.state = GameState::POST;
+  CHECK_EQ(decide_splash(prev, lost, true).text, std::string(""));
+  CHECK_EQ(decide_splash(prev, lost, true, true).text, std::string("COL WINS!"));
+  GameSnapshot other = after(1, 0);
+  other.event_id = "1";
+  CHECK_EQ(decide_splash(prev, other, true).text, std::string(""));
+  GameSnapshot pre = prev;
+  pre.state = GameState::PRE;
+  CHECK_EQ(decide_splash(pre, after(1, 0), true).text, std::string(""));
+}
+
 int run_football_golden();  // golden_football.cpp
 
 static void test_logo_lru() {
@@ -1589,6 +1794,11 @@ int main() {
   test_soccer_splash();
   test_soccer_text_helpers();
   test_soccer_cups();
+  test_nhl_urls();
+  test_nhl_team();
+  test_nhl_live();
+  test_nhl_pre_post();
+  test_nhl_splash();
   test_nba_urls();
   test_nba_team();
   test_nba_live();

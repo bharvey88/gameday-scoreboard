@@ -77,6 +77,18 @@ past game only in its final state, so there is no live college fixture:
 | `event_mcbb_ot.json` | 401851437 PENN @ YALE, Ivy League final, Final/OT 88-84 |
 | `event_mcbb_pre.json` | 401925733 OAK @ MICH, 2026-27 opener, pre-game |
 | `team_mcbb_mich.json` | `.../basketball/mens-college-basketball/teams/130` (next event is the opener) |
+NHL, recorded 2026-10-07 and 2026-10-08 UTC from the single-event endpoint
+`.../hockey/nhl/scoreboard/<event id>`:
+
+| File | Source |
+| --- | --- |
+| `event_nhl_live.json` | 401892455 COL @ WPG, 3:21 left in the 1st, 0-0, a delay of game penalty as the last play |
+| `event_nhl_end.json` | 401891830 PIT @ WSH, End of 1st (status END_PERIOD, the intermission), 2-1 WSH |
+| `event_nhl_final.json` | 401891830 PIT @ WSH, Final 5-3 WSH |
+| `event_nhl_pre.json` | 401892456 EDM @ ANA, pre-game with odds and O/U |
+| `event_nhl_final_so.json` | 401803369 PIT @ CAR, 2026-03-10, Final/SO 5-4 CAR (recorded after the fact) |
+| `event_nhl_final_2ot.json` | 401869781 OTT @ CAR, 2026 playoffs, Final/2OT 3-2 CAR, series line (recorded after the fact) |
+| `team_nhl_edm.json` | `.../hockey/nhl/teams/6` (next event is the EDM @ ANA game above) |
 
 `football_golden.txt` is written by the host tests (`GOLDEN_WRITE=1`) and
 pins football's output; see `golden_football.cpp`.

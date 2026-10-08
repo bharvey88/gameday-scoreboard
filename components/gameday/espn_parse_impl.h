@@ -236,6 +236,9 @@ void soccer_from_event(JsonObjectConst ev, GameSnapshot &s);
 // filled from an event already read into s by snapshot_from_event.
 void fill_basketball_filter(JsonObject ev);
 void basketball_from_event(JsonObjectConst ev, GameSnapshot &s);
+// Hockey's extra filter fields and their parse (sport_hockey.cpp)
+void fill_hockey_filter(JsonObject ev);
+void hockey_from_event(JsonObjectConst ev, GameSnapshot &s);
 
 }  // namespace detail
 
@@ -349,6 +352,8 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
     detail::fill_soccer_filter(filter.as<JsonObject>());
   if (sport == Sport::BASKETBALL)
     detail::fill_basketball_filter(filter.as<JsonObject>());
+  if (sport == Sport::HOCKEY)
+    detail::fill_hockey_filter(filter.as<JsonObject>());
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
@@ -364,6 +369,8 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
     detail::soccer_from_event(doc.as<JsonObjectConst>(), s);
   if (sport == Sport::BASKETBALL)
     detail::basketball_from_event(doc.as<JsonObjectConst>(), s);
+  if (sport == Sport::HOCKEY)
+    detail::hockey_from_event(doc.as<JsonObjectConst>(), s);
   out = s;
   return true;
 }

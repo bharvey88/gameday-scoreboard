@@ -43,6 +43,8 @@ constexpr LeagueInfo kLeagues[] = {
     // A college season schedule is ~570 KB. Its teams are left out of Home
     // Assistant's team select (__init__.py).
     {League::MCBB, "mcbb", "basketball/mens-college-basketball", "NCAAM", "ncaa", Sport::BASKETBALL, true, false, true, 30},
+    // A team's season schedule is ~1.1 MB, so no Up next list
+    {League::NHL, "nhl", "hockey/nhl", "NHL", "nhl", Sport::HOCKEY, true, false, false, 30},
 };
 
 constexpr size_t kLeagueCount = sizeof(kLeagues) / sizeof(kLeagues[0]);

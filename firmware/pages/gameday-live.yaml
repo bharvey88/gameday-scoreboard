@@ -407,7 +407,7 @@ script:
                 const bool big = splash_text.find("TOUCHDOWN") != std::string::npos ||
                                  splash_text.find("WINS") != std::string::npos ||
                                  splash_text.find("HOME RUN") != std::string::npos ||
-                                 (sport == 4 && splash_text.find("GOAL") != std::string::npos);
+                                 ((sport == 3 || sport == 4) && splash_text.find("GOAL") != std::string::npos);
                 if (big) {
                   uint32_t c = (uint32_t) splash_color;
                   uint32_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;

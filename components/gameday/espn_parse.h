@@ -77,6 +77,13 @@ struct Basketball {
   int8_t team_wins{-1}, opp_wins{-1};  // series wins so far, -1 outside a series
 };
 
+// Hockey's extras. ESPN's period 5 is the shootout in a regular-season or
+// preseason game and 2OT in the playoffs.
+struct Hockey {
+  bool playoffs{false};  // season type 3
+  std::string series;    // "CAR leads series 2-0", playoffs
+};
+
 // One scoreboard event, resolved to "us" and "them".
 struct GameSnapshot {
   bool valid{false};
@@ -106,6 +113,7 @@ struct GameSnapshot {
   Baseball mlb;
   Soccer soc;
   Basketball nba;  // every basketball league
+  Hockey nhl;
 };
 
 // One future game from the team's schedule endpoint, for the "Up next" list.
@@ -191,6 +199,10 @@ std::string baseball_clock_text(const GameSnapshot &s);
 Splash baseball_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral);
 // The count while a half inning is on ("2-1"), else "".
 std::string baseball_count(const GameSnapshot &s);
+// Hockey (sport_hockey.cpp).
+std::string hockey_status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local);
+std::string hockey_clock_text(const GameSnapshot &s);
+Splash hockey_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral);
 
 // Soccer (sport_soccer.cpp).
 std::string soccer_status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local);
