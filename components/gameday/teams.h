@@ -3,16 +3,16 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace espn {
+#include "leagues.h"
 
-enum class League : uint8_t { NFL = 0, NCAA = 1 };
+namespace espn {
 
 struct Team {
   League league;
   uint32_t espn_id;
   const char *abbr;
   const char *name;
-  uint32_t group;  // conference group id for the college scoreboard, 0 for NFL
+  uint32_t group;  // conference group id for the college scoreboard, 0 otherwise
 };
 
 constexpr Team kTeams[] = {

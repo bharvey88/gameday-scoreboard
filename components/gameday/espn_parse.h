@@ -81,7 +81,8 @@ struct Splash {
   uint32_t color{0};
 };
 
-const char *league_path(League league);
+const char *league_path(League league);  // the last part of the ESPN path: "nfl"
+std::string team_option(const Team &t);  // "NFL: Dallas Cowboys", the Home Assistant option
 std::string team_url(League league, uint32_t espn_id);
 std::string schedule_url(League league, uint32_t espn_id);  // the season's games, ~200KB
 std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch);

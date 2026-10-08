@@ -34,17 +34,24 @@ ActionTrigger = gameday_ns.class_(
 
 COMPONENT_DIR = Path(__file__).resolve().parent
 
-_TEAM_RE = re.compile(r'\{League::(NFL|NCAA),\s*(\d+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\}')
+_TEAM_RE = re.compile(r'\{League::(\w+),\s*(\d+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\}')
+# kLeagues rows in leagues.h: {League::NFL, "nfl", "football/nfl", "NFL", ...
+_LEAGUE_RE = re.compile(r'\{League::(\w+),\s*"(\w+)",\s*"[^"]+",\s*"([^"]+)",')
 _TZ_RE = re.compile(r'\{"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\}')
 
 
 def team_options():
     """Select options in the same order as kTeams so indexes line up."""
+    prefixes = {
+        lg: prefix
+        for lg, _key, prefix in _LEAGUE_RE.findall(
+            (COMPONENT_DIR / "leagues.h").read_text(encoding="utf-8")
+        )
+    }
     text = (COMPONENT_DIR / "teams.h").read_text(encoding="utf-8")
     opts = []
     for league, _tid, _abbr, name, _group in _TEAM_RE.findall(text):
-        prefix = "NFL" if league == "NFL" else "NCAAF"
-        opts.append(f"{prefix}: {name}")
+        opts.append(f"{prefixes[league]}: {name}")
     if len(opts) < 100:
         raise cv.Invalid("teams.h looks truncated; run scripts/build_teams.py")
     return opts

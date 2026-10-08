@@ -6,12 +6,29 @@
 
 namespace espn {
 
-static const char *kSite = "https://site.api.espn.com/apis/site/v2/sports/football/";
+static const char *kSiteRoot = "https://site.api.espn.com/apis/site/v2/sports/";
 
-const char *league_path(League league) { return league == League::NFL ? "nfl" : "college-football"; }
+// "https://.../sports/football/nfl", with no trailing slash.
+static std::string site_base(League league) {
+  const LeagueInfo *l = league_info(league);
+  return std::string(kSiteRoot) + (l != nullptr ? l->path : "football/nfl");
+}
+
+const char *league_path(League league) {
+  const LeagueInfo *l = league_info(league);
+  if (l == nullptr)
+    return "";
+  const char *slash = strrchr(l->path, '/');
+  return slash != nullptr ? slash + 1 : l->path;
+}
+
+std::string team_option(const Team &t) {
+  const LeagueInfo *l = league_info(t.league);
+  return std::string(l != nullptr ? l->prefix : "?") + ": " + t.name;
+}
 
 std::string team_url(League league, uint32_t espn_id) {
-  return std::string(kSite) + league_path(league) + "/teams/" + std::to_string(espn_id);
+  return site_base(league) + "/teams/" + std::to_string(espn_id);
 }
 
 std::string schedule_url(League league, uint32_t espn_id) { return team_url(league, espn_id) + "/schedule"; }
@@ -34,7 +51,7 @@ static void civil_from_epoch(int64_t epoch, int &y, int &m, int &d) {
 }
 
 std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch) {
-  std::string url = std::string(kSite) + league_path(league) + "/scoreboard";
+  std::string url = site_base(league) + "/scoreboard";
   int y, m, d;
   // ESPN's date parameter is in US Eastern; shift the UTC kickoff by five
   // hours so late east-coast games stay on the right day. Being off by an
@@ -51,7 +68,7 @@ std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch)
 }
 
 std::string scan_url(League league, int64_t now_epoch) {
-  std::string url = std::string(kSite) + league_path(league) + "/scoreboard";
+  std::string url = site_base(league) + "/scoreboard";
   int y, m, d;
   civil_from_epoch(now_epoch - 5 * 3600, y, m, d);
   char buf[64];
@@ -83,9 +100,11 @@ std::string team_logo_url(League league, uint32_t espn_id, const char *abbr) {
   std::string a = abbr ? abbr : "";
   for (auto &c : a)
     c = (char) tolower((unsigned char) c);
-  if (league == League::NFL)
-    return dark_logo("https://a.espncdn.com/i/teamlogos/nfl/500/" + a + ".png");
-  return dark_logo("https://a.espncdn.com/i/teamlogos/ncaa/500/" + std::to_string(espn_id) + ".png");
+  const LeagueInfo *l = league_info(league);
+  if (l == nullptr)
+    return "";
+  std::string file = l->logo_by_id ? std::to_string(espn_id) : a;
+  return dark_logo(std::string("https://a.espncdn.com/i/teamlogos/") + l->logo_dir + "/500/" + file + ".png");
 }
 
 bool parse_team_str(const std::string &json, Schedule &out) { return parse_team(json, out); }

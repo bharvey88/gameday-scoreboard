@@ -170,7 +170,7 @@ std::string GamedayComponent::favorite_option_(uint8_t slot) const {
   for (size_t i = 0; i < ::espn::kTeamCount; i++) {
     const auto &t = ::espn::kTeams[i];
     if ((uint8_t) t.league == this->prefs3_.fav_league[slot - 1] && t.espn_id == this->prefs3_.fav_id[slot - 1])
-      return std::string(t.league == League::NFL ? "NFL: " : "NCAAF: ") + t.name;
+      return ::espn::team_option(t);
   }
   return "None";
 }
@@ -183,7 +183,7 @@ void GamedayComponent::select_favorite(uint8_t slot, const std::string &option) 
   if (option != "None") {
     for (size_t i = 0; i < ::espn::kTeamCount; i++) {
       const auto &t = ::espn::kTeams[i];
-      if (std::string(t.league == League::NFL ? "NFL: " : "NCAAF: ") + t.name == option) {
+      if (::espn::team_option(t) == option) {
         league = (uint8_t) t.league;
         id = t.espn_id;
         break;
@@ -638,14 +638,13 @@ std::string GamedayComponent::team_option_() const {
   const ::espn::Team *t = this->current_team_();
   if (t == nullptr)
     return "";
-  return std::string(t->league == League::NFL ? "NFL: " : "NCAAF: ") + t->name;
+  return ::espn::team_option(*t);
 }
 
 void GamedayComponent::select_team(const std::string &option) {
   for (size_t i = 0; i < ::espn::kTeamCount; i++) {
     const auto &t = ::espn::kTeams[i];
-    std::string name = std::string(t.league == League::NFL ? "NFL: " : "NCAAF: ") + t.name;
-    if (name == option) {
+    if (::espn::team_option(t) == option) {
       this->apply_team_(t);
       return;
     }
@@ -661,7 +660,7 @@ void GamedayComponent::select_team_id(League league, uint32_t id) {
       return;
     }
   }
-  ESP_LOGW(TAG, "Unknown team %s %u", league == League::NFL ? "nfl" : "ncaa", (unsigned) id);
+  ESP_LOGW(TAG, "Unknown team %s %u", ::espn::league_key(league), (unsigned) id);
 }
 
 void GamedayComponent::fire_action_(const std::string &name) {
@@ -1490,13 +1489,11 @@ void GamedayComponent::demo_tick_() {
 
 // ---- device page routes -----------------------------------------------------
 
-static const char *const LEAGUE_KEY[] = {"nfl", "ncaa"};
-
 static void put_team(JsonObject o, uint8_t league, uint32_t id) {
   for (size_t i = 0; i < ::espn::kTeamCount; i++) {
     const auto &t = ::espn::kTeams[i];
     if ((uint8_t) t.league == league && t.espn_id == id) {
-      o["l"] = LEAGUE_KEY[league == (uint8_t) League::NFL ? 0 : 1];
+      o["l"] = ::espn::league_key((League) league);
       o["id"] = id;
       o["abbr"] = t.abbr;
       o["name"] = t.name;
@@ -1544,7 +1541,7 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   uint8_t league = this->live_mode_() && this->schedule_.valid ? this->schedule_.league : this->prefs_.league;
   if (this->favorites_mode_() && this->fav_shown_ >= 0)
     league = (uint8_t) this->fav_[this->fav_shown_].team->league;
-  game["l"] = LEAGUE_KEY[league == (uint8_t) League::NFL ? 0 : 1];
+  game["l"] = ::espn::league_key((League) league);
   game["ta"] = g.team_abbr;
   game["ti"] = g.team_id;
   game["ts"] = g.team_score;
@@ -1688,12 +1685,10 @@ static bool parse_team_ref(const std::string &v, uint8_t &league, uint32_t &id) 
     return false;
   std::string lg = v.substr(0, colon);
   id = (uint32_t) strtoul(v.c_str() + colon + 1, nullptr, 10);
-  if (lg == "nfl")
-    league = (uint8_t) League::NFL;
-  else if (lg == "ncaa")
-    league = (uint8_t) League::NCAA;
-  else
+  const ::espn::LeagueInfo *info = ::espn::league_by_key(lg.c_str());
+  if (info == nullptr)
     return false;
+  league = (uint8_t) info->league;
   return id != 0;
 }
 
