@@ -1072,6 +1072,81 @@ static void test_soccer_text_helpers() {
   CHECK_EQ(soccer_board_record(""), std::string(""));
 }
 
+// A club's next game across its league and cups (team endpoints recorded
+// 2026-10-08: Arsenal's league game is on 10/10, its Champions League game
+// on 10/13, and it is not in the Europa League).
+static void test_soccer_cups() {
+  CHECK_EQ(team_url(League::EPL, kArsenal, "uefa.champions"),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/teams/359"));
+  CHECK_EQ(event_url(League::EPL, "401915417", "uefa.champions"),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard/401915417"));
+  CHECK_EQ(team_url(League::MLS, kMiami, "concacaf.champions"),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/soccer/concacaf.champions/teams/20232"));
+  CHECK_EQ(event_url(League::EPL, "401879268", nullptr), event_url(League::EPL, "401879268"));
+  CHECK_EQ(team_url(League::NFL, 6, nullptr), team_url(League::NFL, 6));
+  CHECK_EQ(std::string(league_cup(League::EPL, 0)), std::string("uefa.champions"));
+  CHECK_EQ(std::string(league_cup(League::EPL, 2)), std::string("uefa.europa.conf"));
+  CHECK(league_cup(League::EPL, 3) == nullptr);
+  CHECK_EQ(std::string(league_cup(League::MLS, 0)), std::string("concacaf.champions"));
+  CHECK_EQ(league_cup_count(League::EPL), (size_t) 3);
+  CHECK_EQ(league_cup_count(League::MLS), (size_t) 1);
+  CHECK_EQ(league_cup_count(League::NFL), (size_t) 0);
+  CHECK_EQ(league_cup_count(League::MLB), (size_t) 0);
+
+  std::vector<Schedule> comps(4);
+  CHECK(parse_team_str(slurp("fixtures/team_epl_ars.json"), comps[0]));
+  CHECK(parse_team_str(slurp("fixtures/team_ucl_ars.json"), comps[1]));
+  CHECK(parse_team_str(slurp("fixtures/team_uel_ars.json"), comps[2]));
+  for (size_t i = 0; i < comps.size(); i++) {
+    adopt_league(comps[i], League::EPL);
+    adopt_comp(comps[i], i == 0 ? nullptr : league_cup(League::EPL, i - 1));
+  }
+  CHECK_EQ(comps[1].event_id, std::string("401915417"));
+  CHECK_EQ(comps[1].kickoff_epoch, parse_iso8601_z("2026-10-13T19:00Z"));
+  CHECK(comps[2].valid);  // not in the Europa League: a good read with no game
+  CHECK(comps[2].event_id.empty());
+  CHECK(!comps[3].valid);  // the Conference League not read yet
+
+  int64_t league_ko = parse_iso8601_z("2026-10-10T11:30Z");
+  // Before the league game: it is first.
+  CHECK_EQ(pick_schedule(comps, parse_iso8601_z("2026-10-08T00:00Z"), ""), 0);
+  // While it is on, and just after, ESPN still names it: it stays.
+  CHECK_EQ(pick_schedule(comps, league_ko + 2 * 3600, ""), 0);
+  // Seen to finish, or long over: the cup game is next.
+  CHECK_EQ(pick_schedule(comps, league_ko + 2 * 3600, "401879268"), 1);
+  CHECK_EQ(pick_schedule(comps, league_ko + 5 * 3600, ""), 1);
+  // A cup game first in the week.
+  std::vector<Schedule> early = comps;
+  early[1].kickoff_epoch = league_ko - 3 * 86400;
+  CHECK_EQ(pick_schedule(early, parse_iso8601_z("2026-10-06T00:00Z"), ""), 1);
+  // Same kickoff: the league's read wins.
+  early[1].kickoff_epoch = league_ko;
+  CHECK_EQ(pick_schedule(early, 0, ""), 0);
+  // Nothing else: a game that is over is still better than none.
+  std::vector<Schedule> only_over = {comps[0], comps[2]};
+  CHECK_EQ(pick_schedule(only_over, league_ko + 10 * 3600, ""), 0);
+  // No read names a game (an off season): none.
+  std::vector<Schedule> none = {comps[2], comps[3]};
+  CHECK_EQ(pick_schedule(none, 0, ""), -1);
+  CHECK_EQ(pick_schedule(std::vector<Schedule>{}, 0, ""), -1);
+  // The league read had no game but a cup does (MLS's winter, the CONCACAF Champions Cup).
+  std::vector<Schedule> cup_only = {comps[2], comps[1]};
+  CHECK_EQ(pick_schedule(cup_only, 0, ""), 1);
+
+  // The boot cache has no room for the cup: a cup game saves a blank record
+  // that never loads, so an older league game cannot come back either.
+  TeamCache c{};
+  c.team_id = 99;
+  CHECK(team_cache_save(comps[1], League::EPL, kArsenal, league_ko, c));
+  CHECK_EQ(c.team_id, (uint32_t) 0);
+  Schedule loaded;
+  CHECK(!team_cache_load(c, League::EPL, kArsenal, league_ko, loaded));
+  CHECK(team_cache_save(comps[0], League::EPL, kArsenal, league_ko - 86400, c));
+  CHECK(team_cache_load(c, League::EPL, kArsenal, league_ko - 3600, loaded));
+  CHECK_EQ(loaded.event_id, std::string("401879268"));
+  CHECK(loaded.comp_slug == nullptr);
+}
+
 int run_football_golden();  // golden_football.cpp
 
 int main() {
@@ -1106,6 +1181,7 @@ int main() {
   test_soccer_finals();
   test_soccer_splash();
   test_soccer_text_helpers();
+  test_soccer_cups();
   checks++;
   failures += run_football_golden();
   printf("%d checks, %d failures\n", checks, failures);

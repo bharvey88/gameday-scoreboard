@@ -42,6 +42,24 @@ std::string event_url(League league, const std::string &event_id) {
   return site_base(league) + "/scoreboard/" + event_id;
 }
 
+// A cup lives next to its league: soccer/eng.1 -> soccer/uefa.champions.
+static std::string comp_base(League league, const char *comp_slug) {
+  const LeagueInfo *l = league_info(league);
+  if (comp_slug == nullptr || l == nullptr)
+    return site_base(league);
+  const char *slash = strchr(l->path, '/');
+  std::string sport = slash != nullptr ? std::string(l->path, slash - l->path + 1) : std::string();
+  return std::string(kSiteRoot) + sport + comp_slug;
+}
+
+std::string team_url(League league, uint32_t espn_id, const char *comp_slug) {
+  return comp_base(league, comp_slug) + "/teams/" + std::to_string(espn_id);
+}
+
+std::string event_url(League league, const std::string &event_id, const char *comp_slug) {
+  return comp_base(league, comp_slug) + "/scoreboard/" + event_id;
+}
+
 // Number of days since 1970-01-01 for a UTC epoch, then split into y/m/d.
 // Avoids gmtime_r so the host and device agree regardless of libc quirks.
 static void civil_from_epoch(int64_t epoch, int &y, int &m, int &d) {

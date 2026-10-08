@@ -261,7 +261,7 @@ std::string soccer_clock_text(const GameSnapshot &s) {
     return "HT";
   if (has(f.status, "HALFTIME"))
     return extra ? "ET HT" : "HT";
-  if (has(f.status, "END_OF")) {
+  if (has(f.status, "END_OF") || has(f.status, "END_PERIOD")) {
     // A break this firmware has not seen (before extra time or penalties):
     // ESPN's words when they fit the row.
     if (!s.short_detail.empty() && s.short_detail.size() <= 10)
@@ -449,6 +449,28 @@ std::string soccer_status_text(const GameSnapshot &s, const TickerOptions &o, co
   if (out.empty())
     out = soccer_clock_text(s);
   return ascii_fold(out);
+}
+
+// ---- cups ----------------------------------------------------------------------
+
+// Longer than any game runs, extra time and a shootout included.
+static const int64_t kGameOver = 4 * 3600;
+
+int pick_schedule(const std::vector<Schedule> &comps, int64_t now_epoch, const std::string &done_event) {
+  int best = -1, over = -1;
+  for (size_t i = 0; i < comps.size(); i++) {
+    const Schedule &s = comps[i];
+    if (!s.valid || s.event_id.empty())
+      continue;
+    if (s.event_id == done_event || s.kickoff_epoch < now_epoch - kGameOver) {
+      if (over < 0)
+        over = (int) i;
+      continue;
+    }
+    if (best < 0 || s.kickoff_epoch < comps[best].kickoff_epoch)
+      best = (int) i;
+  }
+  return best >= 0 ? best : over;
 }
 
 // ---- splashes ------------------------------------------------------------------

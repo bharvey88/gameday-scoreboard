@@ -46,6 +46,8 @@ upcoming games:
 | `event_soccer_aet.json` | `soccer/fifa.world` 760500 CPV @ ARG, AET 3-2, own goal at 111' |
 | `team_epl_ars.json` | `.../soccer/eng.1/teams/359` |
 | `team_mls_mia.json` | `.../soccer/usa.1/teams/20232` |
+| `team_ucl_ars.json` | `.../soccer/uefa.champions/teams/359`: the same club's next Champions League game |
+| `team_uel_ars.json` | `.../soccer/uefa.europa/teams/359`: a club not in the competition gets HTTP 200 with no `nextEvent` |
 | `schedule_mls_mia.json` | `.../soccer/usa.1/teams/20232/schedule?fixture=true`, trimmed to the first 2 events (without `fixture=true` the endpoint lists past results) |
 
 `football_golden.txt` is written by the host tests (`GOLDEN_WRITE=1`) and

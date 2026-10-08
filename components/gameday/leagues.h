@@ -66,4 +66,36 @@ inline Sport league_sport(League league) {
   return l != nullptr ? l->sport : Sport::FOOTBALL;
 }
 
+// Cups a club in a league can also be playing in. ESPN's team endpoint is
+// per competition (soccer/<slug>/teams/<id>, the same team ids everywhere)
+// and names the next game in that competition only. A club's next game is
+// the earliest across its league and these. Slug first, because the
+// scripts' kLeagues regex must not match these rows.
+struct CupInfo {
+  const char *slug;
+  League league;
+};
+
+constexpr CupInfo kCups[] = {
+    {"uefa.champions", League::EPL},
+    {"uefa.europa", League::EPL},
+    {"uefa.europa.conf", League::EPL},
+    {"concacaf.champions", League::MLS},
+};
+
+// The n-th cup of a league (0-based), nullptr past the last one.
+inline const char *league_cup(League league, size_t n) {
+  for (const auto &c : kCups)
+    if (c.league == league && n-- == 0)
+      return c.slug;
+  return nullptr;
+}
+
+inline size_t league_cup_count(League league) {
+  size_t n = 0;
+  while (league_cup(league, n) != nullptr)
+    n++;
+  return n;
+}
+
 }  // namespace espn

@@ -22,6 +22,7 @@ struct Schedule {
   uint32_t group{0};
   std::string team_color;
   std::string team_record;
+  const char *comp_slug{nullptr};  // a kCups slug when the game is in that cup, nullptr for the league
 };
 
 enum class Half : uint8_t { NONE, TOP, MID, BOTTOM, END };
@@ -135,6 +136,10 @@ std::string scan_url(League league, int64_t now_epoch);  // every game of the da
 // One game on its own (8-18 KB). Leagues with LeagueInfo::per_event poll this
 // instead of the day's whole scoreboard; football does not use it.
 std::string event_url(League league, const std::string &event_id);
+// The same in a cup of the league (kCups): soccer/uefa.champions/... A null
+// slug gives the league's own URL.
+std::string team_url(League league, uint32_t espn_id, const char *comp_slug);
+std::string event_url(League league, const std::string &event_id, const char *comp_slug);
 std::string dark_logo(const std::string &url);
 std::string team_logo_url(League league, uint32_t espn_id, const char *abbr);  // for a team with no game loaded yet
 
@@ -163,6 +168,8 @@ std::string clock_text(const GameSnapshot &s);
 // follow-up scoreboard endpoint from Schedule::league, so it must be stamped
 // from the team the schedule was fetched for.
 inline void adopt_league(Schedule &s, League league) { s.league = (uint8_t) league; }
+// A cup's team endpoint does not name the cup either.
+inline void adopt_comp(Schedule &s, const char *comp_slug) { s.comp_slug = comp_slug; }
 
 // Per-sport text and splashes. status_text, clock_text and decide_splash hand
 // any snapshot that is not football to these (sport_baseball.cpp).
@@ -184,6 +191,11 @@ std::string soccer_situation(const GameSnapshot &s, size_t max = 12);
 std::string soccer_board_record(const std::string &wdl);
 // Plain ASCII for the panel fonts: accents dropped ("Guimarães" -> "Guimaraes").
 std::string ascii_fold(const std::string &utf8);
+// One club's team reads, the league's first and then each cup's: the index of
+// the one to follow, -1 when none names a game. The earliest kickoff wins. A
+// game that kicked off over four hours ago, or done_event (a game the panel
+// saw finish), only counts when no read names anything else.
+int pick_schedule(const std::vector<Schedule> &comps, int64_t now_epoch, const std::string &done_event);
 
 namespace detail {
 // Ticker helpers shared by the sport files.
