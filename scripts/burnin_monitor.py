@@ -78,7 +78,11 @@ def stream_lines(host, timeout):
             raise OSError(f"/events answered {resp.status}")
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            line = resp.readline()
+            try:
+                line = resp.readline()
+            except TimeoutError:
+                # A quiet stream ends the reading; keep what already arrived
+                return
             if not line:
                 return
             yield line.decode("utf-8", "replace")
