@@ -6,6 +6,10 @@ secrets.yaml
 __pycache__/
 build-*.log
 firmware/build/
+# scripts/factory_flash.py: log, labels and downloaded images
+factory/
+# scripts/burnin_monitor.py readings
+burnin/
 
 # Design specs and plans stay out of this public repo.
 docs/superpowers/

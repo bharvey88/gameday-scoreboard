@@ -89,6 +89,11 @@ class ESP32ImprovComponent final : public Component,
 
   std::vector<uint8_t> incoming_data_;
   wifi::WiFiAP connecting_sta_;
+  // GAMEDAY: begin
+  // The network the panel was using before a handover, put back if the new
+  // one fails, so a wrong password does not leave the panel with none.
+  wifi::WiFiAP restore_sta_;
+  // GAMEDAY: end
 
   BLEService *service_{nullptr};
   BLECharacteristic *status_{nullptr};
