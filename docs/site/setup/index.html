@@ -23,28 +23,38 @@
 <body>
 <main>
   <h1>Set up your panel</h1>
-  <p class="sub">Two ways to get a Game Day Scoreboard on Wi-Fi and following your team.</p>
+  <p class="sub">You need a phone and your Wi-Fi password. It takes a few minutes.</p>
 
   <div class="card">
     <h2>1. Plug it in</h2>
-    <p>Connect the controller to power over USB.</p>
+    <p>Plug in the panel. After a few seconds it shows <strong>SETUP</strong> and a QR code.</p>
   </div>
 
   <div class="card">
-    <h2>2. Get the app</h2>
-    <p>The Game Day app finds the panel on your network and walks through Wi-Fi setup over Bluetooth. It's coming soon to the App Store.</p>
-    <p class="note">Once it's installed, open the app and follow <strong>Set up a new panel</strong>.</p>
+    <h2>2. Set it up in the Game Day app</h2>
+    <p>Open the Game Day app on your iPhone. It finds the panel over Bluetooth, asks which Wi-Fi network the panel should join and the password, then lets you pick your team.</p>
+    <p class="note">The app is coming soon to the App Store.</p>
   </div>
 
   <div class="card">
-    <h2>No app yet? Use the browser instead</h2>
-    <p>The <a href="/">installer page</a> flashes and sets up the panel from a desktop browser over USB, no app required. Click Install, then enter your Wi-Fi details in the dialog that follows.</p>
-    <p class="note">If you skip that step, or you're adding a second panel, it starts a hotspot called <code>Game Day Scoreboard</code>. Join it from any phone or laptop and a setup page opens.</p>
+    <h2>Without the app: use the panel's hotspot</h2>
+    <p>While it shows SETUP, the panel also starts its own Wi-Fi network called <code>Game Day Scoreboard</code>, and the screen says so. Join it from any phone or laptop and a setup page opens. Pick your Wi-Fi network, enter the password and save.</p>
+    <p>Once it's on your Wi-Fi, the panel shows its address, like <code>gameday-2f6a70.local</code>. Open that in a browser and pick your team. If your phone won't open a <code>.local</code> address, hold the button on the controller for 2 seconds and the panel shows the number version too.</p>
   </div>
 
   <div class="card">
-    <h2>3. Pick your team</h2>
-    <p>Once it's on Wi-Fi, the panel shows where to go: open the <code>gameday-xxxxxx.local</code> address it displays, or the numeric address underneath if your phone can't resolve <code>.local</code> names. Pick your team on that page and it starts following the game.</p>
+    <h2>Use 2.4 GHz Wi-Fi</h2>
+    <p>The panel only joins 2.4 GHz networks. If your router has separate names for 2.4 GHz and 5 GHz, pick the 2.4 GHz one. Use your main network, not a guest network: a guest network can keep your phone from reaching the panel afterwards.</p>
+  </div>
+
+  <div class="card">
+    <h2>New router or Wi-Fi password?</h2>
+    <p>The panel says <strong>Wi-Fi lost</strong>. Open the Game Day app and give it the new network or password the same way as the first time. Without the app, join the panel's <code>Game Day Scoreboard</code> hotspot as above. It comes up within a few minutes of the panel losing Wi-Fi.</p>
+  </div>
+
+  <div class="card">
+    <h2>Reinstalling the firmware</h2>
+    <p>You don't need this to set up a panel. The <a href="/">installer page</a> reinstalls the firmware from a desktop browser over USB and erases the panel's settings. Use it to bring back a panel that won't start, or to build your own.</p>
   </div>
 
   <footer>
