@@ -81,9 +81,7 @@
 
     <div class="modes" id="modes">
       <button data-mode="0">My team</button>
-      <button data-mode="1">Live NFL</button>
-      <button data-mode="2">Live college</button>
-      <button data-mode="3">Any live game</button>
+      <button data-mode="5">Live games</button>
       <button data-mode="4">Favorite teams</button>
     </div>
     <div class="teambar" id="teambar">
@@ -91,7 +89,7 @@
       <button class="btn primary" id="pick">Change team</button>
     </div>
     <div class="teambar livebar" id="livebar" hidden>
-      <div class="cur"><div><div class="name">Following a random game in progress</div><div class="lg">Moves on when it ends, or after the time below.</div></div></div>
+      <div class="cur"><div><div class="name">Following a random game in progress</div><div class="lg">Moves on when it ends, or after the time below. Leagues:</div><div class="chips" id="liveChips"></div></div></div>
       <div class="stepper"><label for="rotate">Switch every</label><input type="number" id="rotate" min="1" max="30" step="1"><span>min</span></div>
     </div>
     <div class="teambar favbar" id="favbar" hidden>
@@ -329,11 +327,15 @@
   };
 
   // ---- mode pills ----------------------------------------------------------------
-  // Index = device mode: 0 my team, 1 live NFL, 2 live college, 3 any live game, 4 favorite teams.
+  // Device modes: 0 my team, 4 favorite teams, 5 live games in the chosen
+  // leagues. 1-3 are the older football-only live modes; the page shows them
+  // as Live games and a chip tap moves the panel to mode 5.
+  const isLive = (m) => m === "1" || m === "2" || m === "3" || m === "5";
   const modeButtons = Array.from(document.querySelectorAll("#modes button"));
   modeButtons.forEach((b) => {
     b.onclick = () => {
-      if (S && String(S.mode || 0) === b.dataset.mode) return;
+      const cur = S ? String(S.mode || 0) : "";
+      if (cur === b.dataset.mode || (b.dataset.mode === "5" && isLive(cur))) return;
       modeButtons.forEach((x) => x.classList.toggle("on", x === b));
       setGD({ mode: b.dataset.mode });
       toast(b.textContent);
@@ -370,11 +372,38 @@
     favRotate.value = v;
     setGD({ rotate: v });
   };
+  // Leagues Live mode follows. An old football live mode reads as its leagues.
+  const liveKeys = () => {
+    const m = String(S.mode || 0);
+    if (m === "1") return ["nfl"];
+    if (m === "2") return ["ncaa"];
+    if (m === "3") return ["nfl", "ncaa"];
+    return S.live || [];
+  };
+  const renderLiveChips = () => {
+    const host = $("#liveChips");
+    host.innerHTML = "";
+    const on = liveKeys();
+    for (const lg of Object.keys(LEAGUES)) {
+      if (!TEAMS.some((t) => t[0] === lg)) continue;
+      const b = el("button", "chip" + (on.includes(lg) ? " on" : ""), LEAGUES[lg].tab);
+      b.onclick = () => {
+        const next = on.includes(lg) ? on.filter((k) => k !== lg) : on.concat([lg]);
+        if (!next.length) return toast("Pick at least one league");
+        const params = { live: next.join(",") };
+        if (String(S.mode || 0) !== "5") params.mode = 5;
+        setGD(params);
+        b.classList.toggle("on");
+      };
+      host.appendChild(b);
+    }
+  };
   const renderMode = () => {
     if (!S) return;
     const mode = String(S.mode || 0);
-    modeButtons.forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
-    const live = mode !== "0" && mode !== "4";
+    modeButtons.forEach((b) => b.classList.toggle("on", b.dataset.mode === mode || (b.dataset.mode === "5" && isLive(mode))));
+    const live = isLive(mode);
+    if (live) renderLiveChips();
     const favs = mode === "4";
     $("#teambar").hidden = live || favs;
     $("#livebar").hidden = !live;

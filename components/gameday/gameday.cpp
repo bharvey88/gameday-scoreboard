@@ -50,7 +50,8 @@ static const uint32_t NO_LIVE_RESCAN = 2 * MINUTE;
 // 60s for handshakes and parsing leaves only a genuinely wedged worker here.
 static const uint32_t WORKER_DEADLINE = 120 * 1000;
 
-static const char *const MODE_OPTIONS[] = {"My team", "Live NFL", "Live college", "Live anything", "Favorite teams"};
+static const char *const MODE_OPTIONS[] = {"My team",       "Live NFL",       "Live college",
+                                           "Live anything", "Favorite teams", "Live games"};
 static const uint32_t FAV_TICK = 1000;  // playlist / lock decisions re-run this often
 
 // Feeds ArduinoJson straight from the HTTP socket so a scoreboard document
@@ -135,7 +136,7 @@ void GamedayComponent::setup() {
   if (this->prefs_.tz_index >= ::espn::kTimezoneCount)
     this->prefs_.tz_index = ::espn::kDefaultTimezone;
   this->pref2_ = global_preferences->make_preference<Prefs2>(fnv1_hash("gameday_prefs2_v1"));
-  if (!this->pref2_.load(&this->prefs2_) || this->prefs2_.mode > (uint8_t) Mode::FAVORITES ||
+  if (!this->pref2_.load(&this->prefs2_) || this->prefs2_.mode > (uint8_t) Mode::LIVE ||
       !::espn::rotate_minutes_valid(this->prefs2_.rotate_minutes)) {
     this->prefs2_.mode = (uint8_t) Mode::MY_TEAM;
     this->prefs2_.rotate_minutes = ::espn::kRotateDefaultMinutes;
@@ -332,7 +333,7 @@ void GamedayComponent::publish_selects_() {
 }
 
 void GamedayComponent::select_mode(const std::string &option) {
-  for (uint8_t i = 0; i <= (uint8_t) Mode::FAVORITES; i++) {
+  for (uint8_t i = 0; i <= (uint8_t) Mode::LIVE; i++) {
     if (option != MODE_OPTIONS[i])
       continue;
     if (i == this->prefs2_.mode) {
@@ -395,6 +396,42 @@ void GamedayComponent::set_today_only(bool on) {
   this->prefs5_.flags = on ? (this->prefs5_.flags | FAV5_TODAY) : (this->prefs5_.flags & ~FAV5_TODAY);
   this->pref5_.save(&this->prefs5_);
   this->rebuild_state_(&this->last_fields_);
+}
+
+void GamedayComponent::set_live_leagues(const std::string &keys) {
+  uint16_t mask = 0;
+  size_t start = 0;
+  while (start < keys.size()) {
+    size_t comma = keys.find(',', start);
+    std::string key = keys.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+    start = comma == std::string::npos ? keys.size() : comma + 1;
+    const ::espn::LeagueInfo *info = ::espn::league_by_key(key.c_str());
+    if (info != nullptr)
+      mask |= (uint16_t) (1u << (uint8_t) info->league);
+  }
+  if (mask == this->prefs5_.live_mask)
+    return;
+  this->prefs5_.live_mask = mask;
+  this->pref5_.save(&this->prefs5_);
+  this->rebuild_state_(&this->last_fields_);
+}
+
+std::vector<League> GamedayComponent::live_leagues_() const {
+  uint16_t mask = this->prefs5_.live_mask;
+  if (mask == 0) {
+    // Nothing picked: the leagues of the saved team and the favorites.
+    mask |= (uint16_t) (1u << this->prefs_.league);
+    for (uint8_t i = 0; i < FAV_MAX; i++)
+      if (this->fav_id_(i) != 0)
+        mask |= (uint16_t) (1u << this->fav_league_(i));
+  }
+  std::vector<League> out;
+  for (const auto &l : ::espn::kLeagues)
+    if (mask & (1u << (uint8_t) l.league))
+      out.push_back(l.league);
+  if (out.empty())
+    out.push_back(League::NFL);
+  return out;
 }
 
 void GamedayComponent::set_collision_alternate(bool alternate) {
@@ -1050,6 +1087,8 @@ void GamedayComponent::start_job_() {
         bool ended = this->game_.valid && this->game_.state != GameState::IN;
         j.need_scan = !this->schedule_.valid || rotate || ended || this->live_none_;
       }
+      if (j.need_scan && this->prefs2_.mode == (uint8_t) Mode::LIVE)
+        j.scan_leagues = this->live_leagues_();
       j.schedule = this->schedule_;
       this->job_done_ = false;
       this->busy_ = true;
@@ -1154,6 +1193,8 @@ void GamedayComponent::run_job_() {
       j.scan_ok = this->fetch_live_games_(League::NFL, j.live) && j.scan_ok;
     if (mode == (uint8_t) Mode::LIVE_NCAA || mode == (uint8_t) Mode::LIVE_ANY)
       j.scan_ok = this->fetch_live_games_(League::NCAA, j.live) && j.scan_ok;
+    for (League l : j.scan_leagues)
+      j.scan_ok = this->fetch_live_games_(l, j.live) && j.scan_ok;
     return;  // the main loop picks a game, then the next cycle polls it
   }
   if (j.need_upcoming) {
@@ -1632,6 +1673,10 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   }
   doc["favmax"] = FAV_MAX;
   doc["today"] = this->today_only();
+  JsonArray live = doc["live"].to<JsonArray>();
+  for (League l : this->live_leagues_())
+    live.add(::espn::league_key(l));
+  doc["live_auto"] = this->prefs5_.live_mask == 0;
   doc["tz"] = this->prefs_.tz_index;
   doc["tz_name"] = ::espn::kTimezones[this->prefs_.tz_index].name;
   doc["tz_auto"] = this->tz_auto();
@@ -1778,7 +1823,7 @@ void GamedayComponent::handleRequest(AsyncWebServerRequest *request) {
 static const char *const SET_KEYS[] = {"team",     "mode",   "rotate",  "fav1",    "fav2", "fav3",
                                        "fav4",     "tz",     "tzauto",  "down",    "play", "odds",
                                        "opp",      "panels", "bootaddr", "lockon", "release", "collide",
-                                       "favs",     "today"};
+                                       "favs",     "today",  "live"};
 
 void GamedayComponent::handle_set_(AsyncWebServerRequest *request) {
   std::vector<std::pair<std::string, std::string>> kv;
@@ -1821,7 +1866,7 @@ void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::
         this->select_team_id((League) league, id);
     } else if (k == "mode") {
       int m = atoi(v.c_str());
-      if (m >= 0 && m <= (int) Mode::FAVORITES)
+      if (m >= 0 && m <= (int) Mode::LIVE)
         this->select_mode(MODE_OPTIONS[m]);
     } else if (k == "rotate") {
       this->set_rotate_minutes(atoi(v.c_str()));
@@ -1833,6 +1878,8 @@ void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::
       this->set_collision_alternate(v == "1");
     } else if (k == "today") {
       this->set_today_only(v == "1");
+    } else if (k == "live") {
+      this->set_live_leagues(v);
     } else if (k == "favs") {
       // "mlb:15,nfl:6,..." in priority order; "" clears the list.
       std::vector<std::pair<uint8_t, uint32_t>> list;

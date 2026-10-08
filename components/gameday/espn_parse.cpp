@@ -74,7 +74,12 @@ std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch)
 std::string scan_url(League league, int64_t now_epoch) {
   std::string url = site_base(league) + "/scoreboard";
   int y, m, d;
-  civil_from_epoch(now_epoch - 5 * 3600, y, m, d);
+  // Football uses the Eastern date. The other leagues play past midnight
+  // Eastern on the West Coast (ESPN lists those games under the day they
+  // started, and rejects date ranges), and none start between midnight and
+  // 6 AM Eastern: their day turns over at 4 AM Eastern instead.
+  int64_t shift = league_sport(league) == Sport::FOOTBALL ? 5 * 3600 : 9 * 3600;
+  civil_from_epoch(now_epoch - shift, y, m, d);
   char buf[64];
   if (league == League::NCAA)
     snprintf(buf, sizeof(buf), "?groups=80&limit=300&dates=%04d%02d%02d", y, m, d);

@@ -82,7 +82,9 @@ template<class T> class PsramAllocator : public RAMAllocator<T> {
 template<class T, class U> bool operator==(const PsramAllocator<T> &, const PsramAllocator<U> &) { return true; }
 template<class T, class U> bool operator!=(const PsramAllocator<T> &, const PsramAllocator<U> &) { return false; }
 
-enum class Mode : uint8_t { MY_TEAM = 0, LIVE_NFL = 1, LIVE_NCAA = 2, LIVE_ANY = 3, FAVORITES = 4 };
+// LIVE (5) follows live games in the leagues of the live mask; modes 1-3 are
+// the football-only live modes from before, kept for panels that saved them.
+enum class Mode : uint8_t { MY_TEAM = 0, LIVE_NFL = 1, LIVE_NCAA = 2, LIVE_ANY = 3, FAVORITES = 4, LIVE = 5 };
 
 class GamedayComponent;
 
@@ -143,6 +145,9 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void set_release_seconds(int seconds);
   void set_collision_alternate(bool alternate);
   void set_today_only(bool on);
+  // Live mode's leagues as keys ("nfl,mlb"); "" = the leagues you follow.
+  void set_live_leagues(const std::string &keys);
+  std::vector<League> live_leagues_() const;  // the leagues Live mode scans
   bool today_only() const { return (this->prefs5_.flags & FAV5_TODAY) != 0; }
   void refresh_now();
   // Plays a scripted game through the real splash and render path, for
@@ -261,6 +266,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     const ::espn::Team *team{nullptr};
     // live-game modes: scan the day's games first, then follow one
     bool need_scan{false};
+    std::vector<League> scan_leagues;
     std::vector<::espn::LiveGame> live;
     bool scan_ok{false};
     bool need_schedule{false};
@@ -286,7 +292,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   bool fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out);
   bool fetch_live_games_(League league, std::vector<::espn::LiveGame> &out);
   bool live_mode_() const {
-    return this->prefs2_.mode >= (uint8_t) Mode::LIVE_NFL && this->prefs2_.mode <= (uint8_t) Mode::LIVE_ANY;
+    return (this->prefs2_.mode >= (uint8_t) Mode::LIVE_NFL && this->prefs2_.mode <= (uint8_t) Mode::LIVE_ANY) ||
+           this->prefs2_.mode == (uint8_t) Mode::LIVE;
   }
   // Mode 4 with at least one favorite set; with none it behaves like My Team.
   bool favorites_mode_() const { return this->prefs2_.mode == (uint8_t) Mode::FAVORITES && !this->fav_.empty(); }

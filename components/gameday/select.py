@@ -15,7 +15,14 @@ SELECT_TYPES = {
     "team": SelectType.TEAM,
     "mode": SelectType.MODE,
 }
-MODE_OPTIONS = ["My team", "Live NFL", "Live college", "Live anything", "Favorite teams"]  # must match gameday.cpp
+MODE_OPTIONS = [
+    "My team",
+    "Live NFL",
+    "Live college",
+    "Live anything",
+    "Favorite teams",
+    "Live games",
+]  # must match gameday.cpp
 
 CONFIG_SCHEMA = (
     select.select_schema(GamedaySelect)

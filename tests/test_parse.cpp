@@ -613,6 +613,12 @@ static void test_mlb_urls() {
   CHECK_EQ(std::string(league_key(League::MLB)), std::string("mlb"));
   CHECK(league_by_key("mlb") != nullptr && league_by_key("mlb")->per_event);
   CHECK(league_by_key("cfl") == nullptr);
+  // A West Coast game still on at 2:30 AM Eastern is listed under the day it
+  // started; the next morning's scan moves on to the new day.
+  CHECK(scan_url(League::MLB, parse_iso8601_z("2026-10-08T06:30Z")).find("dates=20261007") != std::string::npos);
+  CHECK(scan_url(League::MLB, parse_iso8601_z("2026-10-08T13:00Z")).find("dates=20261008") != std::string::npos);
+  CHECK_EQ(scan_url(League::MLB, parse_iso8601_z("2026-10-08T13:00Z")),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=20261008"));
   CHECK(league_sport(League::MLB) == Sport::BASEBALL);
   CHECK(league_sport(League::NCAA) == Sport::FOOTBALL);
   bool found = false;
