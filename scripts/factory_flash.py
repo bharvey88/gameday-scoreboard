@@ -36,7 +36,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-REPO = "bharvey88/gameday-scoreboard"
+REPO = "gameday-scoreboard/gameday-scoreboard"
 CHIP = "esp32s3"
 ESPRESSIF_VID = 0x303A
 LOG_FIELDS = ["time", "name", "mac", "variant", "version", "image", "sha256", "result", "boot_log"]
