@@ -12,6 +12,16 @@ build/test_parse: $(SRCS) $(wildcard ../components/gameday/*.h)
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) $(SRCS) -o $@
 
+# Not part of `all`: replays a folder of recorded single-event documents
+# (`.../scoreboard/<event id>`, named ev_<id>_<UTC time>.json) through the
+# parse, text and splash code and reports failures and odd splashes.
+#   make replay && ./build/replay <folder> <sport: 1 baseball, 2 basketball, 3 hockey, 4 soccer> [name prefix]
+replay: build/replay
+
+build/replay: replay.cpp $(filter-out test_parse.cpp golden_football.cpp,$(SRCS)) $(wildcard ../components/gameday/*.h)
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) replay.cpp $(filter-out test_parse.cpp golden_football.cpp,$(SRCS)) -o $@
+
 clean:
 	rm -rf build
-.PHONY: all clean
+.PHONY: all clean replay
