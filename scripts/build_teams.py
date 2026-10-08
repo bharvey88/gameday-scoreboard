@@ -15,6 +15,9 @@ NFL and the other pro leagues come from the league team list. FBS membership is 
 by the teams endpoint (it returns FCS and D3 schools too), so the college
 list is collected from a season's worth of FBS scoreboards and filtered by
 conference id.
+
+Men's college basketball's team list is Division I only, but it can trail a
+school that just finished moving up; see mcbb_teams().
 """
 
 import argparse
@@ -25,6 +28,8 @@ import urllib.request
 from pathlib import Path
 
 SITE_ROOT = "https://site.api.espn.com/apis/site/v2/sports"
+STANDINGS_ROOT = "https://site.api.espn.com/apis/v2/sports"
+D1_GROUP = "50"  # NCAA Division I, the parent of every D1 basketball conference
 SITE = f"{SITE_ROOT}/football"
 
 # ESPN conference group ids that make up the FBS.
@@ -94,6 +99,27 @@ def pro_teams(league, path):
     return teams
 
 
+def mcbb_teams(path):
+    """ESPN's men's college basketball list holds only Division I teams but
+    can miss a school that just finished moving up. The D1 standings (one
+    table per conference) name every member. A team in the standings but not
+    in the list is kept only when its team endpoint places it under Division
+    I, so a school that has since left D1 stays out."""
+    found = {row[1]: row for row in pro_teams("MCBB", path)}
+    standings = get(f"{STANDINGS_ROOT}/{path}/standings?group={D1_GROUP}")
+    for conf in standings.get("children", []):
+        for entry in conf.get("standings", {}).get("entries", []):
+            tid = int(entry["team"]["id"])
+            if tid in found:
+                continue
+            t = get(f"{SITE_ROOT}/{path}/teams/{tid}")["team"]
+            parent = ((t.get("groups") or {}).get("parent") or {}).get("id")
+            if str(parent) == D1_GROUP:
+                print(f"MCBB: adding {t['displayName']} ({tid}), missing from the team list")
+                found[tid] = ("MCBB", tid, t["abbreviation"], t["displayName"], 0)
+    return list(found.values())
+
+
 def cstr(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -136,6 +162,8 @@ def main():
             fresh = nfl_teams()
         elif lg == "NCAA":
             fresh = ncaa_teams()
+        elif lg == "MCBB":
+            fresh = mcbb_teams(paths[lg])
         else:
             fresh = pro_teams(lg, paths[lg])
         print(f"{lg}: {len(fresh)} teams")

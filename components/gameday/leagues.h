@@ -36,6 +36,9 @@ constexpr LeagueInfo kLeagues[] = {
     // An 82-game NBA season schedule is ~1 MB (WNBA ~840 KB): no Up next list.
     {League::NBA, "nba", "basketball/nba", "NBA", "nba", Sport::BASKETBALL, true, false, false, 30},
     {League::WNBA, "wnba", "basketball/wnba", "WNBA", "wnba", Sport::BASKETBALL, true, false, false, 30},
+    // A college season schedule is ~570 KB. Its teams are left out of Home
+    // Assistant's team select (__init__.py).
+    {League::MCBB, "mcbb", "basketball/mens-college-basketball", "NCAAM", "ncaa", Sport::BASKETBALL, true, false, true, 30},
 };
 
 constexpr size_t kLeagueCount = sizeof(kLeagues) / sizeof(kLeagues[0]);

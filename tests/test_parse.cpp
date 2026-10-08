@@ -977,6 +977,84 @@ static void test_nba_splash() {
            std::string(""));
 }
 
+// Men's college basketball, recorded 2026-10-07 in the off season: last
+// season's finals (ESPN serves only the final state of a past game) and the
+// coming season's opener (see fixtures/README.md).
+static const uint32_t kMichigan = 130, kUConn = 41, kPenn = 219;
+
+static void test_mcbb_urls() {
+  CHECK_EQ(team_url(League::MCBB, 130),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/130"));
+  CHECK_EQ(event_url(League::MCBB, "401856600"),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard/401856600"));
+  CHECK_EQ(team_logo_url(League::MCBB, 130, "MICH"),
+           std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500-dark/130.png&w=64&h=64"));
+  const LeagueInfo *l = league_by_key("mcbb");
+  CHECK(l != nullptr && l->per_event && !l->season_list && l->logo_by_id && l->sport == Sport::BASKETBALL);
+  CHECK_EQ(std::string(league_path(League::MCBB)), std::string("mens-college-basketball"));
+  int n = 0;
+  for (size_t i = 0; i < kTeamCount; i++) {
+    const Team &t = kTeams[i];
+    if (t.league != League::MCBB)
+      continue;
+    n++;
+    if (t.espn_id == kMichigan)
+      CHECK_EQ(team_option(t), std::string("NCAAM: Michigan Wolverines"));
+  }
+  CHECK(n >= 350);
+}
+
+static void test_mcbb() {
+  Schedule s;
+  CHECK(parse_team_str(slurp("fixtures/team_mcbb_mich.json"), s));
+  CHECK_EQ(s.event_id, std::string("401925733"));
+  CHECK_EQ(s.kickoff_epoch, parse_iso8601_z("2026-11-02T23:00Z"));
+  CHECK_EQ(s.team_color, std::string("00274c"));
+
+  GameSnapshot p = hoops_event("fixtures/event_mcbb_pre.json", kMichigan);
+  CHECK(p.state == GameState::PRE);
+  CHECK_EQ((int) p.nba.regulation, 2);
+  CHECK_EQ(p.opp_abbr, std::string("OAK"));
+  CHECK_EQ(p.team_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500-dark/130.png&w=64&h=64"));
+  TickerOptions o;
+  CHECK_EQ(status_text(p, o, "Nov 2 6:00 PM"), std::string("Nov 2 6:00 PM | BTN | Crisler Center"));
+
+  // The national championship: two halves, no series.
+  GameSnapshot f = hoops_event("fixtures/event_mcbb_final.json", kUConn);
+  CHECK(f.state == GameState::POST);
+  CHECK_EQ((int) f.nba.regulation, 2);
+  CHECK_EQ(f.team_score, 63);
+  CHECK_EQ(f.opp_score, 69);
+  CHECK_EQ(status_text(f, o, ""), std::string("Final | CONN 34-6 | MICH 37-3"));
+  CHECK_EQ(basketball_series(f), std::string(""));
+
+  // Overtime is period 3 after two halves.
+  GameSnapshot ot = hoops_event("fixtures/event_mcbb_ot.json", kPenn);
+  CHECK_EQ(ot.period, 3);
+  CHECK(ot.team_winner);
+  CHECK_EQ(status_text(ot, o, "").rfind("Final/OT | PENN ", 0), (size_t) 0);
+
+  // Past games come back final only, so the live clock is checked on a copy.
+  GameSnapshot live = f;
+  live.state = GameState::IN;
+  live.nba.phase = Phase::PLAY;
+  live.period = 1;
+  live.display_clock = "12:34";
+  CHECK_EQ(clock_text(live), std::string("12:34 1st"));
+  live.period = 2;
+  CHECK_EQ(clock_text(live), std::string("12:34 2nd"));
+  live.period = 3;
+  CHECK_EQ(clock_text(live), std::string("12:34 OT"));
+  live.period = 4;
+  CHECK_EQ(clock_text(live), std::string("12:34 2OT"));
+  live.nba.phase = Phase::HALFTIME;
+  live.period = 1;
+  CHECK_EQ(clock_text(live), std::string("Halftime"));
+  live.nba.phase = Phase::END_PERIOD;
+  live.period = 2;
+  CHECK_EQ(clock_text(live), std::string("End 2nd"));
+}
+
 int run_football_golden();  // golden_football.cpp
 
 int main() {
@@ -1010,6 +1088,8 @@ int main() {
   test_wnba_live();
   test_nba_pre_post();
   test_nba_splash();
+  test_mcbb_urls();
+  test_mcbb();
   checks++;
   failures += run_football_golden();
   printf("%d checks, %d failures\n", checks, failures);

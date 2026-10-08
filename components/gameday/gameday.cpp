@@ -258,9 +258,15 @@ void GamedayComponent::press_favorite(uint8_t slot) {
     this->generation_++;
     this->schedule_next_(0);
   }
-  if (this->team_select_ != nullptr)
-    this->team_select_->publish_state(option);
+  this->publish_team_select_(option);
   this->select_team(option);
+}
+
+// Men's college basketball teams are not among the select's options
+// (__init__.py), so the select keeps its last team while one is followed.
+void GamedayComponent::publish_team_select_(const std::string &option) {
+  if (this->team_select_ != nullptr && this->team_select_->has_option(option))
+    this->team_select_->publish_state(option);
 }
 
 // Push the stored choices into the two selects. Runs at setup and once more
@@ -269,8 +275,7 @@ void GamedayComponent::publish_selects_() {
   std::string team = this->team_option_();
   ESP_LOGI(TAG, "Publishing selects: team '%s', timezone '%s'", team.c_str(),
            ::espn::kTimezones[this->prefs_.tz_index].name);
-  if (this->team_select_ != nullptr)
-    this->team_select_->publish_state(team);
+  this->publish_team_select_(team);
   if (this->timezone_select_ != nullptr)
     this->timezone_select_->publish_state(::espn::kTimezones[this->prefs_.tz_index].name);
   if (this->mode_select_ != nullptr)
@@ -696,8 +701,7 @@ void GamedayComponent::apply_team_(const ::espn::Team &t) {
   // setup screen through that same hold.
   this->board_ready_ = false;
   this->board_pending_ms_ = millis() == 0 ? 1 : millis();
-  if (this->team_select_ != nullptr)
-    this->team_select_->publish_state(this->team_option_());
+  this->publish_team_select_(this->team_option_());
   this->mark_setup_done_();
   // The select, the page and the app all land here, and only on a real
   // change, so this is the one place that knows a person picked a team.

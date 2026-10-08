@@ -38,10 +38,14 @@ _TEAM_RE = re.compile(r'\{League::(\w+),\s*(\d+),\s*"([^"]*)",\s*"([^"]*)",\s*(\
 # kLeagues rows in leagues.h: {League::NFL, "nfl", "football/nfl", "NFL", ...
 _LEAGUE_RE = re.compile(r'\{League::(\w+),\s*"(\w+)",\s*"[^"]+",\s*"([^"]+)",')
 _TZ_RE = re.compile(r'\{"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\}')
+# Leagues left out of Home Assistant's team select. Men's college
+# basketball's ~365 teams would push the options past Home Assistant's 16 KB
+# attribute limit; the device page lists them.
+_HA_SKIP_LEAGUES = {"MCBB"}
 
 
 def team_options():
-    """Select options in the same order as kTeams so indexes line up."""
+    """Select options in kTeams order, without _HA_SKIP_LEAGUES."""
     prefixes = {
         lg: prefix
         for lg, _key, prefix in _LEAGUE_RE.findall(
@@ -51,6 +55,8 @@ def team_options():
     text = (COMPONENT_DIR / "teams.h").read_text(encoding="utf-8")
     opts = []
     for league, _tid, _abbr, name, _group in _TEAM_RE.findall(text):
+        if league in _HA_SKIP_LEAGUES:
+            continue
         opts.append(f"{prefixes[league]}: {name}")
     if len(opts) < 100:
         raise cv.Invalid("teams.h looks truncated; run scripts/build_teams.py")

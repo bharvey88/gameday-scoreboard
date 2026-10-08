@@ -214,6 +214,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void set_flag_(uint8_t f, bool on);
   void save_prefs_();
   void publish_selects_();
+  void publish_team_select_(const std::string &option);
   void apply_timezone_();
   const ::espn::Team *current_team_() const;
   std::string team_option_() const;
