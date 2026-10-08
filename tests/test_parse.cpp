@@ -753,6 +753,72 @@ static void test_mlb_splash() {
   CHECK_EQ(decide_splash(was, fin, true).text, std::string("ATL WINS!"));
 }
 
+// Favorites list: the today-only filter and the season horizon.
+static void test_favorites_filters() {
+  const int64_t day = 86400;
+  const int64_t now = 1791000000;  // a Wednesday afternoon, say
+  FavRules r;
+  r.day_start = now - 15 * 3600;
+  r.day_end = r.day_start + day;
+  auto card = [](GameState st, int64_t kick, int64_t horizon) {
+    FavGame g;
+    g.valid = true;
+    g.state = st;
+    g.kickoff_epoch = kick;
+    g.horizon_s = horizon;
+    return g;
+  };
+  const int64_t h = 10 * day;
+  FavGame tonight = card(GameState::PRE, now + 4 * 3600, h);
+  FavGame saturday = card(GameState::PRE, now + 3 * day, h);
+  FavGame spring = card(GameState::PRE, now + 150 * day, h);       // MLB in December
+  FavGame bye_week = card(GameState::PRE, now + 13 * day, 0);      // football: no horizon
+  FavGame old_final = card(GameState::POST, now - 40 * day, h);    // last season's final
+  FavGame live = card(GameState::IN, now - 3600, h);
+  FavGame final_today = card(GameState::POST, r.day_start + 3600, h);
+
+  CHECK(fav_idle_ok(tonight, now, r, false));
+  CHECK(fav_idle_ok(saturday, now, r, false));
+  CHECK(!fav_idle_ok(spring, now, r, false));
+  CHECK(fav_idle_ok(bye_week, now, r, false));
+  CHECK(!fav_idle_ok(old_final, now, r, false));
+  CHECK(fav_idle_ok(tonight, now, r, true));
+  CHECK(!fav_idle_ok(saturday, now, r, true));
+  CHECK(fav_idle_ok(live, now, r, true));
+  CHECK(fav_idle_ok(final_today, now, r, true));
+  CHECK(!fav_idle_ok(FavGame{}, now, r, false));
+
+  // The playlist skips the out-of-season card.
+  std::vector<FavGame> games = {saturday, spring, tonight};
+  FavChoice c = pick_favorite(games, now, r, 0, now - 20, -1);
+  CHECK_EQ(c.index, 2);
+  c = pick_favorite(games, now, r, 2, now - 20, -1);
+  CHECK_EQ(c.index, 0);
+  // Today only: just tonight's game, and it stays up past the dwell.
+  r.today_only = true;
+  c = pick_favorite(games, now, r, 2, now - 20, -1);
+  CHECK_EQ(c.index, 2);
+  CHECK(!c.locked);
+  // Nothing today: the filter relaxes to the season horizon...
+  std::vector<FavGame> quiet = {saturday, spring};
+  c = pick_favorite(quiet, now, r, -1, 0, -1);
+  CHECK_EQ(c.index, 0);
+  c = pick_favorite(quiet, now, r, 0, now - 20, -1);
+  CHECK_EQ(c.index, 0);
+  // ...and with every team out of season, any card beats a blank panel.
+  std::vector<FavGame> winter = {spring, old_final};
+  c = pick_favorite(winter, now, r, -1, 0, -1);
+  CHECK_EQ(c.index, 0);
+  c = pick_favorite(winter, now, r, 0, now - 20, -1);
+  CHECK_EQ(c.index, 1);
+  // A locked game still wins over everything.
+  r.today_only = false;
+  std::vector<FavGame> mixed = {saturday, live};
+  c = pick_favorite(mixed, now, r, 0, now, -1);
+  CHECK_EQ(c.index, 1);
+  CHECK(c.locked);
+}
+
 int run_football_golden();  // golden_football.cpp
 
 int main() {
@@ -780,6 +846,7 @@ int main() {
   test_mlb_live();
   test_mlb_pre_post();
   test_mlb_splash();
+  test_favorites_filters();
   checks++;
   failures += run_football_golden();
   printf("%d checks, %d failures\n", checks, failures);

@@ -148,7 +148,17 @@ void GamedayComponent::setup() {
       this->prefs4_.release_seconds < 30 || this->prefs4_.release_seconds > 3600 || this->prefs4_.collide > 1) {
     this->prefs4_.lockon_minutes = 15;
     this->prefs4_.release_seconds = 30;
-    this->prefs4_.collide = 0;
+    // With several sports, two favorites playing at once is common: a new
+    // panel alternates. One that was set up before keeps sticking.
+    this->prefs4_.collide = this->flag_(FLAG_SETUP) ? 0 : 1;
+  }
+  this->pref5_ = global_preferences->make_preference<Prefs5>(fnv1_hash("gameday_prefs5_v1"));
+  if (!this->pref5_.load(&this->prefs5_)) {
+    this->prefs5_ = Prefs5{};
+    // Only today's games in the playlist, for new panels; an existing one
+    // keeps cycling every favorite until its owner turns this on.
+    if (!this->flag_(FLAG_SETUP))
+      this->prefs5_.flags |= FAV5_TODAY;
   }
   this->team_cache_pref_ =
       global_preferences->make_preference<::espn::TeamCache>(fnv1_hash("gameday_team_cache_v1"));
@@ -163,19 +173,37 @@ void GamedayComponent::setup() {
 
 std::string GamedayComponent::hostname() const { return std::string(App.get_name().c_str()); }
 
+uint8_t GamedayComponent::fav_league_(uint8_t i) const {
+  return i < 4 ? this->prefs3_.fav_league[i] : i < FAV_MAX ? this->prefs5_.fav_league[i - 4] : 0;
+}
+
+uint32_t GamedayComponent::fav_id_(uint8_t i) const {
+  return i < 4 ? this->prefs3_.fav_id[i] : i < FAV_MAX ? this->prefs5_.fav_id[i - 4] : 0;
+}
+
+void GamedayComponent::put_fav_(uint8_t i, uint8_t league, uint32_t id) {
+  if (i < 4) {
+    this->prefs3_.fav_league[i] = league;
+    this->prefs3_.fav_id[i] = id;
+  } else if (i < FAV_MAX) {
+    this->prefs5_.fav_league[i - 4] = league;
+    this->prefs5_.fav_id[i - 4] = id;
+  }
+}
+
 std::string GamedayComponent::favorite_option_(uint8_t slot) const {
-  if (slot < 1 || slot > 4 || this->prefs3_.fav_id[slot - 1] == 0)
+  if (slot < 1 || slot > FAV_MAX || this->fav_id_(slot - 1) == 0)
     return "None";
   for (size_t i = 0; i < ::espn::kTeamCount; i++) {
     const auto &t = ::espn::kTeams[i];
-    if ((uint8_t) t.league == this->prefs3_.fav_league[slot - 1] && t.espn_id == this->prefs3_.fav_id[slot - 1])
+    if ((uint8_t) t.league == this->fav_league_(slot - 1) && t.espn_id == this->fav_id_(slot - 1))
       return ::espn::team_option(t);
   }
   return "None";
 }
 
 void GamedayComponent::select_favorite(uint8_t slot, const std::string &option) {
-  if (slot < 1 || slot > 4)
+  if (slot < 1 || slot > FAV_MAX)
     return;
   uint8_t league = 0;
   uint32_t id = 0;
@@ -197,15 +225,38 @@ void GamedayComponent::select_favorite(uint8_t slot, const std::string &option) 
 }
 
 void GamedayComponent::set_favorite_(uint8_t slot, uint8_t league, uint32_t id) {
-  if (slot < 1 || slot > 4)
+  if (slot < 1 || slot > FAV_MAX)
     return;
-  this->prefs3_.fav_league[slot - 1] = league;
-  this->prefs3_.fav_id[slot - 1] = id;
-  this->pref3_.save(&this->prefs3_);
+  this->put_fav_(slot - 1, league, id);
+  if (slot <= 4)
+    this->pref3_.save(&this->prefs3_);
+  else
+    this->pref5_.save(&this->prefs5_);
   bool first_pick = id != 0 && this->mark_setup_done_();
   ESP_LOGI(TAG, "Favorite %u: %s", (unsigned) slot, this->favorite_option_(slot).c_str());
-  if (this->favorite_selects_[slot - 1] != nullptr)
+  if (slot <= 4 && this->favorite_selects_[slot - 1] != nullptr)
     this->favorite_selects_[slot - 1]->publish_state(this->favorite_option_(slot));
+  this->favorites_changed_(first_pick);
+}
+
+void GamedayComponent::set_favorites_(const std::vector<std::pair<uint8_t, uint32_t>> &list) {
+  bool any = false;
+  for (uint8_t i = 0; i < FAV_MAX; i++) {
+    bool set = i < list.size();
+    this->put_fav_(i, set ? list[i].first : 0, set ? list[i].second : 0);
+    any = any || (set && list[i].second != 0);
+  }
+  this->pref3_.save(&this->prefs3_);
+  this->pref5_.save(&this->prefs5_);
+  bool first_pick = any && this->mark_setup_done_();
+  ESP_LOGI(TAG, "Favorites: %u team(s)", (unsigned) list.size());
+  for (uint8_t slot = 1; slot <= 4; slot++)
+    if (this->favorite_selects_[slot - 1] != nullptr)
+      this->favorite_selects_[slot - 1]->publish_state(this->favorite_option_(slot));
+  this->favorites_changed_(first_pick);
+}
+
+void GamedayComponent::favorites_changed_(bool first_pick) {
   bool was_fav_mode = this->favorites_mode_();
   this->rebuild_favorites_(true);
   if (this->prefs2_.mode == (uint8_t) Mode::FAVORITES && (was_fav_mode || this->favorites_mode_())) {
@@ -338,6 +389,14 @@ void GamedayComponent::set_release_seconds(int seconds) {
   this->rebuild_state_(&this->last_fields_);
 }
 
+void GamedayComponent::set_today_only(bool on) {
+  if (on == this->today_only())
+    return;
+  this->prefs5_.flags = on ? (this->prefs5_.flags | FAV5_TODAY) : (this->prefs5_.flags & ~FAV5_TODAY);
+  this->pref5_.save(&this->prefs5_);
+  this->rebuild_state_(&this->last_fields_);
+}
+
 void GamedayComponent::set_collision_alternate(bool alternate) {
   if ((alternate ? 1 : 0) == this->prefs4_.collide)
     return;
@@ -351,15 +410,15 @@ void GamedayComponent::set_collision_alternate(bool alternate) {
 // Rebuilds the entry list from the four slots. keep_cards carries a slot's
 // fetched game over when the same team is still in the list (reordering).
 void GamedayComponent::rebuild_favorites_(bool keep_cards) {
-  std::vector<FavEntry> old = std::move(this->fav_);
+  FavList old = std::move(this->fav_);
   this->fav_.clear();
-  for (uint8_t i = 0; i < 4; i++) {
-    if (this->prefs3_.fav_id[i] == 0)
+  for (uint8_t i = 0; i < FAV_MAX; i++) {
+    if (this->fav_id_(i) == 0)
       continue;
     const ::espn::Team *team = nullptr;
     for (size_t t = 0; t < ::espn::kTeamCount; t++) {
-      if ((uint8_t) ::espn::kTeams[t].league == this->prefs3_.fav_league[i] &&
-          ::espn::kTeams[t].espn_id == this->prefs3_.fav_id[i]) {
+      if ((uint8_t) ::espn::kTeams[t].league == this->fav_league_(i) &&
+          ::espn::kTeams[t].espn_id == this->fav_id_(i)) {
         team = &::espn::kTeams[t];
         break;
       }
@@ -393,6 +452,14 @@ void GamedayComponent::rebuild_favorites_(bool keep_cards) {
   r.alternate = this->prefs4_.collide == 1;
   r.rotate_s = (int64_t) this->prefs2_.rotate_minutes * 60;
   r.dwell_s = 10;
+  r.today_only = this->today_only();
+  if (this->time_ != nullptr) {
+    ESPTime t = this->time_->now();
+    if (t.is_valid()) {
+      r.day_start = (int64_t) t.timestamp - (t.hour * 3600 + t.minute * 60 + t.second);
+      r.day_end = r.day_start + 24 * 3600;
+    }
+  }
   return r;
 }
 
@@ -404,6 +471,10 @@ std::vector<::espn::FavGame> GamedayComponent::fav_games_() const {
     g.state = e.game.state;
     g.kickoff_epoch = e.game.kickoff_epoch;
     g.final_epoch = e.final_epoch;
+    // Out of season, a daily sport's next game is weeks away. Football has no
+    // horizon: a bye week must not take a team out of the playlist.
+    if (::espn::league_sport(e.team->league) != ::espn::Sport::FOOTBALL)
+      g.horizon_s = 10 * 24 * 3600;
     out.push_back(g);
   }
   return out;
@@ -1543,12 +1614,20 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   doc["lockon"] = this->prefs4_.lockon_minutes;
   doc["release"] = this->prefs4_.release_seconds;
   doc["collide"] = this->prefs4_.collide;
+  // Always the four remote slots (older apps expect four), then the rest of
+  // the list up to its last entry.
+  uint8_t fav_n = 4;
+  for (uint8_t i = 4; i < FAV_MAX; i++)
+    if (this->fav_id_(i) != 0)
+      fav_n = i + 1;
   JsonArray favs = doc["favs"].to<JsonArray>();
-  for (uint8_t i = 0; i < 4; i++) {
+  for (uint8_t i = 0; i < fav_n; i++) {
     JsonObject o = favs.add<JsonObject>();
-    if (this->prefs3_.fav_id[i] != 0)
-      put_team(o, this->prefs3_.fav_league[i], this->prefs3_.fav_id[i]);
+    if (this->fav_id_(i) != 0)
+      put_team(o, this->fav_league_(i), this->fav_id_(i));
   }
+  doc["favmax"] = FAV_MAX;
+  doc["today"] = this->today_only();
   doc["tz"] = this->prefs_.tz_index;
   doc["tz_name"] = ::espn::kTimezones[this->prefs_.tz_index].name;
   doc["tz_auto"] = this->tz_auto();
@@ -1694,7 +1773,8 @@ void GamedayComponent::handleRequest(AsyncWebServerRequest *request) {
 
 static const char *const SET_KEYS[] = {"team",     "mode",   "rotate",  "fav1",    "fav2", "fav3",
                                        "fav4",     "tz",     "tzauto",  "down",    "play", "odds",
-                                       "opp",      "panels", "bootaddr", "lockon", "release", "collide"};
+                                       "opp",      "panels", "bootaddr", "lockon", "release", "collide",
+                                       "favs",     "today"};
 
 void GamedayComponent::handle_set_(AsyncWebServerRequest *request) {
   std::vector<std::pair<std::string, std::string>> kv;
@@ -1747,6 +1827,27 @@ void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::
       this->set_release_seconds(atoi(v.c_str()));
     } else if (k == "collide") {
       this->set_collision_alternate(v == "1");
+    } else if (k == "today") {
+      this->set_today_only(v == "1");
+    } else if (k == "favs") {
+      // "mlb:15,nfl:6,..." in priority order; "" clears the list.
+      std::vector<std::pair<uint8_t, uint32_t>> list;
+      size_t start = 0;
+      while (start < v.size() && list.size() < FAV_MAX) {
+        size_t comma = v.find(',', start);
+        std::string ref = v.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        start = comma == std::string::npos ? v.size() : comma + 1;
+        if (!parse_team_ref(ref, league, id)) {
+          ESP_LOGW(TAG, "Bad favorite '%s'", ref.c_str());
+          continue;
+        }
+        bool dup = false;
+        for (const auto &f : list)
+          dup = dup || (f.first == league && f.second == id);
+        if (!dup)
+          list.emplace_back(league, id);
+      }
+      this->set_favorites_(list);
     } else if (k.size() == 4 && k.compare(0, 3, "fav") == 0) {
       uint8_t slot = (uint8_t) (k[3] - '0');
       if (!parse_team_ref(v, league, id) && v != "none" && !v.empty()) {

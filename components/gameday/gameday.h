@@ -12,6 +12,7 @@
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/automation.h"
+#include "esphome/core/helpers.h"
 #include "esphome/core/component.h"
 #include "esphome/core/preferences.h"
 
@@ -62,6 +63,24 @@ struct UpdateFields {
 };
 
 enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE, FAVORITE };
+
+// Favorite Teams mode holds up to this many teams. The WizMote's buttons 1-4
+// jump to the first four.
+static constexpr uint8_t FAV_MAX = 16;
+
+// Allocates in PSRAM when there is some, else internal RAM. The favorite
+// cards are ~1 KB each and internal heap is the panel's scarcest resource.
+template<class T> class PsramAllocator : public RAMAllocator<T> {
+ public:
+  template<class U> struct rebind {
+    using other = PsramAllocator<U>;
+  };
+  using is_always_equal = std::true_type;
+  PsramAllocator() : RAMAllocator<T>(RAMAllocator<T>::NONE) {}
+  template<class U> PsramAllocator(const PsramAllocator<U> &) : PsramAllocator() {}
+};
+template<class T, class U> bool operator==(const PsramAllocator<T> &, const PsramAllocator<U> &) { return true; }
+template<class T, class U> bool operator!=(const PsramAllocator<T> &, const PsramAllocator<U> &) { return false; }
 
 enum class Mode : uint8_t { MY_TEAM = 0, LIVE_NFL = 1, LIVE_NCAA = 2, LIVE_ANY = 3, FAVORITES = 4 };
 
@@ -123,6 +142,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void set_lockon_minutes(int minutes);
   void set_release_seconds(int seconds);
   void set_collision_alternate(bool alternate);
+  void set_today_only(bool on);
+  bool today_only() const { return (this->prefs5_.flags & FAV5_TODAY) != 0; }
   void refresh_now();
   // Plays a scripted game through the real splash and render path, for
   // showing the panel off without a live game. Real data resumes after.
@@ -167,6 +188,12 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   bool mark_setup_done_();
   void fire_action_(const std::string &name);
   void set_favorite_(uint8_t slot, uint8_t league, uint32_t id);
+  // The whole list at once, in priority order (the page's favs= key).
+  void set_favorites_(const std::vector<std::pair<uint8_t, uint32_t>> &list);
+  void favorites_changed_(bool first_pick);
+  uint8_t fav_league_(uint8_t i) const;  // i = 0..FAV_MAX-1
+  uint32_t fav_id_(uint8_t i) const;     // 0 = empty
+  void put_fav_(uint8_t i, uint8_t league, uint32_t id);  // no save
   void handle_set_(AsyncWebServerRequest *request);
   void apply_set_(const std::vector<std::pair<std::string, std::string>> &kv);
   void rebuild_state_(const UpdateFields *f);  // main loop only
@@ -208,6 +235,15 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     uint16_t release_seconds;
     uint8_t collide;  // 0 = stick with the higher slot, 1 = alternate on the rotate timer
   } __attribute__((packed));
+  // Favorites 5-16 (1-4 stay in Prefs3, so older panels keep theirs) and the
+  // settings that came with the longer list.
+  struct Prefs5 {
+    uint8_t fav_league[FAV_MAX - 4];
+    uint32_t fav_id[FAV_MAX - 4];  // 0 = empty
+    uint8_t flags;                 // FAV5_TODAY
+    uint16_t live_mask;            // Live mode: 1 << League per league, 0 = the leagues you follow
+  } __attribute__((packed));
+  static constexpr uint8_t FAV5_TODAY = 1;  // idle playlist shows only today's games
 
   bool flag_(uint8_t f) const { return (this->prefs_.flags & f) != 0; }
   void set_flag_(uint8_t f, bool on);
@@ -294,6 +330,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   Prefs3 prefs3_{};
   ESPPreferenceObject pref4_;
   Prefs4 prefs4_{};
+  ESPPreferenceObject pref5_;
+  Prefs5 prefs5_{};
   // The team endpoint's answer for the saved team (startup.h), so a boot can
   // skip that read and go straight to the scoreboard.
   ESPPreferenceObject team_cache_pref_;
@@ -318,7 +356,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     int64_t final_epoch{0};  // when the panel saw the game go final, 0 if it was fetched final
     bool stale{false};       // released after a final: fetch the next game
   };
-  std::vector<FavEntry> fav_;
+  using FavList = std::vector<FavEntry, PsramAllocator<FavEntry>>;
+  FavList fav_;
   int fav_shown_{-1};
   int64_t fav_shown_since_{0};  // epoch seconds
   int fav_pinned_{-1};

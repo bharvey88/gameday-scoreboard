@@ -131,13 +131,10 @@
       </div>
       <div class="card">
         <h2>Favorites</h2>
-        <p class="hint">Buttons 1 to 4 on a WizMote remote jump straight to these teams. In Favorite teams mode the order is the priority.</p>
-        <div id="favCtls">
-          <div class="ctl"><label>Button 1</label><select data-fav="1"></select><span class="favmove"><button data-move="1,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="1,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
-          <div class="ctl"><label>Button 2</label><select data-fav="2"></select><span class="favmove"><button data-move="2,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="2,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
-          <div class="ctl"><label>Button 3</label><select data-fav="3"></select><span class="favmove"><button data-move="3,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="3,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
-          <div class="ctl"><label>Button 4</label><select data-fav="4"></select><span class="favmove"><button data-move="4,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="4,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
-        </div>
+        <p class="hint">Up to 16 teams from any league. In Favorite teams mode the order is the priority. Buttons 1 to 4 on a WizMote remote jump to the first four.</p>
+        <div class="ctl"><label>Only today's games<small>The playlist skips favorites that aren't playing today.</small></label><button class="sw" data-set="today" aria-label="Only today's games"></button></div>
+        <div id="favCtls"></div>
+        <button class="btn" id="favAdd">Add a favorite</button>
       </div>
       <div class="card">
         <h2>Remote</h2>
@@ -409,39 +406,70 @@
       setGD({ [sw.dataset.set]: on ? 1 : 0 });
     };
   });
-  const favSelects = Array.from(document.querySelectorAll("select[data-fav]"));
-  favSelects.forEach((fs) => {
-    const none = el("option", null, "None");
-    none.value = "none";
-    fs.appendChild(none);
-    for (const t of TEAMS) {
-      const o = el("option", null, lgInfo(t[0]).prefix + ": " + t[3]);
-      o.value = keyOf(t);
-      fs.appendChild(o);
-    }
-    fs.onchange = () => setGD({ ["fav" + fs.dataset.fav]: fs.value });
-  });
-  // Reorder: swap two slots and post all four so the device sees one list.
-  document.querySelectorAll("#favCtls button[data-move]").forEach((b) => {
-    b.onclick = () => {
-      const [slot, dir] = b.dataset.move.split(",").map(Number);
-      const other = slot + dir;
-      if (other < 1 || other > 4) return;
-      const cur = favSelects.map((fs) => fs.value);
-      const tmp = cur[slot - 1];
-      cur[slot - 1] = cur[other - 1];
-      cur[other - 1] = tmp;
-      favSelects.forEach((fs, i) => (fs.value = cur[i]));
-      setGD({ fav1: cur[0], fav2: cur[1], fav3: cur[2], fav4: cur[3] });
-    };
-  });
+  // Favorites: one row per team in priority order. Every change posts the
+  // whole list (favs=) so the device always sees one ordered list.
+  let favKeys = [];
+  const favMax = () => (S && S.favmax) || 4;
+  const postFavs = (keys) => {
+    favKeys = keys;
+    renderFavs();
+    setGD({ favs: keys.join(",") });
+  };
+  const renderFavs = () => {
+    const host = $("#favCtls");
+    host.innerHTML = "";
+    favKeys.forEach((key, i) => {
+      const t = teamByKey(key);
+      const row = el("div", "ctl fav");
+      const img = el("img");
+      img.loading = "lazy";
+      img.alt = "";
+      if (t) img.src = logoUrl(t[0], t[1], t[2]);
+      row.appendChild(img);
+      const name = el("label", null, (i + 1) + ". " + (t ? t[3] : key));
+      if (t) name.appendChild(el("small", null, lgInfo(t[0]).name + (i < 4 ? " · remote button " + (i + 1) : "")));
+      row.appendChild(name);
+      const ctl = el("span", "favmove");
+      const mk = (label, title, fn) => {
+        const b = el("button", null, label);
+        b.title = title;
+        b.setAttribute("aria-label", title);
+        b.onclick = fn;
+        ctl.appendChild(b);
+      };
+      const swap = (j) => {
+        if (j < 0 || j >= favKeys.length) return;
+        const next = favKeys.slice();
+        next[i] = favKeys[j];
+        next[j] = favKeys[i];
+        postFavs(next);
+      };
+      mk("\u25B2", "Move up", () => swap(i - 1));
+      mk("\u25BC", "Move down", () => swap(i + 1));
+      mk("\u2715", "Remove", () => postFavs(favKeys.filter((_, k) => k !== i)));
+      row.appendChild(ctl);
+      host.appendChild(row);
+    });
+    if (!favKeys.length) host.appendChild(el("p", "hint", "No favorites yet."));
+    $("#favAdd").hidden = favKeys.length >= favMax();
+  };
+  const addFav = (t) => {
+    const key = keyOf(t);
+    if (favKeys.includes(key)) return toast(t[3] + " is already a favorite");
+    if (favKeys.length >= favMax()) return toast("That's the most favorites the panel holds");
+    postFavs(favKeys.concat([key]));
+    toast("Added the " + t[3]);
+  };
   const renderSettings = () => {
     if (!S) return;
     document.querySelectorAll(".sw[data-set]").forEach((sw) => sw.classList.toggle("on", !!S[sw.dataset.set]));
-    favSelects.forEach((fs, i) => {
-      if (document.activeElement === fs) return;
-      fs.value = refKey((S.favs || [])[i]) || "none";
-    });
+    const keys = (S.favs || []).map(refKey).filter(Boolean);
+    if (keys.join(",") !== favKeys.join(",")) {
+      favKeys = keys;
+      renderFavs();
+    } else {
+      $("#favAdd").hidden = favKeys.length >= favMax();
+    }
     $("#ticker").textContent = S.status || "";
     $("#play").textContent = game && game.lp ? "Last play: " + game.lp : "";
   };
@@ -608,6 +636,7 @@
         b.appendChild(el("div", "sc", g.state === "pre" ? "" : String(s.score)));
         b.onclick = () => {
           if (!t) return;
+          if (pickFav) return choose(t);
           setGD({ team: keyOf(t) });
           toast("Now following the " + t[3]);
           $("#modal").classList.remove("open");
@@ -625,6 +654,16 @@
   };
 
   // ---- team chooser ------------------------------------------------------
+  // The picker sets My team, or with pickFav adds a favorite.
+  let pickFav = false;
+  const choose = (t) => {
+    if (pickFav) addFav(t);
+    else {
+      setGD({ team: keyOf(t) });
+      toast("Now following the " + t[3]);
+    }
+    $("#modal").classList.remove("open");
+  };
   let league = "now";
   const renderTiles = () => {
     if (league === "now") return renderGames();
@@ -647,15 +686,14 @@
       tile.appendChild(img);
       tile.appendChild(el("div", "n", t[3]));
       tile.appendChild(el("div", "a", lgInfo(t[0]).prefix + " · " + t[2]));
-      tile.onclick = () => {
-        setGD({ team: keyOf(t) });
-        toast("Now following the " + t[3]);
-        $("#modal").classList.remove("open");
-      };
+      tile.onclick = () => choose(t);
       tiles.appendChild(tile);
     }
   };
-  $("#pick").onclick = async () => {
+  $("#pick").onclick = () => openPicker(false);
+  $("#favAdd").onclick = () => openPicker(true);
+  const openPicker = async (fav) => {
+    pickFav = fav;
     const cur = S ? teamByKey(refKey(S.team)) : null;
     league = cur ? cur[0] : "nfl";
     try {
