@@ -2,8 +2,8 @@
 # Live page (MIT, Stuart Parmenter). One file for every panel arrangement: on
 # a 64-wide display it stacks logos over scores; at 128 wide and up it spreads
 # logos to the edges with big scores, records, and timeout pips in the middle.
-# The gameday component feeds it through the gd_update script; logos are
-# online_image widgets declared in gameday-common.yaml.
+# The gameday component feeds it through the gd_update script; logos come
+# from its logo cache through gd_show_logos in gameday-common.yaml.
 
 lvgl_page_manager:
   pages:
@@ -345,13 +345,13 @@ lvgl:
             widgets:
               - image:
                   id: gd_team_logo_img
-                  src: gd_team_logo
+                  src: gd_logo_blank
                   x: 0
                   y: 0
 
               - image:
                   id: gd_opp_logo_img
-                  src: gd_opp_logo
+                  src: gd_logo_blank
                   x: 32
                   y: 0
 
