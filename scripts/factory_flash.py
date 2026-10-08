@@ -11,13 +11,17 @@ label in factory/labels/<name>.svg, 50 x 25 mm, ready to print.
 Run it with the ESPHome venv's python, which has esptool and pyserial:
 
     python scripts/factory_flash.py --release v1.5.5
-    python scripts/factory_flash.py --image path/to/firmware.factory.bin --port COM7
+    python scripts/factory_flash.py --image path/to/firmware.factory.bin
     python scripts/factory_flash.py --release v1.5.5 --dry-run
     python scripts/factory_flash.py --selftest
 
 --release downloads the factory image from the GitHub release once and keeps
-it in factory/firmware/. --dry-run prints the esptool commands with a made-up
-MAC instead of talking to a board.
+it in factory/firmware/. The version and pinout are read from the image
+itself, and an image built for the other pinout is refused. --dry-run prints
+the esptool commands with a made-up MAC instead of talking to a board.
+
+Leave out --port for a batch. Each controller has its own USB serial number,
+so Windows gives every one a new COM port, and the script finds it each time.
 """
 
 import argparse
@@ -52,6 +56,27 @@ def release_asset(tag, variant):
 def version_from(text):
     m = re.search(r"v?(\d+\.\d+\.\d+)", text)
     return m.group(1) if m else ""
+
+
+def image_info(data):
+    """(variant, version) the firmware in an image was built for, "" if not found.
+
+    The update manifest URL names the variant, and the boot log line holds the
+    project version, both as plain strings in the app.
+    """
+    variant = re.search(rb"/firmware/([a-z0-9]+)/manifest\.json", data)
+    version = re.search(rb"gameday-scoreboard version (\d+\.\d+\.\d+)", data)
+    return (variant.group(1).decode() if variant else "", version.group(1).decode() if version else "")
+
+
+def save(what, write):
+    """Run a file write, asking the operator to close the file while it's locked."""
+    while True:
+        try:
+            write()
+            return
+        except PermissionError:
+            input(f"  Can't write {what}. Close it if it's open (Excel locks it) and press Enter: ")
 
 
 def check_image(data):
@@ -212,7 +237,7 @@ def flash_one(args, image, image_sha, version, out):
         mac = parse_mac(str(e))
         if mac:
             row.update(name=panel_name(mac), mac=mac)
-        append_log(log_path, row)
+        save(log_path, lambda: append_log(log_path, row))
         raise
     mac = "aa:bb:cc:12:34:56" if args.dry_run else parse_mac(output)
     if mac is None:
@@ -231,14 +256,17 @@ def flash_one(args, image, image_sha, version, out):
             print("  Boot log: no version line seen. Check the panel lights up.")
         else:
             row["boot_log"] = seen
-            flag = "" if not version or seen == version else f" (expected {version})"
-            print(f"  Boot log: firmware {seen}{flag}")
+            print(f"  Boot log: firmware {seen}")
+            if version and seen != version:
+                row["result"] = "wrong version"
+                save(log_path, lambda: append_log(log_path, row))
+                raise RuntimeError(f"{name} runs firmware {seen}, expected {version}. No label printed.")
 
     label = out / "labels" / f"{name}.svg"
     if not args.dry_run:
         label.parent.mkdir(parents=True, exist_ok=True)
-        label.write_text(label_svg(name, mac, version), encoding="utf-8")
-        append_log(log_path, row)
+        save(label, lambda: label.write_text(label_svg(name, mac, version), encoding="utf-8"))
+        save(log_path, lambda: append_log(log_path, row))
     print(f"OK {name}  label {label}")
 
 
@@ -265,6 +293,28 @@ def selftest():
     assert "partition table" in check_image(bytes(ota))
     assert "header" in check_image(b"\x00" * 0x20000)
     assert "too small" in check_image(b"\xe9")
+
+    built = bytes(good) + (b"https://gamedayscoreboard.app/firmware/scoreboard75/manifest.json\x00"
+                           b"Project bharvey88.gameday-scoreboard version 1.5.5\x00")
+    assert image_info(built) == ("scoreboard75", "1.5.5")
+    assert image_info(bytes(good)) == ("", "")
+
+    attempts = []
+
+    def locked_once():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise PermissionError("log.csv is open in Excel")
+
+    import builtins
+
+    real_input = builtins.input
+    builtins.input = lambda prompt="": ""
+    try:
+        save("log.csv", locked_once)
+    finally:
+        builtins.input = real_input
+    assert len(attempts) == 2
 
     svg = label_svg("gameday-2f6a70", "34:85:18:2f:6a:70", "1.5.5")
     assert ">gameday-2f6a70<" in svg and "v1.5.5" in svg and 'width="50mm"' in svg
@@ -293,7 +343,8 @@ def main():
     src.add_argument("--release", help="release tag to download the factory image from, e.g. v1.5.5")
     src.add_argument("--image", type=Path, help="local .factory.bin to flash")
     ap.add_argument("--variant", default="scoreboard75", choices=["scoreboard75", "moonhub75"])
-    ap.add_argument("--port", help="serial port (default: the one Espressif USB device)")
+    ap.add_argument("--port", help="serial port, for one board only (default: find the Espressif USB device "
+                    "for each unit)")
     ap.add_argument("--baud", type=int, default=460800)
     ap.add_argument("--out", type=Path, default=Path("factory"), help="log, labels and downloads (default: factory/)")
     ap.add_argument("--count", type=int, default=0, help="stop after this many units (default: until you quit)")
@@ -327,8 +378,15 @@ def main():
         if problem:
             print(f"{image}: {problem}", file=sys.stderr)
             return 1
+        built_for, built_version = image_info(data)
+        if built_for and built_for != args.variant:
+            print(f"{image}: built for {built_for}, not {args.variant}. Pass --variant {built_for} "
+                  "if that's right.", file=sys.stderr)
+            return 1
+        version = built_version or version
         image_sha = hashlib.sha256(data).hexdigest()
-        print(f"Image {image} ({len(data)} bytes, sha256 {image_sha[:16]})")
+        print(f"Image {image} ({len(data)} bytes, {built_for or 'unknown pinout'} "
+              f"v{version or '?'}, sha256 {image_sha[:16]})")
     elif not (args.dry_run and args.release):
         print(f"{image}: not found", file=sys.stderr)
         return 1
@@ -342,7 +400,7 @@ def main():
         try:
             flash_one(args, image, image_sha, version, args.out)
             done += 1
-        except RuntimeError as e:
+        except (RuntimeError, OSError) as e:
             print(f"FAILED: {e}")
     verb = "would be flashed (dry run)" if args.dry_run else "flashed this run"
     print(f"\n{done} {verb}. Log: {args.out / 'log.csv'}")
