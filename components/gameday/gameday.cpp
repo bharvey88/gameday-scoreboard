@@ -529,21 +529,25 @@ void GamedayComponent::start_fav_job_(uint32_t now) {
       break;
     }
   }
+  bool forced = false;
   if (this->force_schedule_) {
     // Refresh Now in Favorites mode. Re-read the team that is on the board,
     // since that is the one the owner is looking at, and it is one fetch
-    // rather than four. The other three keep their own six hour cycle.
+    // rather than the whole list. The others keep their own six hour cycle.
     // Spend the flag here, not on success: a failed favorites fetch
     // reschedules at once, so a flag left set would retry in a tight loop.
     this->force_schedule_ = false;
+    forced = true;
     if (this->fav_shown_ >= 0)
       refresh = this->fav_shown_;
     else if (!this->fav_.empty())
       refresh = 0;
   }
   this->fav_choose_(tnow);
-  if (refresh < 0 && this->fav_locked_ && this->fav_shown_ >= 0) {
+  if (this->fav_locked_ && this->fav_shown_ >= 0 && !forced) {
     uint32_t due = this->interval_for_phase_();
+    // A live game's poll goes first; a waiting refresh runs in the gap before
+    // the next one, so a long list of favorites never stalls the score.
     if (this->fav_poll_ms_ == 0 || now - this->fav_poll_ms_ >= due)
       refresh = -2;  // poll the shown game
   }
