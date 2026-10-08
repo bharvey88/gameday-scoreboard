@@ -3,7 +3,7 @@ name: Build
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, beta]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -40,12 +40,42 @@ jobs:
           name: release-notes
           path: notes.md
 
+  branch-rules:
+    # main is what customers run. It only takes changes promoted from beta,
+    # and only a tag on main publishes to the flasher and the panels. The
+    # checks are steps, not job conditions, so the job passes (rather than
+    # skips) when they don't apply and build still runs.
+    name: Branch rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: PRs into main come from beta
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$HEAD_REF" != "beta" ] || [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::main only takes PRs from beta (this one is from $HEAD_REPO:$HEAD_REF). Target beta instead."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          fetch-depth: 0
+      - name: Release tags are on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on main. Promote beta to main, then tag main."
+            exit 1
+          fi
+
   build:
     # One firmware for every panel count since v0.6.0, built once per
     # controller pinout. The variant names the manifest folder on the flasher
     # site, and the updater on a panel only ever looks in its own folder.
     name: Build ${{ matrix.variant }}
-    needs: notes
+    needs: [notes, branch-rules]
     runs-on: ubuntu-latest
     strategy:
       matrix:

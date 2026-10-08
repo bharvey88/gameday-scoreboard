@@ -16,6 +16,11 @@ Sibling repo: the iOS companion app at ~/development/gameday-scoreboard-ios (git
   and the site. Maintainer notes are kept privately and loaded through a
   gitignored CLAUDE.local.md.
 - Every parallel agent works in its own git worktree.
+- Branch from `beta` and open PRs against `beta`, never `main`. `main` is
+  what customers run and what the live site deploys from: it only changes
+  by a PR from `beta`, and release tags go on `main`. CI fails a PR into
+  `main` from any other branch and refuses to publish a tag that isn't on
+  `main`.
 - Product is not part of Apollo Automation. Brand is "Game Day Scoreboard".
 - Decisions not to reopen without Brandon: OTA with no password, `api:` with
   no key, the device web page open ("panel trusts the home network"). Do not
