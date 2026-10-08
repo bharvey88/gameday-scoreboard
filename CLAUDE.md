@@ -4,7 +4,7 @@ ESPHome firmware for a standalone football scoreboard on an ESP32-S3 HUB75
 controller. One top-level YAML per pinout: gameday.yaml (MoonHub75) and
 gameday-scoreboard75.yaml (our controller board); each picks its pin map from
 firmware/controllers/ and shares everything else via gameday-common.yaml.
-Sibling repo: the iOS companion app at ~/development/gameday-scoreboard-ios (github.com/bharvey88/gameday-scoreboard-ios).
+Sibling repo: the iOS companion app at ~/development/gameday-scoreboard-ios (github.com/gameday-scoreboard/gameday-scoreboard-ios).
 
 ## Hard rules
 
@@ -16,6 +16,11 @@ Sibling repo: the iOS companion app at ~/development/gameday-scoreboard-ios (git
   and the site. Maintainer notes are kept privately and loaded through a
   gitignored CLAUDE.local.md.
 - Every parallel agent works in its own git worktree.
+- Branch from `beta` and open PRs against `beta`, never `main`. `main` is
+  what customers run and what the live site deploys from: it only changes
+  by a PR from `beta`, and release tags go on `main`. CI fails a PR into
+  `main` from any other branch and refuses to publish a tag that isn't on
+  `main`.
 - Product is not part of Apollo Automation. Brand is "Game Day Scoreboard".
 - Decisions not to reopen without Brandon: OTA with no password, `api:` with
   no key, the device web page open ("panel trusts the home network"). Do not

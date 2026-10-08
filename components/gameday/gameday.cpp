@@ -1960,6 +1960,7 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
   doc["live_auto"] = this->prefs5_.live_mask == 0;
   doc["tz"] = this->prefs_.tz_index;
   doc["tz_name"] = ::espn::kTimezones[this->prefs_.tz_index].name;
+  doc["tz_iana"] = ::espn::kTimezones[this->prefs_.tz_index].iana;
   doc["tz_auto"] = this->tz_auto();
   doc["down"] = this->ticker_down_distance();
   doc["play"] = this->ticker_last_play();
@@ -2198,9 +2199,11 @@ void GamedayComponent::apply_set_(const std::vector<std::pair<std::string, std::
         league = 0, id = 0;  // "none" or "" clears the slot
       this->set_favorite_(slot, league, id);
     } else if (k == "tz") {
-      int i = atoi(v.c_str());
-      if (i >= 0 && i < (int) ::espn::kTimezoneCount)
+      int i = ::espn::timezone_index(v.c_str());
+      if (i >= 0)
         this->select_timezone(::espn::kTimezones[i].name);
+      else
+        ESP_LOGW(TAG, "Unknown timezone '%s'", v.c_str());
     } else if (k == "tzauto") {
       this->set_tz_auto(v == "1");
       dirty = true;

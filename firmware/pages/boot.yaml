@@ -429,6 +429,10 @@ script:
               auto *w = wifi::global_wifi_component;
               return w != nullptr && !w->is_connected();
           then:
+            # Re-arm the hide for when Wi-Fi comes back. A drop shorter than
+            # boot_wifi_lost_later's wait never resets this, so the overlay
+            # would otherwise stay over the scoreboard.
+            - lambda: 'id(boot_ip_shown_ms) = 0;'
             - component.resume: boot_check
             - component.resume: boot_anim
             - script.execute:
@@ -560,6 +564,20 @@ script:
                 id(boot_qr_cycle).execute(0, false);
                 id(boot_view).execute(wide, wide);
                 id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
+
+  # A mesh system moving the panel to another access point drops Wi-Fi for a
+  # few seconds. Wait that long before covering the score, so a drop that
+  # ends in time never shows. wifi: on_connect stops this script.
+  - id: boot_wifi_lost_later
+    mode: restart
+    then:
+      - delay: 10s
+      - if:
+          condition:
+            not:
+              wifi.connected:
+          then:
+            - script.execute: boot_wifi_lost
 
 interval:
   - interval: 500ms
