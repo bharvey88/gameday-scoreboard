@@ -76,11 +76,18 @@ esphome:
     - priority: 240.0
       then:
         - lambda: |-
+            // ESPHome 2026.10 renamed esp32_improv to improv_ble. Both copies
+            // are in components/ until the build moves to 2026.10.
+            #ifdef USE_IMPROV_BLE
+            auto *ble_setup = improv_ble::global_improv_component;
+            #else
+            auto *ble_setup = esp32_improv::global_improv_component;
+            #endif
             auto *w = wifi::global_wifi_component;
             if (w != nullptr && w->has_sta() && w->get_sta().get_ssid().empty()) {
               w->set_ap_timeout(1000);
-              if (esp32_improv::global_improv_component != nullptr) {
-                esp32_improv::global_improv_component->set_wifi_timeout(1000);
+              if (ble_setup != nullptr) {
+                ble_setup->set_wifi_timeout(1000);
               }
             }
         # Keep Bluetooth off at boot because it shares the radio with the Wi-Fi
@@ -103,7 +110,10 @@ external_components:
       path: ../components
     # esp32_improv is ESPHome 2026.8.2's own, plus answering the app's
     # "which Wi-Fi networks can you see" request (components/esp32_improv).
-    components: [gameday, panel_layout, esp32_improv]
+    # ESPHome 2026.10 renamed it improv_ble and reads the esp32_improv: key
+    # below as improv_ble:. On 2026.10 the build uses components/improv_ble,
+    # which has the same change. Drop esp32_improv once the build is on 2026.10.
+    components: [gameday, panel_layout, esp32_improv, improv_ble]
   - source: github://pavlov-net/lvgl-page-manager@v0.3.0
     components: [lvgl_page_manager]
   # Fireworks behind the touchdown and win splashes
@@ -266,9 +276,12 @@ interval:
           // out by itself), so holding the count here cannot disarm the
           // restart. Improv's own is_active() would: it goes true 90s into
           // any outage and stays true for the whole outage.
-          if (esp32_improv::global_improv_component != nullptr &&
-              esp32_improv::global_improv_component->get_improv_state() ==
-                  improv::STATE_PROVISIONING) {
+          #ifdef USE_IMPROV_BLE
+          auto *ble_setup = improv_ble::global_improv_component;
+          #else
+          auto *ble_setup = esp32_improv::global_improv_component;
+          #endif
+          if (ble_setup != nullptr && ble_setup->get_improv_state() == improv::STATE_PROVISIONING) {
             ESP_LOGI("wifi", "Setup in progress, holding the offline restart");
             return;
           }
