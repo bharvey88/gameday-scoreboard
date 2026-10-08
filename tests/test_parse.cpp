@@ -1522,6 +1522,21 @@ static void test_mcbb() {
   CHECK_EQ(clock_text(live), std::string("End 2nd"));
 }
 
+// A real home run (TB @ NYY, 2026-10-07, Top 6th): ESPN types the play
+// "Play Result", so the splash relies on the play text.
+static void test_mlb_home_run() {
+  const uint32_t kRays = 30, kYankees = 10;
+  GameSnapshot before = mlb_event("fixtures/event_mlb_hr_before.json", kRays);
+  GameSnapshot after = mlb_event("fixtures/event_mlb_hr.json", kRays);
+  CHECK_EQ(after.mlb.play_type, std::string("Play Result"));
+  CHECK(after.last_play.find("homered") != std::string::npos);
+  CHECK_EQ(after.team_score - before.team_score, 2);
+  CHECK_EQ(decide_splash(before, after, true).text, std::string("HOME RUN!"));
+  GameSnapshot nyy_before = mlb_event("fixtures/event_mlb_hr_before.json", kYankees);
+  GameSnapshot nyy_after = mlb_event("fixtures/event_mlb_hr.json", kYankees);
+  CHECK_EQ(decide_splash(nyy_before, nyy_after, true).text, std::string("TB HOME RUN"));
+}
+
 int run_football_golden();  // golden_football.cpp
 
 static void test_logo_lru() {
@@ -1564,6 +1579,7 @@ int main() {
   test_mlb_live();
   test_mlb_pre_post();
   test_mlb_splash();
+  test_mlb_home_run();
   test_favorites_filters();
   test_soccer_urls();
   test_soccer_team();
