@@ -595,6 +595,164 @@ static void test_rotate_minutes() {
   CHECK(espn::clamp_rotate_minutes(45) == 30);
 }
 
+// MLB single-event documents recorded 2026-10-07 (see fixtures/README.md).
+static const uint32_t kBraves = 15, kDodgers = 19, kWhiteSox = 4, kBrewers = 8;
+
+static GameSnapshot mlb_event(const char *file, uint32_t team) {
+  GameSnapshot s;
+  CHECK(parse_event_str(slurp(file), Sport::BASEBALL, team, s));
+  return s;
+}
+
+static void test_mlb_urls() {
+  CHECK_EQ(team_url(League::MLB, 15), std::string("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/15"));
+  CHECK_EQ(event_url(League::MLB, "401908016"),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard/401908016"));
+  CHECK_EQ(team_logo_url(League::MLB, 15, "ATL"),
+           std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/mlb/500-dark/atl.png&w=64&h=64"));
+  CHECK_EQ(std::string(league_key(League::MLB)), std::string("mlb"));
+  CHECK(league_by_key("mlb") != nullptr && league_by_key("mlb")->per_event);
+  CHECK(league_by_key("cfl") == nullptr);
+  CHECK(league_sport(League::MLB) == Sport::BASEBALL);
+  CHECK(league_sport(League::NCAA) == Sport::FOOTBALL);
+  bool found = false;
+  for (size_t i = 0; i < kTeamCount; i++) {
+    if (kTeams[i].league == League::MLB && kTeams[i].espn_id == kBraves) {
+      CHECK_EQ(team_option(kTeams[i]), std::string("MLB: Atlanta Braves"));
+      found = true;
+    }
+  }
+  CHECK(found);
+}
+
+static void test_mlb_team() {
+  Schedule s;
+  CHECK(parse_team_str(slurp("fixtures/team_mlb_atl.json"), s));
+  CHECK_EQ(s.event_id, std::string("401908016"));
+  CHECK_EQ(s.kickoff_epoch, parse_iso8601_z("2026-10-07T22:00Z"));
+  CHECK_EQ(s.team_color, std::string("0c2340"));
+  CHECK_EQ(s.team_record, std::string("94-68"));
+}
+
+static void test_mlb_live() {
+  // Top 7th, LAD batting, runner on second, 2-1 count, two out. ATL is home.
+  GameSnapshot t = mlb_event("fixtures/event_mlb_top.json", kBraves);
+  CHECK(t.valid);
+  CHECK(t.sport == Sport::BASEBALL);
+  CHECK(t.state == GameState::IN);
+  CHECK(t.team_home);
+  CHECK_EQ(t.team_abbr, std::string("ATL"));
+  CHECK_EQ(t.opp_abbr, std::string("LAD"));
+  CHECK_EQ(t.team_score, 1);
+  CHECK_EQ(t.opp_score, 1);
+  CHECK(t.mlb.half == Half::TOP);
+  CHECK_EQ((int) t.mlb.balls, 2);
+  CHECK_EQ((int) t.mlb.strikes, 1);
+  CHECK_EQ((int) t.mlb.outs, 2);
+  CHECK_EQ((int) t.mlb.bases, (int) Baseball::SECOND);
+  CHECK_EQ(t.possession, 2);  // the visitors bat in the top half
+  CHECK_EQ(t.mlb.batter, std::string("M. Muncy"));
+  CHECK_EQ(t.mlb.pitcher, std::string("D. Fuentes"));
+  CHECK_EQ(t.mlb.team_hits, 2);
+  CHECK_EQ(t.mlb.opp_hits, 3);
+  CHECK_EQ(t.mlb.team_errors, 2);
+  CHECK_EQ(t.mlb.opp_errors, 0);
+  CHECK_EQ(t.mlb.series, std::string("LAD lead series 2-1"));
+  CHECK_EQ(t.mlb.play_type, std::string("Ball"));
+  CHECK_EQ(t.last_play, std::string("Pitch 3 : Ball 2"));
+  CHECK_EQ(t.team_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/mlb/500-dark/scoreboard/atl.png&w=64&h=64"));
+  CHECK_EQ(clock_text(t), std::string("Top 7th"));
+  CHECK_EQ(baseball_count(t), std::string("2-1"));
+  TickerOptions o;
+  o.clock = false;
+  CHECK_EQ(status_text(t, o, ""), std::string("2-1, 2 outs | P D. Fuentes, AB M. Muncy | Pitch 3 : Ball 2"));
+  TickerOptions quiet = o;
+  quiet.down_distance = quiet.last_play = false;
+  CHECK_EQ(status_text(t, quiet, ""), std::string("Top 7th"));
+
+  // The same game from the Dodgers' side: they bat.
+  GameSnapshot d = mlb_event("fixtures/event_mlb_top.json", kDodgers);
+  CHECK(!d.team_home);
+  CHECK_EQ(d.possession, 1);
+  CHECK_EQ(d.mlb.team_hits, 3);
+
+  // Bottom 6th: the Braves bat, one out.
+  GameSnapshot b = mlb_event("fixtures/event_mlb_bottom.json", kBraves);
+  CHECK(b.mlb.half == Half::BOTTOM);
+  CHECK_EQ(b.possession, 1);
+  CHECK_EQ((int) b.mlb.outs, 1);
+  CHECK_EQ(status_text(b, o, ""), std::string("1-1, 1 out | P E. Henriquez, AB L. Thomas | Pitch 2 : Ball 1"));
+
+  // End of an inning: ESPN keeps a stale count, the panel must not show it.
+  GameSnapshot e = mlb_event("fixtures/event_mlb_end.json", kBraves);
+  CHECK(e.mlb.half == Half::END);
+  CHECK_EQ((int) e.mlb.balls, -1);
+  CHECK_EQ((int) e.mlb.outs, -1);
+  CHECK_EQ((int) e.mlb.bases, 0);
+  CHECK_EQ(e.possession, 0);
+  CHECK_EQ(baseball_count(e), std::string(""));
+  CHECK_EQ(clock_text(e), std::string("End 5th"));
+  CHECK_EQ(status_text(e, o, ""), std::string("ATL 1 H 2 E, LAD 2 H 0 E | LAD lead series 2-1"));
+}
+
+static void test_mlb_pre_post() {
+  GameSnapshot p = mlb_event("fixtures/event_mlb_pre.json", kBrewers);
+  CHECK(p.state == GameState::PRE);
+  CHECK_EQ(p.mlb.team_probable, std::string("R. Gasser"));
+  CHECK_EQ(p.mlb.opp_probable, std::string("W. Buehler"));
+  CHECK_EQ((int) p.mlb.balls, -1);
+  CHECK_EQ(p.possession, 0);
+  CHECK_EQ(p.odds, std::string("SD -112"));
+  CHECK_EQ(p.tv, std::string("FS1"));
+  TickerOptions o;
+  std::string pre = status_text(p, o, "Today 10:00 PM");
+  CHECK(pre.rfind("Today 10:00 PM | MIL leads series 2-1 | MIL R. Gasser vs SD W. Buehler | SD -112 | ", 0) == 0);
+  CHECK(pre.find(" | FS1 | Petco Park") != std::string::npos);
+
+  GameSnapshot f = mlb_event("fixtures/event_mlb_final.json", kWhiteSox);
+  CHECK(f.state == GameState::POST);
+  CHECK(!f.team_winner);
+  CHECK_EQ(f.team_score, 3);
+  CHECK_EQ(f.opp_score, 9);
+  CHECK_EQ(status_text(f, o, ""), std::string("Final | CHW 6 H 0 E, CLE 11 H 0 E | CHW lead series 2-1"));
+  f.short_detail = "Final/10";
+  CHECK(status_text(f, o, "").rfind("Final/10 | ", 0) == 0);
+
+  GameSnapshot x;
+  CHECK(!parse_event_str(slurp("fixtures/event_mlb_top.json"), Sport::BASEBALL, kWhiteSox, x));  // not in it
+  CHECK(!parse_event_str("{nope", Sport::BASEBALL, kBraves, x));
+}
+
+static void test_mlb_splash() {
+  GameSnapshot prev = mlb_event("fixtures/event_mlb_top.json", kBraves);
+  auto after = [&](int us, int them, const char *play) {
+    GameSnapshot c = prev;
+    c.team_score += us;
+    c.opp_score += them;
+    c.mlb.play_type = play;
+    return c;
+  };
+  CHECK_EQ(decide_splash(prev, after(1, 0, "Play Result"), true).text, std::string("RUN!"));
+  CHECK_EQ(decide_splash(prev, after(3, 0, "Play Result"), true).text, std::string("3 RUNS!"));
+  CHECK_EQ(decide_splash(prev, after(4, 0, "Home Run"), true).text, std::string("HOME RUN!"));
+  CHECK_EQ(decide_splash(prev, after(1, 0, "Play Result"), true).color, (uint32_t) 0x0c2340);
+  CHECK_EQ(decide_splash(prev, after(0, 1, "Play Result"), true).text, std::string("LAD SCORES"));
+  CHECK_EQ(decide_splash(prev, after(0, 2, "Play Result"), true).text, std::string("LAD 2 RUNS"));
+  CHECK_EQ(decide_splash(prev, after(0, 1, "Home Run"), true).text, std::string("LAD HOME RUN"));
+  CHECK_EQ(decide_splash(prev, after(0, 1, "Home Run"), false).text, std::string(""));
+  GameSnapshot hr = after(0, 2, "Play Result");
+  hr.last_play = "Muncy homered to right (402 feet), Freeman scored.";
+  CHECK_EQ(decide_splash(prev, hr, true).text, std::string("LAD HOME RUN"));
+  // Live modes: neither side is ours.
+  CHECK_EQ(decide_splash(prev, after(1, 0, "Play Result"), true, true).text, std::string("ATL SCORES"));
+  CHECK_EQ(decide_splash(prev, after(0, 0, "Ball"), true).text, std::string(""));
+  GameSnapshot fin = after(2, 0, "Play Result");
+  fin.state = GameState::POST;
+  GameSnapshot was = fin;
+  was.state = GameState::IN;
+  CHECK_EQ(decide_splash(was, fin, true).text, std::string("ATL WINS!"));
+}
+
 int run_football_golden();  // golden_football.cpp
 
 int main() {
@@ -617,6 +775,11 @@ int main() {
   test_team_cache();
   test_boot_hold();
   test_rotate_minutes();
+  test_mlb_urls();
+  test_mlb_team();
+  test_mlb_live();
+  test_mlb_pre_post();
+  test_mlb_splash();
   checks++;
   failures += run_football_golden();
   printf("%d checks, %d failures\n", checks, failures);

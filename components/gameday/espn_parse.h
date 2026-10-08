@@ -24,6 +24,22 @@ struct Schedule {
   std::string team_record;
 };
 
+enum class Half : uint8_t { NONE, TOP, MID, BOTTOM, END };
+
+// Baseball's live state. Zero or -1 when the document has none (pre-game,
+// finals, between half innings).
+struct Baseball {
+  static constexpr uint8_t FIRST = 1, SECOND = 2, THIRD = 4;
+  int8_t balls{-1}, strikes{-1}, outs{-1};
+  uint8_t bases{0};  // FIRST | SECOND | THIRD
+  Half half{Half::NONE};
+  int team_hits{0}, opp_hits{0}, team_errors{0}, opp_errors{0};
+  std::string batter, pitcher;               // "A. Riley", while a half inning is on
+  std::string team_probable, opp_probable;   // starting pitchers, pre-game
+  std::string series;                        // "LAD lead series 2-1", postseason
+  std::string play_type;                     // last play's type: "Home Run", "Ball"
+};
+
 // One scoreboard event, resolved to "us" and "them".
 struct GameSnapshot {
   bool valid{false};
@@ -47,6 +63,10 @@ struct GameSnapshot {
   std::string short_down_distance;  // "3rd & 10"
   bool is_red_zone{false};
   std::string odds, over_under, tv, venue;
+  // Other sports. Football leaves these at their defaults.
+  Sport sport{Sport::FOOTBALL};
+  bool team_home{false};
+  Baseball mlb;
 };
 
 // One future game from the team's schedule endpoint, for the "Up next" list.
@@ -87,6 +107,9 @@ std::string team_url(League league, uint32_t espn_id);
 std::string schedule_url(League league, uint32_t espn_id);  // the season's games, ~200KB
 std::string scoreboard_url(League league, uint32_t group, int64_t kickoff_epoch);
 std::string scan_url(League league, int64_t now_epoch);  // every game of the day for one league
+// One game on its own (8-18 KB). Leagues with LeagueInfo::per_event poll this
+// instead of the day's whole scoreboard; football does not use it.
+std::string event_url(League league, const std::string &event_id);
 std::string dark_logo(const std::string &url);
 std::string team_logo_url(League league, uint32_t espn_id, const char *abbr);  // for a team with no game loaded yet
 
@@ -95,6 +118,8 @@ bool parse_team_str(const std::string &json, Schedule &out);
 bool parse_upcoming_str(const std::string &json, uint32_t our_team_id, size_t max, std::vector<Upcoming> &out);
 bool parse_scoreboard_str(const std::string &json, const std::string &event_id, uint32_t our_team_id,
                           GameSnapshot &out);
+// The single-event document from event_url().
+bool parse_event_str(const std::string &json, Sport sport, uint32_t our_team_id, GameSnapshot &out);
 
 // neutral = nobody is "our" team (live-game modes): both sides splash with their abbreviation.
 Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral = false);
@@ -113,6 +138,20 @@ std::string clock_text(const GameSnapshot &s);
 // follow-up scoreboard endpoint from Schedule::league, so it must be stamped
 // from the team the schedule was fetched for.
 inline void adopt_league(Schedule &s, League league) { s.league = (uint8_t) league; }
+
+// Per-sport text and splashes. status_text, clock_text and decide_splash hand
+// any snapshot that is not football to these (sport_baseball.cpp).
+std::string baseball_status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local);
+std::string baseball_clock_text(const GameSnapshot &s);
+Splash baseball_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral);
+// The count while a half inning is on ("2-1"), else "".
+std::string baseball_count(const GameSnapshot &s);
+
+namespace detail {
+// Ticker helpers shared by the sport files.
+void add_part(std::string &out, const std::string &part);
+std::string records_line(const GameSnapshot &s);
+}  // namespace detail
 
 // Does this cycle need to re-read the team endpoint, or only re-poll the game
 // it already knows about? `force` is the Refresh Now button. It has to be its

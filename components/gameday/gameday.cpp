@@ -34,7 +34,6 @@ static const uint32_t PRE_FAR_INTERVAL = 15 * MINUTE;
 static const uint32_t PRE_NEAR_INTERVAL = MINUTE;
 static const uint32_t IN_INTERVAL = 5 * 1000;
 static const uint32_t POST_INTERVAL = MINUTE;
-static const uint32_t POST_LINGER = 30 * MINUTE;
 static const uint32_t RETRY_INTERVAL = MINUTE;
 // Wi-Fi and the clock are re-checked this often at boot: every second waited
 // here is a second of boot screen.
@@ -845,6 +844,11 @@ bool GamedayComponent::fetch_schedule_(const ::espn::Team *team, Schedule &out) 
 }
 
 bool GamedayComponent::fetch_upcoming_(const ::espn::Team *team, std::vector<::espn::Upcoming> &out) {
+  const ::espn::LeagueInfo *info = ::espn::league_info(team->league);
+  if (info != nullptr && !info->season_list) {
+    out.clear();  // the season schedule is megabytes in this league: no Up next list
+    return true;
+  }
   std::string url = ::espn::schedule_url(team->league, team->espn_id);
   ESP_LOGD(TAG, "Fetching upcoming games: %s", url.c_str());
   auto container = this->open_(url);
@@ -876,14 +880,19 @@ bool GamedayComponent::fetch_live_games_(League league, std::vector<::espn::Live
 
 bool GamedayComponent::fetch_game_(const ::espn::Team *team, const Schedule &schedule, GameSnapshot &out) {
   League league = this->live_mode_() || this->job_.fav_index >= 0 ? (League) schedule.league : team->league;
-  std::string url = ::espn::scoreboard_url(league, schedule.group, schedule.kickoff_epoch);
+  // Football reads the day's scoreboard; the other leagues read the one game.
+  const ::espn::LeagueInfo *info = ::espn::league_info(league);
+  bool per_event = info != nullptr && info->per_event;
+  std::string url = per_event ? ::espn::event_url(league, schedule.event_id)
+                              : ::espn::scoreboard_url(league, schedule.group, schedule.kickoff_epoch);
   ESP_LOGD(TAG, "Fetching game: %s", url.c_str());
   auto container = this->open_(url);
   if (container == nullptr)
     return false;
   ContainerReader reader(container);
   GameSnapshot g;
-  bool ok = ::espn::parse_scoreboard(reader, schedule.event_id, this->our_id_(), g);
+  bool ok = per_event ? ::espn::parse_event(reader, info->sport, this->our_id_(), g)
+                      : ::espn::parse_scoreboard(reader, schedule.event_id, this->our_id_(), g);
   container->end();
   if (!ok) {
     ESP_LOGW(TAG, "Game %s not parsed from scoreboard (%u bytes)", schedule.event_id.c_str(),
@@ -924,6 +933,15 @@ uint32_t GamedayComponent::interval_for_phase_() const {
       ms = left;
   }
   return ms;
+}
+
+uint32_t GamedayComponent::linger_ms_() const {
+  const ::espn::Team *t = this->current_team_();
+  League league = t != nullptr ? t->league : League::NFL;
+  if (this->live_mode_() && this->schedule_.valid)
+    league = (League) this->schedule_.league;
+  const ::espn::LeagueInfo *info = ::espn::league_info(league);
+  return (uint32_t) (info != nullptr ? info->linger_min : 30) * MINUTE;
 }
 
 // Main loop: decide what this cycle needs and hand it to the worker task.
@@ -999,7 +1017,7 @@ void GamedayComponent::start_job_() {
     }
     return;
   }
-  if (this->post_since_ms_ != 0 && (now - this->post_since_ms_) >= POST_LINGER) {
+  if (this->post_since_ms_ != 0 && (now - this->post_since_ms_) >= this->linger_ms_()) {
     // Game is over and lingered: look for the next one. Re-reading the team
     // endpoint is not enough on its own, because it can keep pointing at a
     // game that finished hours ago. The season schedule lists only games that
@@ -1270,6 +1288,13 @@ void GamedayComponent::emit_(const ::espn::Splash &splash) {
     f.clock_text = ::espn::clock_text(g);
     f.down_distance = g.short_down_distance;
     f.is_red_zone = g.is_red_zone;
+  }
+  f.sport = (uint8_t) g.sport;
+  if (g.valid && g.state == GameState::IN && g.sport == ::espn::Sport::BASEBALL) {
+    f.situation = ::espn::baseball_count(g);
+    f.outs = g.mlb.outs;
+    f.bases = g.mlb.bases;
+    f.highlight = g.mlb.bases == (::espn::Baseball::FIRST | ::espn::Baseball::SECOND | ::espn::Baseball::THIRD);
   }
   f.team_color = ::espn::parse_color(g.team_color);
   f.opponent_color = ::espn::parse_color(g.opp_color);
@@ -1577,6 +1602,14 @@ void GamedayComponent::rebuild_state_(const UpdateFields *f) {
     doc["splash_color"] = color;
   }
   game["id"] = g.event_id;
+  if (g.sport != ::espn::Sport::FOOTBALL) {
+    game["sport"] = (int) g.sport;
+    if (f != nullptr) {
+      game["sit"] = f->situation;
+      game["outs"] = f->outs;
+      game["bases"] = f->bases;
+    }
+  }
   JsonArray next = doc["next"].to<JsonArray>();
   if (this->favorites_mode_()) {
     // One row per favorite: its next game, or the one in progress.

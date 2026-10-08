@@ -6,7 +6,7 @@ CXXFLAGS ?= -std=c++17 -O1 -Wall -Wextra -I../components/gameday -I.
 all: build/test_parse
 	./build/test_parse
 
-SRCS = test_parse.cpp golden_football.cpp ../components/gameday/espn_parse.cpp
+SRCS = test_parse.cpp golden_football.cpp ../components/gameday/espn_parse.cpp ../components/gameday/sport_baseball.cpp
 
 build/test_parse: $(SRCS) $(wildcard ../components/gameday/*.h)
 	@mkdir -p build

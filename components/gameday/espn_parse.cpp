@@ -33,6 +33,10 @@ std::string team_url(League league, uint32_t espn_id) {
 
 std::string schedule_url(League league, uint32_t espn_id) { return team_url(league, espn_id) + "/schedule"; }
 
+std::string event_url(League league, const std::string &event_id) {
+  return site_base(league) + "/scoreboard/" + event_id;
+}
+
 // Number of days since 1970-01-01 for a UTC epoch, then split into y/m/d.
 // Avoids gmtime_r so the host and device agree regardless of libc quirks.
 static void civil_from_epoch(int64_t epoch, int &y, int &m, int &d) {
@@ -118,6 +122,10 @@ bool parse_scoreboard_str(const std::string &json, const std::string &event_id, 
   return parse_scoreboard(json, event_id, our_team_id, out);
 }
 
+bool parse_event_str(const std::string &json, Sport sport, uint32_t our_team_id, GameSnapshot &out) {
+  return parse_event(json, sport, our_team_id, out);
+}
+
 uint32_t parse_color(const std::string &hex) {
   if (hex.size() != 6)
     return 0xFFFFFF;
@@ -146,6 +154,8 @@ static const char *score_word(int delta, bool ours) {
 }
 
 Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opponent_splashes, bool neutral) {
+  if (cur.sport == Sport::BASEBALL)
+    return baseball_splash(prev, cur, opponent_splashes, neutral);
   Splash none;
   if (!prev.valid || !cur.valid || prev.event_id != cur.event_id)
     return none;
@@ -169,7 +179,9 @@ Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opp
   return none;
 }
 
-static void add_part(std::string &out, const std::string &part) {
+namespace detail {
+
+void add_part(std::string &out, const std::string &part) {
   if (part.empty())
     return;
   if (!out.empty())
@@ -177,7 +189,7 @@ static void add_part(std::string &out, const std::string &part) {
   out += part;
 }
 
-static std::string records_line(const GameSnapshot &s) {
+std::string records_line(const GameSnapshot &s) {
   std::string out;
   if (!s.team_record.empty())
     add_part(out, s.team_abbr + " " + s.team_record);
@@ -186,7 +198,14 @@ static std::string records_line(const GameSnapshot &s) {
   return out;
 }
 
+}  // namespace detail
+
+using detail::add_part;
+using detail::records_line;
+
 std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std::string &kickoff_local) {
+  if (s.sport == Sport::BASEBALL)
+    return baseball_status_text(s, o, kickoff_local);
   std::string out;
   switch (s.state) {
     case GameState::NOT_FOUND:
@@ -293,6 +312,8 @@ static std::string period_name(int period) {
 }
 
 std::string clock_text(const GameSnapshot &s) {
+  if (s.sport == Sport::BASEBALL)
+    return baseball_clock_text(s);
   bool has_clock = s.display_clock.find(':') != std::string::npos && s.period > 0;
   bool special = s.short_detail.find(':') == std::string::npos;  // Halftime, End of 3rd, Delayed, Final
   if (!has_clock || special) {

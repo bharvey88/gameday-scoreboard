@@ -11,8 +11,9 @@ inline std::string str_or_empty(JsonVariantConst v) {
   return s ? std::string(s) : std::string();
 }
 
-inline void fill_scoreboard_filter(JsonDocument &f) {
-  JsonObject ev = f["events"].add<JsonObject>();
+// The fields read from one event, whether it sits in a scoreboard's events
+// array or is a single-event document's root.
+inline void fill_event_filter(JsonObject ev) {
   ev["id"] = true;
   ev["date"] = true;
   ev["status"]["displayClock"] = true;
@@ -41,6 +42,27 @@ inline void fill_scoreboard_filter(JsonDocument &f) {
   comp["odds"][0]["overUnder"] = true;
   comp["broadcasts"].add<JsonObject>()["names"] = true;
   comp["venue"]["fullName"] = true;
+}
+
+inline void fill_scoreboard_filter(JsonDocument &f) { fill_event_filter(f["events"].add<JsonObject>()); }
+
+inline void fill_baseball_filter(JsonObject ev) {
+  JsonObject comp = ev["competitions"][0];
+  JsonObject sit = comp["situation"];
+  sit["balls"] = true;
+  sit["strikes"] = true;
+  sit["outs"] = true;
+  sit["onFirst"] = true;
+  sit["onSecond"] = true;
+  sit["onThird"] = true;
+  sit["batter"]["athlete"]["shortName"] = true;
+  sit["pitcher"]["athlete"]["shortName"] = true;
+  sit["lastPlay"]["type"]["text"] = true;
+  JsonObject c = comp["competitors"][0];
+  c["hits"] = true;
+  c["errors"] = true;
+  c["probables"][0]["athlete"]["shortName"] = true;
+  comp["series"]["summary"] = true;
 }
 
 inline void fill_upcoming_filter(JsonDocument &f) {
@@ -141,8 +163,10 @@ inline bool snapshot_from_event(JsonObjectConst ev, uint32_t our_team_id, GameSn
     (ours ? s.team_color : s.opp_color) = color;
     (ours ? s.team_logo : s.opp_logo) = logo;
     (ours ? s.team_timeouts : s.opp_timeouts) = timeouts;
-    if (ours)
+    if (ours) {
       s.team_winner = winner;
+      s.team_home = home;
+    }
     if (!possession.empty() && possession == str_or_empty(c["id"]))
       s.possession = ours ? 1 : 2;
   }
@@ -157,6 +181,51 @@ inline bool snapshot_from_event(JsonObjectConst ev, uint32_t our_team_id, GameSn
   s.valid = true;
   out = s;
   return true;
+}
+
+inline Half half_from_detail(const std::string &detail) {
+  if (detail.rfind("Top", 0) == 0)
+    return Half::TOP;
+  if (detail.rfind("Bot", 0) == 0)
+    return Half::BOTTOM;
+  if (detail.rfind("Mid", 0) == 0)
+    return Half::MID;
+  if (detail.rfind("End", 0) == 0)
+    return Half::END;
+  return Half::NONE;
+}
+
+// Fills s.mlb from an event already read into s by snapshot_from_event.
+inline void baseball_from_event(JsonObjectConst ev, GameSnapshot &s) {
+  Baseball &b = s.mlb;
+  JsonObjectConst comp = ev["competitions"][0];
+  b.series = str_or_empty(comp["series"]["summary"]);
+  for (JsonObjectConst c : comp["competitors"].as<JsonArrayConst>()) {
+    bool ours = (uint32_t) atol(str_or_empty(c["id"]).c_str()) == s.team_id;
+    (ours ? b.team_hits : b.opp_hits) = c["hits"] | 0;
+    (ours ? b.team_errors : b.opp_errors) = c["errors"] | 0;
+    (ours ? b.team_probable : b.opp_probable) = str_or_empty(c["probables"][0]["athlete"]["shortName"]);
+  }
+  if (s.state != GameState::IN)
+    return;
+  b.half = half_from_detail(s.short_detail);
+  JsonObjectConst sit = comp["situation"];
+  b.play_type = str_or_empty(sit["lastPlay"]["type"]["text"]);
+  if (b.half != Half::TOP && b.half != Half::BOTTOM)
+    return;  // between half innings ESPN keeps the last count; it means nothing
+  if (!sit["balls"].isNull())
+    b.balls = (int8_t) (sit["balls"] | 0);
+  if (!sit["strikes"].isNull())
+    b.strikes = (int8_t) (sit["strikes"] | 0);
+  if (!sit["outs"].isNull())
+    b.outs = (int8_t) (sit["outs"] | 0);
+  b.bases = ((sit["onFirst"] | false) ? Baseball::FIRST : 0) | ((sit["onSecond"] | false) ? Baseball::SECOND : 0) |
+            ((sit["onThird"] | false) ? Baseball::THIRD : 0);
+  b.batter = str_or_empty(sit["batter"]["athlete"]["shortName"]);
+  b.pitcher = str_or_empty(sit["pitcher"]["athlete"]["shortName"]);
+  // The visitors bat in the top half: that side gets the underline.
+  bool we_bat = (b.half == Half::TOP) != s.team_home;
+  s.possession = we_bat ? 1 : 2;
 }
 
 }  // namespace detail
@@ -258,6 +327,27 @@ template<typename TInput, typename TOut> bool parse_live_games(TInput &input, TO
     if (!g.event_id.empty() && g.away_id != 0)
       out.push_back(g);
   }
+  return true;
+}
+
+// Parses a single-event document (event_url): the root object is the event.
+template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t our_team_id, GameSnapshot &out) {
+  JsonDocument filter;
+  detail::fill_event_filter(filter.to<JsonObject>());
+  if (sport == Sport::BASEBALL)
+    detail::fill_baseball_filter(filter.as<JsonObject>());
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
+                                              DeserializationOption::NestingLimit(40));
+  if (err)
+    return false;
+  GameSnapshot s;
+  if (!detail::snapshot_from_event(doc.as<JsonObjectConst>(), our_team_id, s))
+    return false;
+  s.sport = sport;
+  if (sport == Sport::BASEBALL)
+    detail::baseball_from_event(doc.as<JsonObjectConst>(), s);
+  out = s;
   return true;
 }
 

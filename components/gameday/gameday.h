@@ -53,6 +53,12 @@ struct UpdateFields {
   uint32_t team_color{0xFFFFFF};
   uint32_t opponent_color{0xFFFFFF};
   std::string kickoff;  // "Sun 3:25 PM" style label while PRE, else empty
+  // Other sports (football leaves these at their defaults).
+  uint8_t sport{0};        // ::espn::Sport
+  std::string situation;   // baseball: the count "2-1" while a half inning is on
+  int outs{-1};            // baseball: outs in the half inning, -1 when none
+  uint8_t bases{0};        // baseball: 1 first, 2 second, 4 third
+  bool highlight{false};   // the situation row stands out (bases loaded)
 };
 
 enum class SelectType : uint8_t { TEAM, TIMEZONE, MODE, FAVORITE };
@@ -252,6 +258,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   std::shared_ptr<http_request::HttpContainer> open_(const std::string &url);
   void schedule_next_(uint32_t ms) { this->next_fetch_ms_ = millis() + ms; }
   uint32_t interval_for_phase_() const;
+  uint32_t linger_ms_() const;  // how long a final stays up before the next game
   void emit_(const ::espn::Splash &splash);
   void reset_game_();
   // A game poll came back clean: clear the miss count and start the clock over.

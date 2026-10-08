@@ -20,10 +20,20 @@
     return n;
   };
 
-  const logoUrl = (league, id, abbr) =>
-    league === "nfl"
-      ? `https://a.espncdn.com/i/teamlogos/nfl/500-dark/${String(abbr).toLowerCase()}.png`
-      : `https://a.espncdn.com/i/teamlogos/ncaa/500-dark/${id}.png`;
+  // The leagues the firmware knows (components/gameday/leagues.h), in tab
+  // order. prefix: team list label; tab: picker tab; name: the long name;
+  // path: ESPN's; byId: logo files named by team id; scan: extra query for
+  // today's scoreboard.
+  const LEAGUES = {
+    nfl: { prefix: "NFL", tab: "NFL", name: "NFL", path: "football/nfl", logo: "nfl", byId: false, scan: "" },
+    ncaa: { prefix: "NCAAF", tab: "College", name: "College football", path: "football/college-football", logo: "ncaa", byId: true, scan: "groups=80&limit=300&" },
+    mlb: { prefix: "MLB", tab: "MLB", name: "MLB", path: "baseball/mlb", logo: "mlb", byId: false, scan: "" },
+  };
+  const lgInfo = (lg) => LEAGUES[lg] || LEAGUES.nfl;
+  const logoUrl = (league, id, abbr) => {
+    const l = lgInfo(league);
+    return `https://a.espncdn.com/i/teamlogos/${l.logo}/500-dark/${l.byId ? id : String(abbr).toLowerCase()}.png`;
+  };
   const keyOf = (t) => t[0] + ":" + t[1];
   const teamByKey = (key) => TEAMS.find((t) => keyOf(t) === key);
   const refKey = (r) => (r && r.id ? r.l + ":" + r.id : "");
@@ -185,7 +195,7 @@
     <div class="sheet">
       <div class="head">
         <input type="search" id="q" placeholder="Search teams" autocomplete="off">
-        <div class="tabs"><button data-lg="now" class="on">On now</button><button data-lg="nfl">NFL</button><button data-lg="ncaa">College</button></div>
+        <div class="tabs"><button data-lg="now" class="on">On now</button></div>
         <button class="btn" id="close">Close</button>
       </div>
       <div class="tiles" id="tiles"></div>
@@ -405,7 +415,7 @@
     none.value = "none";
     fs.appendChild(none);
     for (const t of TEAMS) {
-      const o = el("option", null, (t[0] === "nfl" ? "NFL: " : "NCAAF: ") + t[3]);
+      const o = el("option", null, lgInfo(t[0]).prefix + ": " + t[3]);
       o.value = keyOf(t);
       fs.appendChild(o);
     }
@@ -523,7 +533,7 @@
   };
 
   // ---- today's games (fetched by the browser, not the device) -------------
-  const ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/";
+  const ESPN = "https://site.api.espn.com/apis/site/v2/sports/";
   let games = null;        // [{league, id, state, detail, away:{...}, home:{...}}]
   let gamesAt = 0;
   const teamById = (lg, id) => TEAMS.find((t) => t[0] === lg && t[1] === id);
@@ -536,7 +546,7 @@
   const loadGames = async (force) => {
     if (!force && games && Date.now() - gamesAt < 60000) return games;
     const d = easternDate();
-    const urls = [["nfl", `${ESPN}nfl/scoreboard?dates=${d}`], ["ncaa", `${ESPN}college-football/scoreboard?groups=80&limit=300&dates=${d}`]];
+    const urls = Object.keys(LEAGUES).map((lg) => [lg, `${ESPN}${LEAGUES[lg].path}/scoreboard?${LEAGUES[lg].scan}dates=${d}`]);
     const out = [];
     await Promise.all(urls.map(async ([lg, u]) => {
       try {
@@ -570,7 +580,7 @@
     const q = $("#q").value.trim().toLowerCase();
     const shown = list.filter((g) => !q || (g.away.name + " " + g.home.name + " " + g.away.abbr + " " + g.home.abbr).toLowerCase().includes(q));
     if (!shown.length) {
-      tiles.appendChild(el("div", "none", list.length ? "No game matches" : "No NFL or FBS games today"));
+      tiles.appendChild(el("div", "none", list.length ? "No game matches" : "No games today"));
       return;
     }
     const cur = S ? refKey(S.team) : "";
@@ -636,7 +646,7 @@
       img.alt = "";
       tile.appendChild(img);
       tile.appendChild(el("div", "n", t[3]));
-      tile.appendChild(el("div", "a", (t[0] === "nfl" ? "NFL · " : "NCAAF · ") + t[2]));
+      tile.appendChild(el("div", "a", lgInfo(t[0]).prefix + " · " + t[2]));
       tile.onclick = () => {
         setGD({ team: keyOf(t) });
         toast("Now following the " + t[3]);
@@ -658,6 +668,13 @@
     $("#modal").classList.add("open");
     setTimeout(() => $("#q").focus(), 50);
   };
+  // One tab per league that has teams in this firmware's list.
+  for (const lg of Object.keys(LEAGUES)) {
+    if (!TEAMS.some((t) => t[0] === lg)) continue;
+    const b = el("button", null, LEAGUES[lg].tab);
+    b.dataset.lg = lg;
+    $(".tabs").appendChild(b);
+  }
   const $$tabs = (lg) => document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.lg === lg));
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => { league = b.dataset.lg; $$tabs(league); $("#q").value = ""; renderTiles(); }));
   $("#q").oninput = renderTiles;
@@ -672,7 +689,7 @@
     img.style.visibility = "visible";
     img.src = logoUrl(t[0], t[1], t[2]);
     $("#curName").textContent = t[3];
-    $("#curLg").textContent = t[0] === "nfl" ? "NFL" : "College football";
+    $("#curLg").textContent = lgInfo(t[0]).name;
   };
 
   // ---- timezone suggestion from the browser --------------------------------
