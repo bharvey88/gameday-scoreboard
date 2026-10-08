@@ -595,6 +595,8 @@ static void test_rotate_minutes() {
   CHECK(espn::clamp_rotate_minutes(45) == 30);
 }
 
+int run_football_golden();  // golden_football.cpp
+
 int main() {
   test_urls();
   test_iso();
@@ -615,6 +617,8 @@ int main() {
   test_team_cache();
   test_boot_hold();
   test_rotate_minutes();
+  checks++;
+  failures += run_football_golden();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
