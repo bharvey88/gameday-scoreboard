@@ -158,6 +158,7 @@ wifi:
   # re-enters setup mode with BLE on next boot.
   on_connect:
     - script.stop: gd_ble_grace
+    - script.stop: gd_offline_count
     - script.stop: boot_wifi_lost_later
     - ble.disable:
     - lambda: |-
@@ -178,6 +179,7 @@ wifi:
   on_disconnect:
     - script.execute: gd_ble_grace
     - script.execute: boot_wifi_lost_later
+    - script.execute: gd_offline_count
     - lambda: |-
         ESP_LOGW("wifi", "Disconnected. Internal heap free: %u bytes",
                  (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
@@ -227,7 +229,6 @@ script:
       - delay: 30s
       - ble.enable:
 
-interval:
   # A panel that has a saved network but cannot get back on it is stuck in a
   # way nothing else recovers from. ESPHome's own reboot_timeout is disabled
   # while an ap: block is present (wifi_component.cpp guards it with
@@ -244,43 +245,52 @@ interval:
   # per outage without a counter: gd_ever_connected is not restored, so the
   # panel that comes back from the restart is a panel that has not connected
   # this boot.
-  - interval: 60s
+  #
+  # on_disconnect starts this and on_connect stops it, so each minute is
+  # counted from the moment of the drop.
+  - id: gd_offline_count
+    mode: restart
     then:
-      - lambda: |-
-          auto *w = wifi::global_wifi_component;
-          if (w == nullptr) return;
-          // has_sta() is still true after "Reset Wi-Fi": that button saves an
-          // empty SSID and the component loads it back as a configured
-          // network, so the blank SSID is the second half of this test.
-          if (w->is_connected() || !w->has_sta() || w->get_sta().get_ssid().empty()) {
-            id(gd_offline_minutes) = 0;
-            return;
-          }
-          // Never been on the network this boot: nothing has been lost, so
-          // there is nothing for a restart to recover. Keep waiting.
-          if (!id(gd_ever_connected)) {
-            id(gd_offline_minutes) = 0;
-            return;
-          }
-          // Someone is handing the panel new credentials right now. This is
-          // the narrow state that only exists between the app sending an
-          // ssid and the attempt resolving (30s at most, then Improv times
-          // out by itself), so holding the count here cannot disarm the
-          // restart. Improv's own is_active() would: it goes true 90s into
-          // any outage and stays true for the whole outage.
-          if (esp32_improv::global_improv_component != nullptr &&
-              esp32_improv::global_improv_component->get_improv_state() ==
-                  improv::STATE_PROVISIONING) {
-            ESP_LOGI("wifi", "Setup in progress, holding the offline restart");
-            return;
-          }
-          id(gd_offline_minutes)++;
-          ESP_LOGW("wifi", "Offline for %d minute(s)", id(gd_offline_minutes));
-          if (id(gd_offline_minutes) >= 10) {
-            ESP_LOGW("wifi", "Ten minutes with no Wi-Fi, restarting");
-            id(gd_offline_minutes) = 0;
-            App.safe_reboot();
-          }
+      - while:
+          condition:
+            lambda: return true;
+          then:
+            - delay: 60s
+            - lambda: |-
+                auto *w = wifi::global_wifi_component;
+                if (w == nullptr) return;
+                // has_sta() is still true after "Reset Wi-Fi": that button saves an
+                // empty SSID and the component loads it back as a configured
+                // network, so the blank SSID is the second half of this test.
+                if (w->is_connected() || !w->has_sta() || w->get_sta().get_ssid().empty()) {
+                  id(gd_offline_minutes) = 0;
+                  return;
+                }
+                // Never been on the network this boot: nothing has been lost, so
+                // there is nothing for a restart to recover. Keep waiting.
+                if (!id(gd_ever_connected)) {
+                  id(gd_offline_minutes) = 0;
+                  return;
+                }
+                // Someone is handing the panel new credentials right now. This is
+                // the narrow state that only exists between the app sending an
+                // ssid and the attempt resolving (30s at most, then Improv times
+                // out by itself), so holding the count here cannot disarm the
+                // restart. Improv's own is_active() would: it goes true 90s into
+                // any outage and stays true for the whole outage.
+                if (esp32_improv::global_improv_component != nullptr &&
+                    esp32_improv::global_improv_component->get_improv_state() ==
+                        improv::STATE_PROVISIONING) {
+                  ESP_LOGI("wifi", "Setup in progress, holding the offline restart");
+                  return;
+                }
+                id(gd_offline_minutes)++;
+                ESP_LOGW("wifi", "Offline for %d minute(s)", id(gd_offline_minutes));
+                if (id(gd_offline_minutes) >= 10) {
+                  ESP_LOGW("wifi", "Ten minutes with no Wi-Fi, restarting");
+                  id(gd_offline_minutes) = 0;
+                  App.safe_reboot();
+                }
 
 captive_portal:
 
