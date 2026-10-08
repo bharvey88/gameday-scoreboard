@@ -1778,6 +1778,20 @@ static void test_lookahead() {
      "competitions":[{"competitors":[{"id":"19"},{"id":"15"}]}]}]})";
   CHECK(parse_team_game_str(dh, 15, next));
   CHECK_EQ(next.event_id, std::string("2"));
+  // The scoreboard can still call game 1 live after the panel saw it end.
+  const char *dh_live = R"({"events":[
+    {"id":"1","date":"2026-07-04T17:05Z","status":{"type":{"state":"in"}},
+     "competitions":[{"competitors":[{"id":"15"},{"id":"19"}]}]},
+    {"id":"2","date":"2026-07-04T22:10Z","status":{"type":{"state":"pre"}},
+     "competitions":[{"competitors":[{"id":"19"},{"id":"15"}]}]}]})";
+  CHECK(parse_team_game_str(dh_live, 15, next, "1"));
+  CHECK_EQ(next.event_id, std::string("2"));
+  CHECK(!parse_team_game_str(slurp("fixtures/day_nhl_20261009.json"), 16, none, "401892467"));
+  // A document that does not parse is a failed read, not an off day.
+  std::string bad = "{\"events\":[";
+  CHECK_EQ(parse_team_game(bad, 16, std::string(), none), -1);
+  std::string off = slurp("fixtures/day_mlb_20261009.json");
+  CHECK_EQ(parse_team_game(off, 15, std::string(), none), 0);
 
   CHECK_EQ(team_day_url(League::NHL, 0, parse_iso8601_z("2026-10-09T15:00Z")),
            std::string("https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=20261009"));

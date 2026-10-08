@@ -175,7 +175,8 @@ bool parse_scoreboard_str(const std::string &json, const std::string &event_id, 
                           GameSnapshot &out);
 // The team's next game that is not over yet in a day's scoreboard
 // (team_day_url), into out.event_id and out.kickoff_epoch.
-bool parse_team_game_str(const std::string &json, uint32_t our_team_id, Schedule &out);
+bool parse_team_game_str(const std::string &json, uint32_t our_team_id, Schedule &out,
+                         const std::string &skip_event = "");
 // The single-event document from event_url().
 bool parse_event_str(const std::string &json, Sport sport, uint32_t our_team_id, GameSnapshot &out);
 

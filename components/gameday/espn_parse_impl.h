@@ -353,28 +353,33 @@ template<typename TInput, typename TOut> bool parse_live_games(TInput &input, TO
 }
 
 // The first game in a day's scoreboard with our team that is not over yet
-// (game 2 of a doubleheader after game 1's final). Fills event_id and
-// kickoff_epoch; false when the team does not play that day.
-template<typename TInput> bool parse_team_game(TInput &input, uint32_t our_team_id, Schedule &out) {
+// (game 2 of a doubleheader after game 1's final). skip_event is a game the
+// panel already saw finish, which the scoreboard may still list as live.
+// Returns 1 and fills event_id and kickoff_epoch, 0 when the team does not
+// play that day, -1 when the document does not parse.
+template<typename TInput>
+int parse_team_game(TInput &input, uint32_t our_team_id, const std::string &skip_event, Schedule &out) {
   JsonDocument filter;
   detail::fill_team_game_filter(filter);
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
   if (err)
-    return false;
+    return -1;
   for (JsonObjectConst ev : doc["events"].as<JsonArrayConst>()) {
     if (detail::str_or_empty(ev["status"]["type"]["state"]) == "post")
+      continue;
+    if (!skip_event.empty() && detail::str_or_empty(ev["id"]) == skip_event)
       continue;
     for (JsonObjectConst c : ev["competitions"][0]["competitors"].as<JsonArrayConst>()) {
       if ((uint32_t) atol(detail::str_or_empty(c["id"]).c_str()) != our_team_id)
         continue;
       out.event_id = detail::str_or_empty(ev["id"]);
       out.kickoff_epoch = parse_iso8601_z(detail::str_or_empty(ev["date"]));
-      return !out.event_id.empty();
+      return out.event_id.empty() ? 0 : 1;
     }
   }
-  return false;
+  return 0;
 }
 
 // Parses a single-event document (event_url): the root object is the event.

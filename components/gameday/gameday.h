@@ -304,6 +304,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     bool need_game{false};   // the board has no game for the current schedule yet
     bool polled{false};      // a cup read polled the game it picked
     std::string done_event;  // a game seen to finish, passed over by the pick
+    bool no_lookahead{false};  // My team: a final is still lingering on the board
+    int8_t lookahead{0};       // 0 not run, 1 found the next game, 2 nothing ahead, -1 a read failed
   };
   void start_job_();
   static void worker_(void *arg);
@@ -327,10 +329,13 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   uint32_t interval_for_phase_() const;
   uint32_t linger_ms_() const;  // how long a final stays up before the next game
   std::string lingered_event_;  // the final the last linger ended on (My team)
+  uint32_t linger_backoff_ms_{0};  // a longer linger on that final when no next game turned up
   // Non-football leagues without a season list find the next game in the
   // coming days' scoreboards when the team endpoint names a finished one.
   bool needs_lookahead_(League league) const;
-  bool fetch_team_day_(const ::espn::Team *team, uint32_t group, int64_t day_epoch, Schedule &out);
+  // 1 found the next game, 0 the team is off that day, -1 the read failed.
+  int fetch_team_day_(const ::espn::Team *team, uint32_t group, int64_t day_epoch, const std::string &skip_event,
+                      Schedule &out);
   void emit_(const ::espn::Splash &splash);
   void reset_game_();
   // A game poll came back clean: clear the miss count and start the clock over.
@@ -393,6 +398,8 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     int64_t final_epoch{0};  // when the panel saw the game go final, 0 if it was fetched final
     bool stale{false};       // released after a final: fetch the next game
     std::string stuck_event;  // a final the team endpoint kept naming: no minute-by-minute retries
+    uint32_t stuck_ms{0};      // millis() when that back-off started
+    uint32_t stuck_for_ms{0};  // and how long it lasts
     std::vector<Schedule> comps;  // soccer: reads per competition, as Job::comps
     int comp_next{-1};            // the cup read due next, -1 when none
   };

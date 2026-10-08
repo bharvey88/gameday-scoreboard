@@ -165,8 +165,8 @@ bool parse_scoreboard_str(const std::string &json, const std::string &event_id, 
   return parse_scoreboard(json, event_id, our_team_id, out);
 }
 
-bool parse_team_game_str(const std::string &json, uint32_t our_team_id, Schedule &out) {
-  return parse_team_game(json, our_team_id, out);
+bool parse_team_game_str(const std::string &json, uint32_t our_team_id, Schedule &out, const std::string &skip_event) {
+  return parse_team_game(json, our_team_id, skip_event, out) == 1;
 }
 
 bool parse_event_str(const std::string &json, Sport sport, uint32_t our_team_id, GameSnapshot &out) {
