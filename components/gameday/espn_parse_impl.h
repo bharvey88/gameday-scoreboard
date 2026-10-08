@@ -6,6 +6,18 @@
 namespace espn {
 namespace detail {
 
+inline ArduinoJson::Allocator *&json_allocator_slot() {
+  static ArduinoJson::Allocator *slot = nullptr;
+  return slot;
+}
+
+// Where the component's JSON documents live. The firmware points this at
+// PSRAM in GamedayComponent::setup(); host tests keep ArduinoJson's default.
+inline ArduinoJson::Allocator *json_allocator() {
+  ArduinoJson::Allocator *a = json_allocator_slot();
+  return a != nullptr ? a : ArduinoJson::detail::DefaultAllocator::instance();
+}
+
 inline std::string str_or_empty(JsonVariantConst v) {
   const char *s = v.as<const char *>();
   return s ? std::string(s) : std::string();
@@ -251,12 +263,15 @@ void hockey_from_event(JsonObjectConst ev, GameSnapshot &s);
 
 }  // namespace detail
 
+// Must be set before any parse runs, since the fetch task reads it unlocked.
+inline void set_json_allocator(ArduinoJson::Allocator *allocator) { detail::json_allocator_slot() = allocator; }
+
 // Parses the team endpoint. `input` is anything ArduinoJson can read from:
 // a std::string, or a reader object with read() and readBytes().
 template<typename TInput> bool parse_team(TInput &input, Schedule &out) {
-  JsonDocument filter;
+  JsonDocument filter(detail::json_allocator());
   detail::fill_team_filter(filter);
-  JsonDocument doc;
+  JsonDocument doc(detail::json_allocator());
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
   if (err)
@@ -284,9 +299,9 @@ template<typename TInput> bool parse_team(TInput &input, Schedule &out) {
 // Games that have not started yet, in the order ESPN lists them (by date).
 template<typename TInput>
 bool parse_upcoming(TInput &input, uint32_t our_team_id, size_t max, std::vector<Upcoming> &out) {
-  JsonDocument filter;
+  JsonDocument filter(detail::json_allocator());
   detail::fill_upcoming_filter(filter);
-  JsonDocument doc;
+  JsonDocument doc(detail::json_allocator());
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
   if (err)
@@ -323,9 +338,9 @@ bool parse_upcoming(TInput &input, uint32_t our_team_id, size_t max, std::vector
 
 // Lists the in-progress games in a scoreboard document.
 template<typename TInput, typename TOut> bool parse_live_games(TInput &input, TOut &out) {
-  JsonDocument filter;
+  JsonDocument filter(detail::json_allocator());
   detail::fill_scan_filter(filter);
-  JsonDocument doc;
+  JsonDocument doc(detail::json_allocator());
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
   if (err)
@@ -359,9 +374,9 @@ template<typename TInput, typename TOut> bool parse_live_games(TInput &input, TO
 // play that day, -1 when the document does not parse.
 template<typename TInput>
 int parse_team_game(TInput &input, uint32_t our_team_id, const std::string &skip_event, Schedule &out) {
-  JsonDocument filter;
+  JsonDocument filter(detail::json_allocator());
   detail::fill_team_game_filter(filter);
-  JsonDocument doc;
+  JsonDocument doc(detail::json_allocator());
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
   if (err)
@@ -384,7 +399,7 @@ int parse_team_game(TInput &input, uint32_t our_team_id, const std::string &skip
 
 // Parses a single-event document (event_url): the root object is the event.
 template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t our_team_id, GameSnapshot &out) {
-  JsonDocument filter;
+  JsonDocument filter(detail::json_allocator());
   detail::fill_event_filter(filter.to<JsonObject>());
   if (sport == Sport::BASEBALL)
     detail::fill_baseball_filter(filter.as<JsonObject>());
@@ -394,7 +409,7 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
     detail::fill_basketball_filter(filter.as<JsonObject>());
   if (sport == Sport::HOCKEY)
     detail::fill_hockey_filter(filter.as<JsonObject>());
-  JsonDocument doc;
+  JsonDocument doc(detail::json_allocator());
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
   if (err)
@@ -419,9 +434,9 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
 // Returns false on a JSON error or when the event is not in the document.
 template<typename TInput>
 bool parse_scoreboard(TInput &input, const std::string &event_id, uint32_t our_team_id, GameSnapshot &out) {
-  JsonDocument filter;
+  JsonDocument filter(detail::json_allocator());
   detail::fill_scoreboard_filter(filter);
-  JsonDocument doc;
+  JsonDocument doc(detail::json_allocator());
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
   if (err)
