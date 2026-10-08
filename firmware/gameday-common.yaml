@@ -604,6 +604,19 @@ sensor:
     lambda: |-
       #include "esp_heap_caps.h"
       return (float) heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+  # The biggest single piece of that free internal RAM. A large allocation
+  # needs one piece, so this can run low while the total above looks fine.
+  - platform: template
+    name: "Largest Free Block (internal)"
+    device_class: data_size
+    state_class: measurement
+    entity_category: diagnostic
+    unit_of_measurement: "KiB"
+    update_interval: 30s
+    lambda: |-
+      #include "esp_heap_caps.h"
+      return (float) heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;
+    disabled_by_default: true
   - platform: wifi_signal
     name: RSSI
     update_interval: 60s

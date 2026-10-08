@@ -1,5 +1,6 @@
 // Host tests for the ESPN parser and game logic. Build with `make` in tests/.
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -611,6 +612,47 @@ static void test_logo_lru() {
   CHECK(espn::logo_retry_due(0xFFFFF000u, 0xFFFFF000u + espn::LOGO_RETRY_MS));
 }
 
+// Counts what the parsers allocate through the hook the firmware points at PSRAM
+struct CountingAllocator : ArduinoJson::Allocator {
+  int calls = 0;
+  int live = 0;
+  void *allocate(size_t size) override {
+    calls++;
+    live++;
+    return malloc(size);
+  }
+  void deallocate(void *ptr) override {
+    if (ptr != nullptr)
+      live--;
+    free(ptr);
+  }
+  void *reallocate(void *ptr, size_t size) override {
+    if (ptr == nullptr) {
+      calls++;
+      live++;
+    }
+    return realloc(ptr, size);
+  }
+};
+
+static void test_json_allocator() {
+  CountingAllocator counting;
+  espn::set_json_allocator(&counting);
+  std::string json = slurp("fixtures/scoreboard_ncaa_live.json");
+  GameSnapshot s;
+  CHECK(parse_scoreboard_str(json, kPostEvent, kBallState, s));
+  CHECK_EQ(s.team_score, 3);
+  Schedule sch;
+  CHECK(parse_team_str(slurp("fixtures/team_nfl_dal.json"), sch));
+  CHECK(counting.calls > 0);
+  CHECK_EQ(counting.live, 0);  // every document freed its memory
+  espn::set_json_allocator(nullptr);
+  int before = counting.calls;
+  GameSnapshot again;
+  CHECK(parse_scoreboard_str(json, kPostEvent, kBallState, again));
+  CHECK_EQ(counting.calls, before);  // back on the default heap
+}
+
 int main() {
   test_urls();
   test_iso();
@@ -632,6 +674,7 @@ int main() {
   test_boot_hold();
   test_rotate_minutes();
   test_logo_lru();
+  test_json_allocator();
   printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
