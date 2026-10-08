@@ -57,8 +57,11 @@ int main(int argc, char **argv) {
       JsonDocument doc;
       std::string first = slurp(g.second.front());
       if (deserializeJson(doc, first, DeserializationOption::NestingLimit(40)) == DeserializationError::Ok)
-        for (JsonObjectConst c : doc["competitions"][0]["competitors"].as<JsonArrayConst>())
+      {
+        JsonArrayConst competitors = doc["competitions"][0]["competitors"];
+        for (JsonObjectConst c : competitors)
           sides.push_back((uint32_t) atol(c["id"].as<const char *>()));
+      }
     }
     for (uint32_t team : sides) {
       GameSnapshot prev;
