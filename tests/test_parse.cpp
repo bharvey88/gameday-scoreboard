@@ -1219,6 +1219,308 @@ static void test_soccer_cups() {
   CHECK(loaded.comp_slug == nullptr);
 }
 
+// NBA (preseason) and WNBA (semifinal) single-event documents recorded
+// 2026-10-07 (see fixtures/README.md).
+static const uint32_t kPacers = 11, kWolves = 16, kThunder = 25, kBlazers = 22, kDream = 20, kLiberty = 9;
+
+static GameSnapshot hoops_event(const char *file, uint32_t team) {
+  GameSnapshot s;
+  CHECK(parse_event_str(slurp(file), Sport::BASKETBALL, team, s));
+  return s;
+}
+
+static void test_nba_urls() {
+  CHECK_EQ(team_url(League::NBA, 11), std::string("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/11"));
+  CHECK_EQ(event_url(League::WNBA, "401918297"),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard/401918297"));
+  CHECK_EQ(team_logo_url(League::NBA, 11, "IND"),
+           std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/nba/500-dark/ind.png&w=64&h=64"));
+  CHECK_EQ(team_logo_url(League::WNBA, 129689, "GS"),
+           std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/wnba/500-dark/gs.png&w=64&h=64"));
+  CHECK_EQ(std::string(league_key(League::NBA)), std::string("nba"));
+  CHECK_EQ(std::string(league_key(League::WNBA)), std::string("wnba"));
+  for (const char *key : {"nba", "wnba"}) {
+    const LeagueInfo *l = league_by_key(key);
+    CHECK(l != nullptr && l->per_event && !l->season_list && l->linger_min == 30);
+    CHECK(l != nullptr && l->sport == Sport::BASKETBALL);
+  }
+  int nba = 0, wnba = 0;
+  for (size_t i = 0; i < kTeamCount; i++) {
+    const Team &t = kTeams[i];
+    nba += t.league == League::NBA;
+    wnba += t.league == League::WNBA;
+    if (t.league == League::NBA && t.espn_id == kPacers)
+      CHECK_EQ(team_option(t), std::string("NBA: Indiana Pacers"));
+    if (t.league == League::WNBA && t.espn_id == kLiberty)
+      CHECK_EQ(team_option(t), std::string("WNBA: New York Liberty"));
+  }
+  CHECK_EQ(nba, 30);
+  CHECK(wnba >= 13);
+}
+
+static void test_nba_team() {
+  Schedule s;
+  CHECK(parse_team_str(slurp("fixtures/team_nba_ind.json"), s));
+  CHECK_EQ(s.event_id, std::string("401914123"));
+  CHECK_EQ(s.kickoff_epoch, parse_iso8601_z("2026-10-07T23:00Z"));
+  CHECK_EQ(s.team_color, std::string("0c2340"));
+  CHECK_EQ(s.team_record, std::string("0-0"));
+  Schedule w;
+  CHECK(parse_team_str(slurp("fixtures/team_wnba_ny.json"), w));
+  CHECK_EQ(w.event_id, std::string("401918297"));
+  CHECK_EQ(w.kickoff_epoch, parse_iso8601_z("2026-10-07T23:30Z"));
+  CHECK_EQ(w.team_color, std::string("86cebc"));
+  CHECK_EQ(w.team_record, std::string("26-18"));
+}
+
+static void test_nba_live() {
+  // 8:27 in the 3rd, IND 74 MIN 73. IND is home.
+  GameSnapshot g = hoops_event("fixtures/event_nba_live.json", kPacers);
+  CHECK(g.valid);
+  CHECK(g.sport == Sport::BASKETBALL);
+  CHECK(g.state == GameState::IN);
+  CHECK(g.team_home);
+  CHECK_EQ(g.team_abbr, std::string("IND"));
+  CHECK_EQ(g.opp_abbr, std::string("MIN"));
+  CHECK_EQ(g.team_score, 74);
+  CHECK_EQ(g.opp_score, 73);
+  CHECK_EQ(g.period, 3);
+  CHECK_EQ((int) g.nba.regulation, 4);
+  CHECK(g.nba.phase == Phase::PLAY);
+  CHECK_EQ(g.nba.series, std::string(""));
+  CHECK_EQ((int) g.nba.team_wins, -1);
+  CHECK_EQ(g.possession, 0);
+  CHECK_EQ(g.team_timeouts, 0);
+  CHECK_EQ(g.team_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/nba/500-dark/scoreboard/ind.png&w=64&h=64"));
+  CHECK_EQ(clock_text(g), std::string("8:27 3rd"));
+  CHECK_EQ(basketball_series(g), std::string(""));
+  const std::string play = "Jaden McDaniels makes 14-foot driving floating jump shot (Jonathan Kuminga assists)";
+  CHECK_EQ(g.last_play, play);
+  TickerOptions o;
+  o.clock = false;
+  CHECK_EQ(status_text(g, o, ""), play);
+  TickerOptions clock = o;
+  clock.clock = true;
+  CHECK_EQ(status_text(g, clock, ""), "8:27 - 3rd | " + play);
+  TickerOptions quiet = o;
+  quiet.last_play = false;
+  CHECK_EQ(status_text(g, quiet, ""), std::string("8:27 - 3rd"));
+
+  // Under a minute ESPN sends tenths and no minutes.
+  GameSnapshot c = hoops_event("fixtures/event_nba_clock.json", kThunder);
+  CHECK_EQ(c.display_clock, std::string("12.3"));
+  CHECK_EQ(clock_text(c), std::string("12.3 1st"));
+  CHECK_EQ(status_text(c, o, ""), std::string("Brayden Burries makes 17-foot pullup jump shot"));
+
+  // Between quarters: the clock row names the break, the ticker the records.
+  GameSnapshot e = hoops_event("fixtures/event_nba_end.json", kThunder);
+  CHECK(e.nba.phase == Phase::END_PERIOD);
+  CHECK_EQ(clock_text(e), std::string("End 1st"));
+  CHECK_EQ(status_text(e, o, ""), std::string("OKC 0-1 | MIL 0-1"));
+
+  // Overtime, from the period number: OT is period 5 with four quarters.
+  GameSnapshot ot = g;
+  ot.period = 5;
+  CHECK_EQ(clock_text(ot), std::string("8:27 OT"));
+  ot.period = 6;
+  CHECK_EQ(clock_text(ot), std::string("8:27 2OT"));
+  ot.nba.phase = Phase::END_PERIOD;
+  CHECK_EQ(clock_text(ot), std::string("End 2OT"));
+  ot.period = 4;
+  CHECK_EQ(clock_text(ot), std::string("End 4th"));
+  ot.nba.phase = Phase::OTHER;
+  ot.short_detail = "Delayed";
+  CHECK_EQ(clock_text(ot), std::string("Delayed"));
+}
+
+static void test_wnba_live() {
+  // A semifinal, ATL leads the series 1-0: 4.5 left in the 2nd.
+  GameSnapshot g = hoops_event("fixtures/event_wnba_live.json", kLiberty);
+  CHECK(g.state == GameState::IN);
+  CHECK(!g.team_home);
+  CHECK_EQ(g.team_abbr, std::string("NY"));
+  CHECK_EQ(g.team_score, 54);
+  CHECK_EQ(g.opp_score, 56);
+  CHECK_EQ(clock_text(g), std::string("4.5 2nd"));
+  CHECK_EQ(g.nba.series, std::string("ATL leads series 1-0"));
+  CHECK_EQ((int) g.nba.team_wins, 0);
+  CHECK_EQ((int) g.nba.opp_wins, 1);
+  CHECK_EQ(basketball_series(g), std::string("ATL lead 1-0"));
+  CHECK_EQ(g.team_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/wnba/500-dark/ny.png&w=64&h=64"));
+  TickerOptions o;
+  o.clock = false;
+  CHECK_EQ(status_text(g, o, ""), std::string("Rhyne Howard makes 23-foot three point jumper (Jordin Canada assists)"));
+  GameSnapshot a = hoops_event("fixtures/event_wnba_live.json", kDream);
+  CHECK_EQ((int) a.nba.team_wins, 1);
+  CHECK_EQ(basketball_series(a), std::string("ATL lead 1-0"));
+
+  GameSnapshot h = hoops_event("fixtures/event_wnba_half.json", kLiberty);
+  CHECK(h.nba.phase == Phase::HALFTIME);
+  CHECK_EQ(clock_text(h), std::string("Halftime"));
+  CHECK_EQ(status_text(h, o, ""), std::string("ATL leads series 1-0"));
+
+  // The game went to overtime: period 5, "20.8 - OT".
+  GameSnapshot ot = hoops_event("fixtures/event_wnba_ot.json", kDream);
+  CHECK_EQ(ot.period, 5);
+  CHECK_EQ(clock_text(ot), std::string("20.8 OT"));
+  CHECK_EQ(basketball_series(ot), std::string("ATL lead 1-0"));
+
+  // ESPN had not counted this game in the series yet when it went final.
+  GameSnapshot f = hoops_event("fixtures/event_wnba_final.json", kDream);
+  CHECK(f.state == GameState::POST);
+  CHECK_EQ(f.team_score, 101);
+  CHECK_EQ(f.opp_score, 98);
+  CHECK_EQ(status_text(f, o, ""), std::string("Final/OT | ATL leads series 1-0"));
+  CHECK_EQ(decide_splash(ot, f, true).text, std::string("ATL WINS!"));
+  CHECK_EQ(decide_splash(ot, f, true).color, (uint32_t) 0xe31837);
+  GameSnapshot ny_ot = hoops_event("fixtures/event_wnba_ot.json", kLiberty);
+  GameSnapshot ny_f = hoops_event("fixtures/event_wnba_final.json", kLiberty);
+  CHECK_EQ(decide_splash(ny_ot, ny_f, true).text, std::string(""));
+  CHECK_EQ(decide_splash(ny_ot, ny_f, true, true).text, std::string("ATL WINS!"));
+
+  // The short series line fits the 12-character situation row.
+  GameSnapshot s = g;
+  s.nba.team_wins = s.nba.opp_wins = 2;
+  CHECK_EQ(basketball_series(s), std::string("Series 2-2"));
+  s.team_abbr = "UTAH";
+  s.nba.team_wins = 3;
+  CHECK_EQ(basketball_series(s), std::string("UTAH up 3-2"));
+}
+
+static void test_nba_pre_post() {
+  GameSnapshot p = hoops_event("fixtures/event_nba_pre.json", kBlazers);
+  CHECK(p.state == GameState::PRE);
+  CHECK_EQ(p.odds, std::string("POR -14.5"));
+  CHECK_EQ(p.over_under, std::string("216.5"));
+  CHECK_EQ(p.tv, std::string("NBA TV"));
+  TickerOptions o;
+  CHECK_EQ(status_text(p, o, "Today 10:00 PM"), std::string("Today 10:00 PM | POR -14.5 | O/U 216.5 | NBA TV | Moda Center"));
+  TickerOptions no_odds;
+  no_odds.odds = false;
+  CHECK_EQ(status_text(p, no_odds, ""), std::string("10/7 - 10:00 PM EDT | Moda Center"));
+  CHECK_EQ(basketball_series(p), std::string(""));
+
+  GameSnapshot f = hoops_event("fixtures/event_nba_final.json", kPacers);
+  CHECK(f.state == GameState::POST);
+  CHECK(f.team_winner);
+  CHECK_EQ(f.team_score, 123);
+  CHECK_EQ(f.opp_score, 112);
+  CHECK_EQ(status_text(f, o, ""), std::string("Final | IND 0-0 | MIN 1-0"));
+  f.short_detail = "Final/OT";
+  CHECK_EQ(status_text(f, o, ""), std::string("Final/OT | IND 0-0 | MIN 1-0"));
+
+  GameSnapshot x;
+  CHECK(!parse_event_str(slurp("fixtures/event_nba_live.json"), Sport::BASKETBALL, kBlazers, x));  // not in it
+  CHECK(!parse_event_str("{nope", Sport::BASKETBALL, kPacers, x));
+}
+
+static void test_nba_splash() {
+  GameSnapshot prev = hoops_event("fixtures/event_nba_live.json", kPacers);
+  auto after = [&](int us, int them, GameState st) {
+    GameSnapshot c = prev;
+    c.team_score += us;
+    c.opp_score += them;
+    c.state = st;
+    return c;
+  };
+  // Baskets never splash, whoever scores.
+  CHECK_EQ(decide_splash(prev, after(3, 0, GameState::IN), true).text, std::string(""));
+  CHECK_EQ(decide_splash(prev, after(0, 2, GameState::IN), true).text, std::string(""));
+  CHECK_EQ(decide_splash(prev, after(2, 0, GameState::IN), true, true).text, std::string(""));
+  Splash win = decide_splash(prev, after(10, 0, GameState::POST), true);
+  CHECK_EQ(win.text, std::string("IND WINS!"));
+  CHECK_EQ(win.color, (uint32_t) 0x0c2340);
+  CHECK_EQ(decide_splash(prev, after(0, 10, GameState::POST), true).text, std::string(""));
+  CHECK_EQ(decide_splash(prev, after(0, 10, GameState::POST), true, true).text, std::string("MIN WINS!"));
+  GameSnapshot fin = after(10, 0, GameState::POST);
+  CHECK_EQ(decide_splash(fin, fin, true).text, std::string(""));
+  // The recorded final after the recorded live poll: IND won 123-112.
+  GameSnapshot final_doc = hoops_event("fixtures/event_nba_final.json", kPacers);
+  CHECK_EQ(decide_splash(prev, final_doc, true).text, std::string("IND WINS!"));
+  CHECK_EQ(decide_splash(hoops_event("fixtures/event_nba_live.json", kWolves),
+                         hoops_event("fixtures/event_nba_final.json", kWolves), true)
+               .text,
+           std::string(""));
+}
+
+// Men's college basketball, recorded 2026-10-07 in the off season: last
+// season's finals (ESPN serves only the final state of a past game) and the
+// coming season's opener (see fixtures/README.md).
+static const uint32_t kMichigan = 130, kUConn = 41, kPenn = 219;
+
+static void test_mcbb_urls() {
+  CHECK_EQ(team_url(League::MCBB, 130),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/130"));
+  CHECK_EQ(event_url(League::MCBB, "401856600"),
+           std::string("https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard/401856600"));
+  CHECK_EQ(team_logo_url(League::MCBB, 130, "MICH"),
+           std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500-dark/130.png&w=64&h=64"));
+  const LeagueInfo *l = league_by_key("mcbb");
+  CHECK(l != nullptr && l->per_event && !l->season_list && l->logo_by_id && l->sport == Sport::BASKETBALL);
+  CHECK_EQ(std::string(league_path(League::MCBB)), std::string("mens-college-basketball"));
+  int n = 0;
+  for (size_t i = 0; i < kTeamCount; i++) {
+    const Team &t = kTeams[i];
+    if (t.league != League::MCBB)
+      continue;
+    n++;
+    if (t.espn_id == kMichigan)
+      CHECK_EQ(team_option(t), std::string("NCAAM: Michigan Wolverines"));
+  }
+  CHECK(n >= 350);
+}
+
+static void test_mcbb() {
+  Schedule s;
+  CHECK(parse_team_str(slurp("fixtures/team_mcbb_mich.json"), s));
+  CHECK_EQ(s.event_id, std::string("401925733"));
+  CHECK_EQ(s.kickoff_epoch, parse_iso8601_z("2026-11-02T23:00Z"));
+  CHECK_EQ(s.team_color, std::string("00274c"));
+
+  GameSnapshot p = hoops_event("fixtures/event_mcbb_pre.json", kMichigan);
+  CHECK(p.state == GameState::PRE);
+  CHECK_EQ((int) p.nba.regulation, 2);
+  CHECK_EQ(p.opp_abbr, std::string("OAK"));
+  CHECK_EQ(p.team_logo, std::string("https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500-dark/130.png&w=64&h=64"));
+  TickerOptions o;
+  CHECK_EQ(status_text(p, o, "Nov 2 6:00 PM"), std::string("Nov 2 6:00 PM | BTN | Crisler Center"));
+
+  // The national championship: two halves, no series.
+  GameSnapshot f = hoops_event("fixtures/event_mcbb_final.json", kUConn);
+  CHECK(f.state == GameState::POST);
+  CHECK_EQ((int) f.nba.regulation, 2);
+  CHECK_EQ(f.team_score, 63);
+  CHECK_EQ(f.opp_score, 69);
+  CHECK_EQ(status_text(f, o, ""), std::string("Final | CONN 34-6 | MICH 37-3"));
+  CHECK_EQ(basketball_series(f), std::string(""));
+
+  // Overtime is period 3 after two halves.
+  GameSnapshot ot = hoops_event("fixtures/event_mcbb_ot.json", kPenn);
+  CHECK_EQ(ot.period, 3);
+  CHECK(ot.team_winner);
+  CHECK_EQ(status_text(ot, o, "").rfind("Final/OT | PENN ", 0), (size_t) 0);
+
+  // Past games come back final only, so the live clock is checked on a copy.
+  GameSnapshot live = f;
+  live.state = GameState::IN;
+  live.nba.phase = Phase::PLAY;
+  live.period = 1;
+  live.display_clock = "12:34";
+  CHECK_EQ(clock_text(live), std::string("12:34 1st"));
+  live.period = 2;
+  CHECK_EQ(clock_text(live), std::string("12:34 2nd"));
+  live.period = 3;
+  CHECK_EQ(clock_text(live), std::string("12:34 OT"));
+  live.period = 4;
+  CHECK_EQ(clock_text(live), std::string("12:34 2OT"));
+  live.nba.phase = Phase::HALFTIME;
+  live.period = 1;
+  CHECK_EQ(clock_text(live), std::string("Halftime"));
+  live.nba.phase = Phase::END_PERIOD;
+  live.period = 2;
+  CHECK_EQ(clock_text(live), std::string("End 2nd"));
+}
+
 int run_football_golden();  // golden_football.cpp
 
 int main() {
@@ -1255,6 +1557,14 @@ int main() {
   test_soccer_splash();
   test_soccer_text_helpers();
   test_soccer_cups();
+  test_nba_urls();
+  test_nba_team();
+  test_nba_live();
+  test_wnba_live();
+  test_nba_pre_post();
+  test_nba_splash();
+  test_mcbb_urls();
+  test_mcbb();
   checks++;
   failures += run_football_golden();
   printf("%d checks, %d failures\n", checks, failures);

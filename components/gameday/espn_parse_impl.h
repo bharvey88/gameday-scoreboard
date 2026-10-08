@@ -232,6 +232,10 @@ inline void baseball_from_event(JsonObjectConst ev, GameSnapshot &s) {
 // moneyline on top of the shared event filter, read into s.soc.
 void fill_soccer_filter(JsonObject ev);
 void soccer_from_event(JsonObjectConst ev, GameSnapshot &s);
+// Basketball (sport_basketball.cpp): the extra fields to keep, and s.nba
+// filled from an event already read into s by snapshot_from_event.
+void fill_basketball_filter(JsonObject ev);
+void basketball_from_event(JsonObjectConst ev, GameSnapshot &s);
 
 }  // namespace detail
 
@@ -343,6 +347,8 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
     detail::fill_baseball_filter(filter.as<JsonObject>());
   if (sport == Sport::SOCCER)
     detail::fill_soccer_filter(filter.as<JsonObject>());
+  if (sport == Sport::BASKETBALL)
+    detail::fill_basketball_filter(filter.as<JsonObject>());
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, input, DeserializationOption::Filter(filter),
                                               DeserializationOption::NestingLimit(40));
@@ -356,6 +362,8 @@ template<typename TInput> bool parse_event(TInput &input, Sport sport, uint32_t 
     detail::baseball_from_event(doc.as<JsonObjectConst>(), s);
   if (sport == Sport::SOCCER)
     detail::soccer_from_event(doc.as<JsonObjectConst>(), s);
+  if (sport == Sport::BASKETBALL)
+    detail::basketball_from_event(doc.as<JsonObjectConst>(), s);
   out = s;
   return true;
 }

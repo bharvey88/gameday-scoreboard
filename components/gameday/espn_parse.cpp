@@ -186,6 +186,8 @@ Splash decide_splash(const GameSnapshot &prev, const GameSnapshot &cur, bool opp
     return baseball_splash(prev, cur, opponent_splashes, neutral);
   if (cur.sport == Sport::SOCCER)
     return soccer_splash(prev, cur, opponent_splashes, neutral);
+  if (cur.sport == Sport::BASKETBALL)
+    return basketball_splash(prev, cur, opponent_splashes, neutral);
   Splash none;
   if (!prev.valid || !cur.valid || prev.event_id != cur.event_id)
     return none;
@@ -238,6 +240,8 @@ std::string status_text(const GameSnapshot &s, const TickerOptions &o, const std
     return baseball_status_text(s, o, kickoff_local);
   if (s.sport == Sport::SOCCER)
     return soccer_status_text(s, o, kickoff_local);
+  if (s.sport == Sport::BASKETBALL)
+    return basketball_status_text(s, o, kickoff_local);
   std::string out;
   switch (s.state) {
     case GameState::NOT_FOUND:
@@ -348,6 +352,8 @@ std::string clock_text(const GameSnapshot &s) {
     return baseball_clock_text(s);
   if (s.sport == Sport::SOCCER)
     return soccer_clock_text(s);
+  if (s.sport == Sport::BASKETBALL)
+    return basketball_clock_text(s);
   bool has_clock = s.display_clock.find(':') != std::string::npos && s.period > 0;
   bool special = s.short_detail.find(':') == std::string::npos;  // Halftime, End of 3rd, Delayed, Final
   if (!has_clock || special) {

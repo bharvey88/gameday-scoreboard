@@ -57,6 +57,7 @@ struct UpdateFields {
   // Other sports (football leaves these at their defaults).
   uint8_t sport{0};        // ::espn::Sport
   std::string situation;   // baseball: the count "2-1" while a half inning is on
+                           // basketball: the playoff series "NY lead 2-1"
   int outs{-1};            // baseball: outs in the half inning, -1 when none
   uint8_t bases{0};        // baseball: 1 first, 2 second, 4 third
   bool highlight{false};   // the situation row stands out (bases loaded)
@@ -256,6 +257,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
   void set_flag_(uint8_t f, bool on);
   void save_prefs_();
   void publish_selects_();
+  void publish_team_select_(const std::string &option);
   void apply_timezone_();
   const ::espn::Team *current_team_() const;
   std::string team_option_() const;

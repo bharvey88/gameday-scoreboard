@@ -49,6 +49,33 @@ upcoming games:
 | `team_ucl_ars.json` | `.../soccer/uefa.champions/teams/359`: the same club's next Champions League game |
 | `team_uel_ars.json` | `.../soccer/uefa.europa/teams/359`: a club not in the competition gets HTTP 200 with no `nextEvent` |
 | `schedule_mls_mia.json` | `.../soccer/usa.1/teams/20232/schedule?fixture=true`, trimmed to the first 2 events (without `fixture=true` the endpoint lists past results) |
+NBA (preseason) and WNBA (semifinals), recorded 2026-10-07 from
+`.../basketball/{nba,wnba}/scoreboard/<event id>`:
+
+| File | Source |
+| --- | --- |
+| `event_nba_live.json` | 401914123 MIN @ IND, 8:27 3rd, 74-73 |
+| `event_nba_final.json` | 401914123, Final 123-112 |
+| `event_nba_clock.json` | 401908620 MIL @ OKC, 12.3 1st (tenths, no minutes) |
+| `event_nba_end.json` | 401908620, End of 1st |
+| `event_nba_pre.json` | 401914129 GS @ POR, pre-game with odds |
+| `event_wnba_live.json` | 401918297 NY @ ATL, 4.5 2nd, ATL leads series 1-0 |
+| `event_wnba_half.json` | 401918297, Halftime |
+| `event_wnba_ot.json` | 401918297, 20.8 OT |
+| `event_wnba_final.json` | 401918297, Final/OT 101-98 (series line not yet updated) |
+| `team_nba_ind.json` | `.../basketball/nba/teams/11` (next event is the game in progress) |
+| `team_wnba_ny.json` | `.../basketball/wnba/teams/9` (next event is the game in progress) |
+
+Men's college basketball, recorded 2026-10-07 between seasons from
+`.../basketball/mens-college-basketball/scoreboard/<event id>`. ESPN serves a
+past game only in its final state, so there is no live college fixture:
+
+| File | Source |
+| --- | --- |
+| `event_mcbb_final.json` | 401856600 CONN @ MICH, 2026 national championship, Final 69-63 |
+| `event_mcbb_ot.json` | 401851437 PENN @ YALE, Ivy League final, Final/OT 88-84 |
+| `event_mcbb_pre.json` | 401925733 OAK @ MICH, 2026-27 opener, pre-game |
+| `team_mcbb_mich.json` | `.../basketball/mens-college-basketball/teams/130` (next event is the opener) |
 
 `football_golden.txt` is written by the host tests (`GOLDEN_WRITE=1`) and
 pins football's output; see `golden_football.cpp`.
