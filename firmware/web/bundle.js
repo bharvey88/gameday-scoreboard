@@ -277,6 +277,10 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
   };
 
   // ---- board rendering ---------------------------------------------------
+  // ESPN also ends a postponed, suspended or canceled game in POST, and its
+  // detail says which. "Final/OT" is still a final.
+  const endedAs = (detail) => (detail && !/^final/i.test(detail) ? detail : "Final");
+
   const renderTeam = (node, league, id, abbr, rec, timeouts, poss, color) => {
     const img = node.querySelector("img");
     const src = abbr || id ? logoUrl(league, id, abbr) : "";
@@ -309,14 +313,14 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
     b.classList.remove("empty");
     msg.hidden = true;
     st.classList.toggle("live", g.s === "IN");
-    st.textContent = g.s === "IN" ? "LIVE" : g.s === "POST" ? "FINAL" : "UPCOMING";
+    st.textContent = g.s === "IN" ? "LIVE" : g.s === "POST" ? endedAs(g.detail).toUpperCase() : "UPCOMING";
     renderTeam($("#tA"), g.l, g.ti, g.ta, g.tr, g.tt, g.p === 1, g.tc);
     renderTeam($("#tB"), g.l, g.oi, g.oa, g.or, g.ot, g.p === 2, g.oc);
     $("#sA").textContent = g.ts;
     $("#sB").textContent = g.os;
     const clock = $("#clock");
     if (g.s === "IN") clock.textContent = g.c || "In progress";
-    else if (g.s === "POST") clock.textContent = "Final";
+    else if (g.s === "POST") clock.textContent = endedAs(g.detail);
     else clock.textContent = g.k || "Upcoming";
     const d = $("#down");
     d.textContent = g.s === "IN" ? g.d || "" : g.s === "PRE" && g.tv ? "on " + g.tv : "";
@@ -770,7 +774,7 @@ const TZS=[["US Eastern","America/New_York"],["US Central","America/Chicago"],["
       txt.appendChild(el("div", "n", name));
       let when = "No game scheduled";
       if (n.s === "IN") when = n.ts + " - " + n.os + (n.detail ? " · " + n.detail : "");
-      else if (n.s === "POST") when = "Final " + n.ts + " - " + n.os;
+      else if (n.s === "POST") when = endedAs(n.detail) === "Final" ? "Final " + n.ts + " - " + n.os : endedAs(n.detail);
       else if (n.s === "PRE") when = kickLabel(n.kick) + (n.tv ? " · " + n.tv : "");
       txt.appendChild(el("div", "w", when));
       row.appendChild(txt);
