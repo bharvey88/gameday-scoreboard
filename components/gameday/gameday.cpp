@@ -125,7 +125,16 @@ void GamedaySelect::control(const std::string &value) {
 
 // ---- GamedayComponent ------------------------------------------------------
 
+#ifdef USE_PSRAM
+// Keep ESPN parsing and /gameday/state in PSRAM because internal RAM is the
+// heap that runs out
+static json::SpiRamAllocator json_psram;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+#endif
+
 void GamedayComponent::setup() {
+#ifdef USE_PSRAM
+  ::espn::set_json_allocator(&json_psram);
+#endif
   this->logos_.setup();
   this->pref_ = global_preferences->make_preference<Prefs>(fnv1_hash("gameday_prefs_v1"));
   if (!this->pref_.load(&this->prefs_) || this->current_team_() == nullptr) {
@@ -1511,7 +1520,7 @@ static void put_team(JsonObject o, uint8_t league, uint32_t id) {
 // Serialises everything the page shows into state_json_. Main loop only; the
 // HTTP task copies the finished string under the mutex.
 void GamedayComponent::rebuild_state_(const UpdateFields *f) {
-  JsonDocument doc;
+  JsonDocument doc(::espn::detail::json_allocator());
   const GameSnapshot &g = this->game_;
   doc["name"] = this->hostname();
   doc["version"] = App.get_comment();
