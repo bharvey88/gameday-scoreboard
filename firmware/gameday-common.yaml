@@ -124,6 +124,7 @@ packages:
   boot: !include pages/boot.yaml
   scoreboard: !include pages/gameday-live.yaml
   wizmote: !include pages/wizmote.yaml
+  effects: !include effects.yaml
 
 # Panel count from the saved preference, applied before the display starts.
 panel_layout:
@@ -518,6 +519,9 @@ switch:
       - hub75.set_brightness:
           id: matrix
           brightness: 0
+      # Park the effects too, so the loop is not spent on a dark panel and the
+      # scoreboard is what comes back.
+      - switch.turn_off: gd_effects
 number:
   - platform: template
     name: "Brightness"
