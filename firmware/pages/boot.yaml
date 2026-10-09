@@ -79,7 +79,7 @@ globals:
   # millis() at the last moment the panel was seen on its saved network this
   # boot, 0 if it has never been on it. Read by boot_refresh and boot_hide to
   # work out whether Wi-Fi is lost; nothing latches that as a flag, because a
-  # flag does not survive the ten minute offline restart in gameday-common.yaml
+  # flag does not survive the offline restart in gameday-common.yaml
   # and never gets set at all on a boot that never connects.
   - id: boot_last_connected_ms
     type: uint32_t
@@ -254,7 +254,7 @@ script:
                   improv::STATE_PROVISIONING;
           // Lost means: there is a real saved network and the panel is not on
           // it. Derived from the live Wi-Fi state every time rather than
-          // latched, so it is still right after the ten minute offline restart
+          // latched, so it is still right after the offline restart
           // and on a cold boot with the router already down.
           //
           // Two cases, deliberately different. Connected at some point this
