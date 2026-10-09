@@ -70,6 +70,10 @@ class ESP32ImprovComponent final : public Component,
   void set_identify_duration(uint32_t identify_duration) { this->identify_duration_ = identify_duration; }
   void set_authorized_duration(uint32_t authorized_duration) { this->authorized_duration_ = authorized_duration; }
 
+  // GAMEDAY: begin
+  // The network to go back to after a failed handover. Set on every Wi-Fi connect.
+  void remember_sta(const wifi::WiFiAP &ap) { this->last_connected_sta_ = ap; }
+  // GAMEDAY: end
   void set_wifi_timeout(uint32_t wifi_timeout) { this->wifi_timeout_ = wifi_timeout; }
   uint32_t get_wifi_timeout() const { return this->wifi_timeout_; }
 
@@ -93,6 +97,7 @@ class ESP32ImprovComponent final : public Component,
   // The network the panel was using before a handover, put back if the new
   // one fails, so a wrong password does not leave the panel with none.
   wifi::WiFiAP restore_sta_;
+  wifi::WiFiAP last_connected_sta_;  // see remember_sta()
   // GAMEDAY: end
 
   BLEService *service_{nullptr};

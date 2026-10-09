@@ -18,6 +18,13 @@ owns the panel, not for the code.
 - When two favorites play at once, a new panel alternates between them. A panel that was already set up keeps showing the higher one.
 - Football works the same as before.
 
+## v1.5.5
+
+- Switching games no longer freezes the panel.
+- A wrong Wi-Fi password in the app no longer leaves the panel offline.
+- A Wi-Fi drop under 10 seconds no longer shows "Wi-Fi lost".
+- The device page shows "data stale" when updates stop.
+
 ## v1.5.4
 
 - A Game Day Scoreboard controller with a 128x64 panel now starts up using the whole panel. Before, a freshly installed or factory-reset panel drew the picture twice side by side (two setup QR codes) until you picked the panel size. DIY builds on a 64x64 panel are unchanged.

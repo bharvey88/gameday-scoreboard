@@ -420,8 +420,12 @@ void ESP32ImprovComponent::process_incoming_data_() {
         // GAMEDAY: begin
         // Only a real network counts: "Reset Wi-Fi" leaves a blank SSID, and
         // a retry after a failed handover already holds the old network.
+        // get_sta() is blank while ESPHome rescans between reconnect attempts,
+        // so fall back to the network the panel was last connected to.
         if (this->state_ != improv::STATE_PROVISIONING) {
           wifi::WiFiAP current = wifi::global_wifi_component->get_sta();
+          if (current.get_ssid().empty())
+            current = this->last_connected_sta_;
           this->restore_sta_ = current.get_ssid().empty() ? wifi::WiFiAP{} : current;
         }
         // GAMEDAY: end
@@ -471,7 +475,7 @@ void ESP32ImprovComponent::on_wifi_connect_timeout_() {
   // GAMEDAY: begin
   // Go back to the network the panel had, which is still the one saved in
   // flash. Upstream clears the list here, which left a panel with a wrong
-  // password offline until a power cycle and kept the ten minute offline
+  // password offline until a power cycle and kept the offline
   // restart in gameday-common.yaml from firing.
   if (!this->restore_sta_.get_ssid().empty()) {
     ESP_LOGI(TAG, "Going back to the saved network");
