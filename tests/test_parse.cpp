@@ -173,6 +173,7 @@ static GameSnapshot live(int us, int them, GameState st = GameState::IN) {
   GameSnapshot s;
   s.valid = true;
   s.state = st;
+  s.completed = st == GameState::POST;
   s.event_id = "1";
   s.team_abbr = "DAL";
   s.opp_abbr = "PHI";
@@ -213,6 +214,12 @@ static void test_splash() {
   CHECK_EQ(decide_splash(live(21, 20), live(21, 20, GameState::POST), true).text, std::string("DAL WINS!"));
   CHECK_EQ(decide_splash(live(20, 21), live(20, 21, GameState::POST), true).text, std::string(""));
   CHECK_EQ(decide_splash(live(21, 20, GameState::POST), live(21, 20, GameState::POST), true).text, std::string(""));
+  // Suspended or canceled mid-game: post, but no winner
+  GameSnapshot halted = live(21, 20, GameState::POST);
+  halted.completed = false;
+  halted.short_detail = "Suspended";
+  CHECK_EQ(decide_splash(live(21, 20), halted, true).text, std::string(""));
+  CHECK_EQ(decide_splash(live(20, 21), halted, true, true).text, std::string(""));
 }
 
 static void test_status_text() {
@@ -256,6 +263,19 @@ static void test_status_text() {
   f.team_record = "3-0";
   f.opp_record = "2-1";
   CHECK_EQ(status_text(f, all, ""), std::string("Final | DAL 3-0 | PHI 2-1"));
+  f.short_detail = "Final/OT";
+  CHECK_EQ(status_text(f, all, ""), std::string("Final | DAL 3-0 | PHI 2-1"));
+  // Postponed or canceled: post too, but never called a final
+  GameSnapshot pp = live(0, 0, GameState::POST);
+  pp.completed = false;
+  pp.short_detail = "Postponed";
+  pp.team_record = "3-0";
+  pp.opp_record = "2-1";
+  CHECK_EQ(status_text(pp, all, ""), std::string("Postponed | DAL 3-0 | PHI 2-1"));
+  pp.short_detail = "Canceled";
+  CHECK_EQ(status_text(pp, none, ""), std::string("Canceled | DAL 3-0 | PHI 2-1"));
+  pp.short_detail = "";
+  CHECK_EQ(status_text(pp, all, ""), std::string("Final | DAL 3-0 | PHI 2-1"));
   GameSnapshot nf;
   CHECK_EQ(status_text(nf, all, ""), std::string("No upcoming game"));
 }
