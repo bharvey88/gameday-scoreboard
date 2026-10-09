@@ -3,7 +3,7 @@ name: Build
 on:
   pull_request:
   push:
-    branches: [main, beta]
+    branches: [main, beta, dev]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -52,13 +52,24 @@ jobs:
           path: notes.md
 
   branch-rules:
-    # main is what customers run. It only takes changes promoted from beta,
-    # and only a tag on main publishes to the flasher and the panels. The
+    # Work lands in dev. beta only takes changes promoted from dev, and main
+    # (what customers run) only takes changes promoted from beta; only a tag
+    # on main publishes to the flasher and the panels. The
     # checks are steps, not job conditions, so the job passes (rather than
     # skips) when they don't apply and build still runs.
     name: Branch rules
     runs-on: ubuntu-latest
     steps:
+      - name: PRs into beta come from dev
+        if: github.event_name == 'pull_request' && github.base_ref == 'beta'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$HEAD_REF" != "dev" ] || [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::beta only takes PRs from dev (this one is from $HEAD_REPO:$HEAD_REF). Target dev instead."
+            exit 1
+          fi
       - name: PRs into main come from beta
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         env:
