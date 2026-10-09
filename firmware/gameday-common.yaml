@@ -167,6 +167,8 @@ wifi:
         // counter stays parked at zero.
         id(gd_ever_connected) = true;
         id(gd_offline_seconds) = 0;
+        if (esp32_improv::global_improv_component != nullptr)
+          esp32_improv::global_improv_component->remember_sta(wifi::global_wifi_component->get_sta());
         ESP_LOGI("wifi", "Connected. Internal heap free: %u bytes",
                  (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
   # Wi-Fi is gone. Turn Bluetooth back on so the Game Day app can find the
@@ -260,10 +262,10 @@ script:
             - lambda: |-
                 auto *w = wifi::global_wifi_component;
                 if (w == nullptr) return;
-                // has_sta() is still true after "Reset Wi-Fi": that button saves an
-                // empty SSID and the component loads it back as a configured
-                // network, so the blank SSID is the second half of this test.
-                if (w->is_connected() || !w->has_sta() || w->get_sta().get_ssid().empty()) {
+                // A panel that has connected this boot has a real saved network,
+                // and "Reset Wi-Fi" reboots. get_sta() must not be checked here:
+                // it is blank while ESPHome rescans between reconnect attempts.
+                if (w->is_connected() || !w->has_sta()) {
                   id(gd_offline_seconds) = 0;
                   return;
                 }

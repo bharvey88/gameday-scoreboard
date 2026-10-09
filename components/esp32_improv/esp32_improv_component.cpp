@@ -420,8 +420,12 @@ void ESP32ImprovComponent::process_incoming_data_() {
         // GAMEDAY: begin
         // Only a real network counts: "Reset Wi-Fi" leaves a blank SSID, and
         // a retry after a failed handover already holds the old network.
+        // get_sta() is blank while ESPHome rescans between reconnect attempts,
+        // so fall back to the network the panel was last connected to.
         if (this->state_ != improv::STATE_PROVISIONING) {
           wifi::WiFiAP current = wifi::global_wifi_component->get_sta();
+          if (current.get_ssid().empty())
+            current = this->last_connected_sta_;
           this->restore_sta_ = current.get_ssid().empty() ? wifi::WiFiAP{} : current;
         }
         // GAMEDAY: end
