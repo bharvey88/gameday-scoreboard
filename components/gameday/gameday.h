@@ -80,7 +80,8 @@ class GamedaySelect : public select::Select, public Component {
 // one JSON document and posts settings there instead of driving entities.
 //   GET  /gameday/state              full snapshot + settings
 //   POST /gameday/set?key=value...   team=nfl:6 mode=0-4 rotate=2-30 fav1..fav4=nfl:6|none
-//                                    tz=<index> tzauto=0/1 down/play/odds/opp=0/1 panels=1/2
+//                                    tz=<name, IANA name or index> tzauto=0/1
+//                                    down/play/odds/opp=0/1 panels=1/2
 //                                    lockon=5-120 (min) release=30-3600 (s) collide=0 stick|1 alternate
 //   POST /gameday/action?do=refresh|demo   (demo: a scripted game on the panel, ~40s)
 // Requests arrive on the HTTP task; settings are applied on the main loop.

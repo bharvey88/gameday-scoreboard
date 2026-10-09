@@ -5,7 +5,7 @@ substitutions:
   # The MAC suffix keeps two panels on one network apart: gameday-2f6a70.local
   name: "gameday"
   friendly_name: "Game Day Scoreboard"
-  version: "1.5.4"
+  version: "1.5.5"
   # Set by each board's top-level file; names the manifest folder.
   variant: "moonhub75"
 
@@ -158,6 +158,7 @@ wifi:
   # re-enters setup mode with BLE on next boot.
   on_connect:
     - script.stop: gd_ble_grace
+    - script.stop: boot_wifi_lost_later
     - ble.disable:
     - lambda: |-
         // Arms the ten minute offline restart below. Until the panel has been
@@ -170,12 +171,13 @@ wifi:
   # Wi-Fi is gone. Turn Bluetooth back on so the Game Day app can find the
   # panel and hand it new credentials (a changed router password is the
   # common case, and there is no other way back in), and say so on the
-  # screen instead of leaving a stale score up. boot_check's poll repaints
-  # the normal lines by itself once Wi-Fi returns, so a router reboot
-  # resolves with no reboot of our own.
+  # screen instead of leaving a stale score up. A drop shorter than
+  # boot_wifi_lost_later's wait never covers the scoreboard. boot_check's poll
+  # repaints the normal lines by itself once Wi-Fi returns, so a router
+  # reboot resolves with no reboot of our own.
   on_disconnect:
     - script.execute: gd_ble_grace
-    - script.execute: boot_wifi_lost
+    - script.execute: boot_wifi_lost_later
     - lambda: |-
         ESP_LOGW("wifi", "Disconnected. Internal heap free: %u bytes",
                  (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
@@ -604,6 +606,19 @@ sensor:
     lambda: |-
       #include "esp_heap_caps.h"
       return (float) heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+  # The biggest single piece of that free internal RAM. A large allocation
+  # needs one piece, so this can run low while the total above looks fine.
+  - platform: template
+    name: "Largest Free Block (internal)"
+    device_class: data_size
+    state_class: measurement
+    entity_category: diagnostic
+    unit_of_measurement: "KiB"
+    update_interval: 30s
+    lambda: |-
+      #include "esp_heap_caps.h"
+      return (float) heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;
+    disabled_by_default: true
   - platform: wifi_signal
     name: RSSI
     update_interval: 60s
