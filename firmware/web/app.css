@@ -150,6 +150,7 @@ button { font: inherit; color: inherit; }
 .panelpick svg { width: 100%; max-width: 150px; height: auto; }
 .panelpick svg rect { fill: #1d2532; stroke: #5a6678; stroke-width: 2; }
 .panelpick.on svg rect { fill: #3a3210; stroke: var(--gold); }
+.panelpick small { color: var(--muted); font-size: 11px; margin-top: -4px; }
 
 .foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 22px; }
 .foot span { margin: 0 6px; }

@@ -245,9 +245,10 @@ test("the panel picker posts the new layout", async ({ page, request }) => {
   await reset(request);
   await page.goto("/");
   await expect(page.locator("#panels .panelpick.on")).toHaveAttribute("data-cols", "2");
+  await expect(page.locator("#panels .panelpick.on")).toContainText("One 128x64 panel");
   await page.locator('#panels .panelpick[data-cols="1"]').click();
   await expectSet(request, { panels: "1" });
-  await expect(page.locator("#toast")).toHaveText("Restarting with one panel");
+  await expect(page.locator("#toast")).toHaveText("Restarting as 64x64");
   await expect(page.locator('#panels .panelpick[data-cols="2"]')).toBeDisabled();
 });
 
