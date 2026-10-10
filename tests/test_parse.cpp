@@ -619,6 +619,45 @@ static void test_boot_hold() {
   CHECK(!boot_hold(false, before_wrap, before_wrap + BOOT_HOLD_CAP_MS));
 }
 
+static void test_qc_press() {
+  // Five quick presses early on: the fifth starts QC mode.
+  uint8_t n = 0;
+  uint32_t last = 0;
+  uint32_t t = 4000;
+  for (int i = 0; i < 4; i++, t += 300)
+    CHECK(!qc_press(n, last, t));
+  CHECK(qc_press(n, last, t));
+  // It starts over after that.
+  CHECK(n == 0);
+  CHECK(!qc_press(n, last, t + 300));
+
+  // A gap longer than QC_PRESS_GAP_MS starts the count over.
+  n = 0;
+  t = 2000;
+  for (int i = 0; i < 4; i++, t += 300)
+    CHECK(!qc_press(n, last, t));
+  t += QC_PRESS_GAP_MS + 1;
+  for (int i = 0; i < 4; i++, t += 300)
+    CHECK(!qc_press(n, last, t));
+  CHECK(qc_press(n, last, t));
+
+  // Exactly the gap still counts.
+  n = 0;
+  t = 1000;
+  for (int i = 0; i < 4; i++, t += QC_PRESS_GAP_MS)
+    CHECK(!qc_press(n, last, t));
+  CHECK(qc_press(n, last, t));
+
+  // Only in the first 30 s: a run that crosses the window never finishes.
+  n = 0;
+  t = QC_WINDOW_MS - 900;
+  for (int i = 0; i < 3; i++, t += 300)
+    CHECK(!qc_press(n, last, t));
+  CHECK(!qc_press(n, last, t));
+  CHECK(!qc_press(n, last, t + 300));
+  CHECK(n == 0);
+}
+
 static void test_rotate_minutes() {
   // 1 minute is a real choice on the device page and in the app. Treating it
   // as corrupt at boot reset the mode to My team.
@@ -793,6 +832,7 @@ int main() {
   test_schedule_due();
   test_team_cache();
   test_boot_hold();
+  test_qc_press();
   test_rotate_minutes();
   test_logo_lru();
   test_json_allocator();

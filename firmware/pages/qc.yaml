@@ -1,0 +1,290 @@
+# QC mode: a factory check that needs no Wi-Fi. It covers the whole panel,
+# whatever else is up, and runs round and round:
+#
+#   red, green, blue, white   2 s each, the whole panel lit
+#   row walk                  one white line down all 64 rows, 40 ms a row
+#   readout                   6 s: firmware version, PSRAM size, the
+#                             strongest Wi-Fi network's RSSI (from a scan, no
+#                             join needed), panel size, and the button test
+#
+# Getting in: five quick presses of the boot button in the first 30 s after
+# power-up (qc_press in components/gameday/startup.h), or
+# POST /gameday/action?do=qc on a panel that is on Wi-Fi.
+#
+# The first press in QC mode is the button test: the readout comes up with
+# "Button OK" in green. The next press leaves, and so does 2 minutes in QC.
+# Leaving puts the screen and the Power switch back the way they were; it
+# doesn't restart the panel, so a burn-in run doesn't count a restart.
+#
+# The panel stays at its Brightness setting, so full white never draws more
+# than the owner's own setting would.
+
+globals:
+  - id: qc_active
+    type: bool
+    initial_value: 'false'
+  # The run of quick presses so far (qc_press)
+  - id: qc_presses
+    type: uint8_t
+    initial_value: '0'
+  - id: qc_last_press_ms
+    type: uint32_t
+    initial_value: '0'
+  # millis() when QC mode started, and when the current step started
+  - id: qc_since_ms
+    type: uint32_t
+    initial_value: '0'
+  - id: qc_step_ms
+    type: uint32_t
+    initial_value: '0'
+  - id: qc_step
+    type: int
+    initial_value: '0'
+  - id: qc_button_ok
+    type: bool
+    initial_value: 'false'
+  # The Power switch when QC mode started, put back when it ends
+  - id: qc_power_was
+    type: bool
+    initial_value: 'true'
+
+script:
+  - id: qc_start
+    then:
+      - lambda: |-
+          if (id(qc_active)) return;
+          ESP_LOGI("qc", "QC mode on");
+          id(qc_active) = true;
+          id(qc_since_ms) = millis();
+          id(qc_button_ok) = false;
+          id(qc_power_was) = id(power).state;
+          lv_obj_move_foreground(id(qc_layer));
+          lv_obj_clear_flag(id(qc_layer), LV_OBJ_FLAG_HIDDEN);
+          id(qc_show).execute(0);
+      # Lit at the Brightness setting even if Power was off. The switch is
+      # left alone, so leaving QC knows what to go back to.
+      - hub75.set_brightness:
+          id: matrix
+          brightness: !lambda 'return (uint8_t) id(brightness).state;'
+      - script.execute: gd_repaint
+
+  - id: qc_stop
+    then:
+      - lambda: |-
+          if (!id(qc_active)) return;
+          ESP_LOGI("qc", "QC mode off");
+          id(qc_active) = false;
+          lv_obj_add_flag(id(qc_layer), LV_OBJ_FLAG_HIDDEN);
+      - if:
+          condition:
+            lambda: 'return !id(qc_power_was);'
+          then:
+            - switch.turn_off: power
+          else:
+            - switch.turn_on: power
+
+  # Draw a step: 0-3 the fills, 4 the row walk, 5 the readout.
+  - id: qc_show
+    parameters:
+      step: int
+    then:
+      - lambda: |-
+          static const uint32_t FILLS[4] = {0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF};
+          id(qc_step) = step;
+          id(qc_step_ms) = millis();
+          ESP_LOGD("qc", "Step %d", step);
+          lv_obj_t *lines[7] = {id(qc_l1), id(qc_l2), id(qc_l3), id(qc_l4), id(qc_l5), id(qc_l6), id(qc_l7)};
+          const bool readout = step == 5;
+          for (auto *l : lines) {
+            if (readout) lv_obj_clear_flag(l, LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(l, LV_OBJ_FLAG_HIDDEN);
+          }
+          if (step == 4) {
+            lv_obj_set_y(id(qc_row), 0);
+            lv_obj_clear_flag(id(qc_row), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(qc_row), LV_OBJ_FLAG_HIDDEN);
+          }
+          const uint32_t bg = step < 4 ? FILLS[step] : 0x000000;
+          lv_obj_set_style_bg_color(id(qc_layer), lv_color_hex(bg), LV_PART_MAIN);
+          if (readout)
+            id(qc_readout).execute();
+
+  # The readout's lines, 12 characters at most so each fits a 64 px panel.
+  # Runs again every second while it is up, so a scan that finishes partway
+  # through shows.
+  - id: qc_readout
+    then:
+      - lambda: |-
+          char buf[16];
+          lv_label_set_text(id(qc_l1), "QC MODE");
+          lv_label_set_text(id(qc_l2), "v${version}");
+          const uint32_t mb = gameday::qc_psram_mb();
+          if (mb > 0) snprintf(buf, sizeof(buf), "PSRAM %u MB", (unsigned) mb);
+          else snprintf(buf, sizeof(buf), "NO PSRAM");
+          lv_label_set_text(id(qc_l3), buf);
+          lv_obj_set_style_text_color(id(qc_l3), lv_color_hex(mb > 0 ? 0xFFFFFF : 0xFF0000), LV_PART_MAIN);
+          const int rssi = gameday::qc_strongest_rssi();
+          if (rssi != 0) snprintf(buf, sizeof(buf), "WiFi %ddBm", rssi);
+          else snprintf(buf, sizeof(buf), "WiFi scan");
+          lv_label_set_text(id(qc_l4), buf);
+          lv_disp_t *d = lv_disp_get_default();
+          snprintf(buf, sizeof(buf), "Panel %dx%d", (int) lv_disp_get_hor_res(d), (int) lv_disp_get_ver_res(d));
+          lv_label_set_text(id(qc_l5), buf);
+          const bool ok = id(qc_button_ok);
+          lv_label_set_text(id(qc_l6), ok ? "Button OK" : "Press button");
+          lv_obj_set_style_text_color(id(qc_l6), lv_color_hex(ok ? 0x00FF00 : 0xFFFFFF), LV_PART_MAIN);
+          lv_label_set_text(id(qc_l7), ok ? "Again = exit" : "");
+          ESP_LOGD("qc", "PSRAM %u MB, RSSI %d, panel %dx%d, button %s", (unsigned) mb, rssi,
+                   (int) lv_disp_get_hor_res(d), (int) lv_disp_get_ver_res(d), ok ? "OK" : "not pressed");
+
+interval:
+  - interval: 40ms
+    id: qc_tick
+    then:
+      - lambda: |-
+          if (!id(qc_active)) return;
+          const uint32_t now = millis();
+          if (now - id(qc_since_ms) >= 2 * 60 * 1000) {
+            id(qc_stop).execute();
+            return;
+          }
+          const uint32_t in_step = now - id(qc_step_ms);
+          const int step = id(qc_step);
+          if (step < 4) {
+            if (in_step >= 2000) id(qc_show).execute(step + 1);
+          } else if (step == 4) {
+            const uint32_t row = in_step / 40;
+            if (row >= 64) id(qc_show).execute(5);
+            else lv_obj_set_y(id(qc_row), (int32_t) row);
+          } else {
+            static uint32_t read_ms = 0;
+            if (in_step >= 6000) {
+              id(qc_show).execute(0);
+            } else if (now - read_ms >= 1000) {
+              read_ms = now;
+              id(qc_readout).execute();
+            }
+          }
+
+# Counted on the press, not the click, so QC starts as the fifth press goes
+# down. The power toggle on click (firmware/controllers) stands aside while
+# QC runs, and so does boot.yaml's hold timer: a long press here never shows
+# the address or resets Wi-Fi.
+binary_sensor:
+  - id: !extend power_button
+    on_press:
+      - lambda: |-
+          const uint32_t now = millis();
+          if (id(qc_active)) {
+            id(boot_button_press_ms) = 0;
+            // The tail of the gesture is not the button test.
+            if (now - id(qc_since_ms) < 1000) return;
+            if (!id(qc_button_ok)) {
+              ESP_LOGI("qc", "Button OK");
+              id(qc_button_ok) = true;
+              id(qc_show).execute(5);
+            } else {
+              id(qc_stop).execute();
+            }
+            return;
+          }
+          if (espn::qc_press(id(qc_presses), id(qc_last_press_ms), now)) {
+            id(boot_button_press_ms) = 0;
+            id(qc_start).execute();
+          }
+
+lvgl:
+  top_layer:
+    widgets:
+      - obj:
+          id: qc_layer
+          scrollbar_mode: "OFF"
+          x: 0
+          y: 0
+          width: 100%
+          height: 100%
+          bg_opa: COVER
+          bg_color: 0x000000
+          radius: 0
+          pad_all: 0
+          border_width: 0
+          hidden: true
+          widgets:
+            - obj:
+                id: qc_row
+                scrollbar_mode: "OFF"
+                x: 0
+                y: 0
+                width: 100%
+                height: 1
+                bg_opa: COVER
+                bg_color: 0xFFFFFF
+                radius: 0
+                pad_all: 0
+                border_width: 0
+                hidden: true
+            - label:
+                id: qc_l1
+                x: 0
+                y: 0
+                width: 100%
+                long_mode: CLIP
+                text_align: CENTER
+                text: ""
+                styles: [st_spleen8]
+                text_color: 0xFFD000
+            - label:
+                id: qc_l2
+                x: 0
+                y: 9
+                width: 100%
+                long_mode: CLIP
+                text_align: CENTER
+                text: ""
+                styles: [st_spleen8]
+            - label:
+                id: qc_l3
+                x: 0
+                y: 18
+                width: 100%
+                long_mode: CLIP
+                text_align: CENTER
+                text: ""
+                styles: [st_spleen8]
+            - label:
+                id: qc_l4
+                x: 0
+                y: 27
+                width: 100%
+                long_mode: CLIP
+                text_align: CENTER
+                text: ""
+                styles: [st_spleen8]
+            - label:
+                id: qc_l5
+                x: 0
+                y: 36
+                width: 100%
+                long_mode: CLIP
+                text_align: CENTER
+                text: ""
+                styles: [st_spleen8]
+            - label:
+                id: qc_l6
+                x: 0
+                y: 46
+                width: 100%
+                long_mode: CLIP
+                text_align: CENTER
+                text: ""
+                styles: [st_spleen8]
+            - label:
+                id: qc_l7
+                x: 0
+                y: 55
+                width: 100%
+                long_mode: CLIP
+                text_align: CENTER
+                text: ""
+                styles: [st_spleen8]
