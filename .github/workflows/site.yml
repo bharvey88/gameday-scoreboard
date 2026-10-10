@@ -90,6 +90,8 @@ jobs:
               gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n "firmware-$v" -D site/firmware || echo "no $v firmware for $TAG"
             fi
           done
+          # v1.4.2 polls firmware/m1/, the MoonHub75 folder's old name.
+          cp -r site/firmware/moonhub75 site/firmware/m1
           bash scripts/check_site_firmware.sh site "$TAG"
           sed -i "s/__VERSION__/${TAG}/g" site/index.html
           ls -laR site
