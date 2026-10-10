@@ -124,6 +124,8 @@ packages:
   boot: !include pages/boot.yaml
   scoreboard: !include pages/gameday-live.yaml
   wizmote: !include pages/wizmote.yaml
+  # Factory check (five quick boot button presses in the first 30 s)
+  qc: !include pages/qc.yaml
 
 # Panel count from the saved preference, applied before the display starts.
 panel_layout:
@@ -408,6 +410,12 @@ gameday:
           lambda: 'return x == "logo_ready";'
         then:
           - script.execute: gd_show_logos
+    # The QC screen (pages/qc.yaml), for a panel already on Wi-Fi
+    - if:
+        condition:
+          lambda: 'return x == "qc";'
+        then:
+          - script.execute: qc_start
     - if:
         condition:
           lambda: 'return x == "team_picked";'

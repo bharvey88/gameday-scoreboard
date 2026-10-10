@@ -108,7 +108,12 @@ binary_sensor:
       - delayed_off: 10ms
     on_click:
       then:
-        - switch.toggle: power
+        # QC mode (pages/qc.yaml) has the button while it runs.
+        - if:
+            condition:
+              lambda: 'return !id(qc_active);'
+            then:
+              - switch.toggle: power
 
 lvgl:
   byte_order: little_endian

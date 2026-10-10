@@ -83,7 +83,8 @@ class GamedaySelect : public select::Select, public Component {
 //                                    tz=<name, IANA name or index> tzauto=0/1
 //                                    down/play/odds/opp=0/1 panels=1/2
 //                                    lockon=5-120 (min) release=30-3600 (s) collide=0 stick|1 alternate
-//   POST /gameday/action?do=refresh|demo   (demo: a scripted game on the panel, ~40s)
+//   POST /gameday/action?do=refresh|demo|qc   (demo: a scripted game on the panel, ~40s;
+//                                               qc: the factory check, firmware/pages/qc.yaml)
 // Requests arrive on the HTTP task; settings are applied on the main loop.
 class GamedayComponent : public Component, public AsyncWebHandler {
  public:

@@ -96,4 +96,30 @@ inline bool boot_hold(bool board_ready, uint32_t since_ms, uint32_t now_ms) {
   return !board_ready && since_ms != 0 && (uint32_t) (now_ms - since_ms) < BOOT_HOLD_CAP_MS;
 }
 
+// QC mode (firmware/pages/qc.yaml) starts on five quick presses of the boot
+// button in the first 30 s after power-up. Each press has to come within
+// QC_PRESS_GAP_MS of the one before, so clicking Power a few times, or
+// clicking it later on, never gets there.
+static const uint32_t QC_WINDOW_MS = 30 * 1000;
+static const uint32_t QC_PRESS_GAP_MS = 800;
+static const uint8_t QC_PRESSES = 5;
+
+// count is the run of quick presses so far and last_ms the time of the
+// previous one; both start at 0. Returns true on the press that completes
+// the gesture, and starts the count over.
+inline bool qc_press(uint8_t &count, uint32_t &last_ms, uint32_t now_ms) {
+  if (now_ms >= QC_WINDOW_MS) {
+    count = 0;
+    return false;
+  }
+  if (count > 0 && now_ms - last_ms > QC_PRESS_GAP_MS)
+    count = 0;
+  count++;
+  last_ms = now_ms;
+  if (count < QC_PRESSES)
+    return false;
+  count = 0;
+  return true;
+}
+
 }  // namespace espn
