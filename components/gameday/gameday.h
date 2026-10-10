@@ -244,6 +244,7 @@ class GamedayComponent : public Component, public AsyncWebHandler {
     uint32_t our_id{0};
   };
   void start_job_();
+  void start_worker_();
   static void worker_(void *arg);
   void run_job_();
   void apply_job_();

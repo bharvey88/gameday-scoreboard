@@ -25,7 +25,10 @@ class Locked {
   SemaphoreHandle_t lock_;
 };
 
-void LogoCache::setup() { this->lock_ = xSemaphoreCreateMutex(); }
+void LogoCache::setup() {
+  this->lock_ = xSemaphoreCreateMutex();
+  this->entries_.reserve(MAX_LOGOS);
+}
 
 image::Image *LogoCache::get(const std::string &url) {
   if (url.empty() || this->lock_ == nullptr)
@@ -33,11 +36,11 @@ image::Image *LogoCache::get(const std::string &url) {
   Locked guard(this->lock_);
   uint32_t now = millis();
   for (auto &e : this->entries_) {
-    if (e->url != url)
+    if (std::string_view(e->url) != url)
       continue;
     e->used_ms = now;
     if (e->state == State::READY)
-      return e->image.get();
+      return &*e->image;
     if (e->state == State::FAILED && ::espn::logo_retry_due(e->failed_ms, now)) {
       e->state = State::QUEUED;
       this->start_task_();
@@ -46,7 +49,7 @@ image::Image *LogoCache::get(const std::string &url) {
   }
   this->make_room_();
   auto e = std::make_unique<Entry>();
-  e->url = url;
+  e->url.assign(url.data(), url.size());
   e->used_ms = now;
   this->entries_.push_back(std::move(e));
   this->start_task_();
@@ -63,7 +66,7 @@ void LogoCache::pin(const std::string &team, const std::string &opponent) {
   this->pinned_[1] = opponent;
 }
 
-bool LogoCache::pinned_url_(const std::string &url) const {
+bool LogoCache::pinned_url_(std::string_view url) const {
   for (const auto &p : this->pinned_) {
     if (!p.empty() && p == url)
       return true;
@@ -110,7 +113,8 @@ void LogoCache::start_task_() {
   this->task_running_ = true;
   // Same stack as the ESPN worker: the TLS handshake needs it.
   if (xTaskCreate(&LogoCache::task_, "gameday_logo", 16384, this, 1, nullptr) != pdPASS) {
-    ESP_LOGW(TAG, "Could not start the logo task");
+    ESP_LOGW(TAG, "Could not start the logo task (largest free internal block %u bytes)",
+             (unsigned) heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     this->task_running_ = false;
   }
 }
@@ -139,9 +143,9 @@ void LogoCache::run_() {
         return;
       }
       job->state = State::LOADING;
-      url = job->url;
+      url.assign(job->url.data(), job->url.size());
     }
-    std::vector<uint8_t> body;
+    Bytes body;
     uint32_t start = millis();
     bool ok = this->download_(url, body);
     size_t bytes = body.size();
@@ -164,7 +168,7 @@ void LogoCache::run_() {
   }
 }
 
-bool LogoCache::download_(const std::string &url, std::vector<uint8_t> &body) {
+bool LogoCache::download_(const std::string &url, Bytes &body) {
   std::vector<http_request::Header> headers = {
       {"User-Agent", USER_AGENT},
       {"Accept", "image/png,*/*;q=0.8"},
@@ -192,27 +196,30 @@ bool LogoCache::download_(const std::string &url, std::vector<uint8_t> &body) {
   return true;
 }
 
-std::unique_ptr<runtime_image::RuntimeImage> LogoCache::decode_(std::vector<uint8_t> &body) {
-  auto image = std::make_unique<runtime_image::RuntimeImage>(runtime_image::PNG, image::IMAGE_TYPE_RGB565,
-                                                             image::TRANSPARENCY_ALPHA_CHANNEL, nullptr, false,
-                                                             LOGO_SIZE, LOGO_SIZE);
-  if (!image->begin_decode(body.size()))
-    return nullptr;
+// Decodes into the entry itself, so the image object lives in PSRAM with it.
+// Safe without the lock: the entry is DOWNLOADED until the caller marks it
+// READY, so nothing draws it and nothing drops it.
+bool LogoCache::decode_(std::optional<runtime_image::RuntimeImage> &image, const Bytes &body) {
+  image.emplace(runtime_image::PNG, image::IMAGE_TYPE_RGB565, image::TRANSPARENCY_ALPHA_CHANNEL, nullptr, false,
+                LOGO_SIZE, LOGO_SIZE);
+  bool ok = image->begin_decode(body.size());
   size_t offset = 0;
-  while (offset < body.size()) {
-    int used = image->feed_data(body.data() + offset, body.size() - offset);
+  while (ok && offset < body.size()) {
+    // feed_data takes a non-const pointer but only reads it.
+    int used = image->feed_data(const_cast<uint8_t *>(body.data()) + offset, body.size() - offset);
     if (used < 0) {
       ESP_LOGW(TAG, "Logo decode error: %s", runtime_image::decode_error_to_string(used));
-      image->release();
-      return nullptr;
+      ok = false;
     }
-    if (used == 0)
+    if (used <= 0)
       break;
     offset += (size_t) used;
   }
-  if (!image->end_decode())
-    return nullptr;
-  return image;
+  if (ok)
+    ok = image->end_decode();
+  if (!ok)
+    image.reset();
+  return ok;
 }
 
 bool LogoCache::loop() {
@@ -224,7 +231,7 @@ bool LogoCache::loop() {
   bool ready = false;
   while (true) {
     Entry *job = nullptr;
-    std::vector<uint8_t> body;
+    Bytes body;
     {
       Locked guard(this->lock_);
       for (auto &e : this->entries_) {
@@ -239,10 +246,9 @@ bool LogoCache::loop() {
     if (job == nullptr)
       return ready;
     // Only the main loop drops entries, so job stays valid without the lock.
-    auto image = this->decode_(body);
+    bool ok = this->decode_(job->image, body);
     Locked guard(this->lock_);
-    if (image) {
-      job->image = std::move(image);
+    if (ok) {
       job->state = State::READY;
       ready = true;
     } else {
