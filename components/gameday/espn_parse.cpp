@@ -79,12 +79,15 @@ std::string dark_logo(const std::string &url) {
   return "https://a.espncdn.com/combiner/i?img=" + out.substr(path) + "&w=64&h=64";
 }
 
+// The same URL the scoreboard gives this team, so the logo cache downloads it
+// once. The scoreboard's NFL logos sit under /scoreboard/, and that variant is
+// not always the same picture (the Jets').
 std::string team_logo_url(League league, uint32_t espn_id, const char *abbr) {
   std::string a = abbr ? abbr : "";
   for (auto &c : a)
     c = (char) tolower((unsigned char) c);
   if (league == League::NFL)
-    return dark_logo("https://a.espncdn.com/i/teamlogos/nfl/500/" + a + ".png");
+    return dark_logo("https://a.espncdn.com/i/teamlogos/nfl/500/scoreboard/" + a + ".png");
   return dark_logo("https://a.espncdn.com/i/teamlogos/ncaa/500/" + std::to_string(espn_id) + ".png");
 }
 
