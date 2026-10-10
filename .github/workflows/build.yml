@@ -208,6 +208,8 @@ jobs:
           # docs/site/. (not docs/site/*) so .well-known/ is copied too.
           cp -r docs/site/. site/
           cp -r artifacts/* site/firmware/
+          # v1.4.2 polls firmware/m1/, the MoonHub75 folder's old name.
+          cp -r site/firmware/moonhub75 site/firmware/m1
           sed -i "s/__VERSION__/${GITHUB_REF_NAME}/g" site/index.html
           ls -R site
           bash scripts/check_site_firmware.sh site "$GITHUB_REF_NAME"

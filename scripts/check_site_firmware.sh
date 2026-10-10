@@ -8,7 +8,7 @@ site=$1
 want=${2#v}
 fail=0
 
-for v in moonhub75 scoreboard75; do
+for v in moonhub75 scoreboard75 m1; do
   m="$site/firmware/$v/manifest.json"
   if [ ! -f "$m" ]; then
     echo "::error::$m is missing"
