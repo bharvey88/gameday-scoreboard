@@ -366,8 +366,8 @@ script:
             id(boot_view).execute(wide && !provisioning,
                                   !provisioning && (wide || id(boot_qr_frame) == 1));
             if (provisioning) {
-              const auto joining = w->get_sta().get_ssid();
-              id(boot_set_lines).execute("JOINING", joining.empty() ? std::string("Wi-Fi") : joining.str(), "", "", true);
+              const std::string joining = w->get_sta().get_ssid().str();
+              id(boot_set_lines).execute("JOINING", joining.empty() ? std::string("Wi-Fi") : joining, "", "", true);
             } else
               id(boot_set_lines).execute("Wi-Fi", "lost", "open app", "", true);
           } else if (!w->has_sta() || w->is_ap_active()) {
@@ -381,8 +381,8 @@ script:
             id(boot_view).execute(wide && !provisioning,
                                   !provisioning && (wide || frame == 1));
             if (provisioning) {
-              const auto joining = w->get_sta().get_ssid();
-              id(boot_set_lines).execute("JOINING", joining.empty() ? std::string("Wi-Fi") : joining.str(), "", "", true);
+              const std::string joining = w->get_sta().get_ssid().str();
+              id(boot_set_lines).execute("JOINING", joining.empty() ? std::string("Wi-Fi") : joining, "", "", true);
             } else if (frame == 2)
               id(boot_set_lines).execute("Join WiFi", "Game Day", "Scoreboard", "", true);
             else
@@ -630,8 +630,8 @@ esp32_improv:
         id(boot_qr_cycle).execute(0, false);
         id(boot_view).execute(false, false);
         // Name the network the app just handed over, so a wrong pick shows here.
-        const auto joining = wifi::global_wifi_component->get_sta().get_ssid();
-        id(boot_set_lines).execute("JOINING", joining.empty() ? std::string("Wi-Fi") : joining.str(), "", "", true);
+        const std::string joining = wifi::global_wifi_component->get_sta().get_ssid().str();
+        id(boot_set_lines).execute("JOINING", joining.empty() ? std::string("Wi-Fi") : joining, "", "", true);
   on_provisioned:
     # Credentials worked; nudge boot_check's 500ms poll now instead of
     # waiting up to half a second for it to notice and repaint the
