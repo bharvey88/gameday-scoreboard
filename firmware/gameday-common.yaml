@@ -366,6 +366,12 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  # The sport on the board (0 football), so the page layout can leave the
+  # timeout pips hidden for other sports until the next board update.
+  - id: gd_sport
+    type: int
+    restore_value: no
+    initial_value: '0'
   # The logos the board wants right now, from the latest board update.
   - id: gd_team_logo_url
     type: std::string
@@ -472,6 +478,13 @@ gameday:
         opponent_record: !lambda 'return x.opponent_record;'
         splash_text: !lambda 'return x.splash_text;'
         splash_color: !lambda 'return (int) x.splash_color;'
+        sport: !lambda 'return (int) x.sport;'
+        situation: !lambda 'return x.situation;'
+        outs: !lambda 'return x.outs;'
+        bases: !lambda 'return (int) x.bases;'
+        highlight: !lambda 'return x.highlight;'
+        team_marks: !lambda 'return x.team_marks;'
+        opp_marks: !lambda 'return x.opp_marks;'
     - lambda: |-
         id(gd_team_logo_url) = x.team_logo;
         id(gd_opp_logo_url) = x.opponent_logo;

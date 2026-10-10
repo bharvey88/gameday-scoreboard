@@ -16,6 +16,10 @@ struct FavGame {
   GameState state{GameState::NOT_FOUND};
   int64_t kickoff_epoch{0};
   int64_t final_epoch{0};  // when the panel first saw it go final; 0 = fetched already final
+  // How far ahead (or back, for a final) a card may be and still cycle while
+  // idle; 0 = no limit. Football has none, so a bye week never hides a team;
+  // other leagues use it to drop a team that is out of season.
+  int64_t horizon_s{0};
 };
 
 struct FavRules {
@@ -24,6 +28,9 @@ struct FavRules {
   bool alternate{false};      // two locked games: flip between them (else the higher slot wins)
   int64_t rotate_s{5 * 60};   // flip interval when alternating
   int64_t dwell_s{10};        // seconds per card in the idle playlist
+  bool today_only{false};     // idle playlist: only games today (local time) or live
+  int64_t day_start{0};       // today's local midnight, epoch seconds
+  int64_t day_end{0};         // the next one
 };
 
 struct FavChoice {
@@ -45,6 +52,23 @@ inline bool fav_locked(const FavGame &g, int64_t now, const FavRules &r) {
     default:
       return false;
   }
+}
+
+// May the idle playlist show this card? `today` applies the today-only filter.
+inline bool fav_idle_ok(const FavGame &g, int64_t now, const FavRules &r, bool today) {
+  if (!g.valid)
+    return false;
+  if (g.state == GameState::IN)
+    return true;
+  if (g.horizon_s > 0) {
+    if (g.state == GameState::PRE && g.kickoff_epoch - now > g.horizon_s)
+      return false;
+    if (g.state == GameState::POST && now - g.kickoff_epoch > g.horizon_s)
+      return false;
+  }
+  if (!today)
+    return true;
+  return g.kickoff_epoch >= r.day_start && g.kickoff_epoch < r.day_end;
 }
 
 // Next entry after `from` that satisfies `ok`, wrapping; -1 if none.
@@ -92,10 +116,30 @@ inline FavChoice pick_favorite(const std::vector<FavGame> &games, int64_t now, c
   }
 
   // Idle playlist. A pinned card seeds it; dwell then moves on like any other.
-  if (valid(current) && now - shown_since < r.dwell_s)
+  // Cards that pass the filters cycle. With none passing, the filters relax
+  // one at a time (today only, then the season horizon) so the panel never
+  // goes blank while it has cards.
+  int level = 0;
+  auto ok_at = [&](int i, int lv) {
+    if (!valid(i))
+      return false;
+    if (lv >= 2)
+      return true;
+    return fav_idle_ok(games[i], now, r, lv == 0 && r.today_only);
+  };
+  for (; level < 2; level++) {
+    bool any = false;
+    for (int i = 0; i < (int) games.size() && !any; i++)
+      any = ok_at(i, level);
+    if (any)
+      break;
+  }
+  auto ok = [&](int i) { return ok_at(i, level); };
+  // A remote press shows its card for the dwell even when a filter would skip it.
+  if ((ok(current) || (current == pinned && valid(current))) && now - shown_since < r.dwell_s)
     c.index = current;
   else
-    c.index = fav_next_(games, current, valid);
+    c.index = fav_next_(games, current, ok);
   return c;
 }
 

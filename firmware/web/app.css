@@ -277,3 +277,12 @@ button { font: inherit; color: inherit; }
   .grid { column-gap: 18px; }
 }
 
+
+/* Favorites list rows: logo, name, move and remove */
+.ctl.fav img { width: 28px; height: 28px; object-fit: contain; flex: none; }
+#favAdd { margin-top: 10px; }
+
+/* Live mode league chips */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; padding: 4px 10px; cursor: pointer; }
+.chip.on { color: var(--text); border-color: var(--accent); }

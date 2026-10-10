@@ -8,6 +8,16 @@ matching section fails the build.
 Format: `## vX.Y.Z` heading, then short bullets written for the person who
 owns the panel, not for the code.
 
+## v1.6.0
+
+- Pick a team from MLB, the NBA, the WNBA, men's college basketball, the NHL, MLS or the Premier League on the device page, and the panel follows it the way it follows football.
+- Baseball shows the inning, the count, outs and the runners on a small diamond. Hockey and basketball show the period and clock, and the playoff series when there is one. Soccer shows the minute, stoppage time, the latest goal and red cards, and follows Premier League clubs into the Champions League, Europa League and Conference League and MLS clubs into the CONCACAF Champions Cup.
+- Baseball celebrates runs and home runs, and hockey and soccer celebrate goals. Basketball only celebrates the win, since a basket every few seconds would keep the screen covered.
+- Favorites hold up to 16 teams from any league, in priority order. Turn on "Only today's games" to cycle through just the favorites playing today; a new panel starts with it on. Buttons 1 to 4 on a WizMote still jump to the first four.
+- Live games replaces Live NFL, Live college and Live anything. Pick the leagues on the device page. A panel set to one of the old live modes keeps working.
+- When two favorites play at once, a new panel alternates between them. A panel that was already set up keeps showing the higher one.
+- Football works the same as before.
+
 ## v1.5.5
 
 - Switching games no longer freezes the panel.

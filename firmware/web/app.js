@@ -20,10 +20,26 @@
     return n;
   };
 
-  const logoUrl = (league, id, abbr) =>
-    league === "nfl"
-      ? `https://a.espncdn.com/i/teamlogos/nfl/500-dark/${String(abbr).toLowerCase()}.png`
-      : `https://a.espncdn.com/i/teamlogos/ncaa/500-dark/${id}.png`;
+  // The leagues the firmware knows (components/gameday/leagues.h), in tab
+  // order. prefix: team list label; tab: picker tab; name: the long name;
+  // path: ESPN's; byId: logo files named by team id; scan: extra query for
+  // today's scoreboard.
+  const LEAGUES = {
+    nfl: { prefix: "NFL", tab: "NFL", name: "NFL", path: "football/nfl", logo: "nfl", byId: false, scan: "" },
+    ncaa: { prefix: "NCAAF", tab: "NCAAF", name: "College football", path: "football/college-football", logo: "ncaa", byId: true, scan: "groups=80&limit=300&" },
+    mlb: { prefix: "MLB", tab: "MLB", name: "MLB", path: "baseball/mlb", logo: "mlb", byId: false, scan: "" },
+    mls: { prefix: "MLS", tab: "MLS", name: "MLS", path: "soccer/usa.1", logo: "soccer", byId: true, scan: "" },
+    epl: { prefix: "EPL", tab: "EPL", name: "Premier League", path: "soccer/eng.1", logo: "soccer", byId: true, scan: "" },
+    nba: { prefix: "NBA", tab: "NBA", name: "NBA", path: "basketball/nba", logo: "nba", byId: false, scan: "" },
+    wnba: { prefix: "WNBA", tab: "WNBA", name: "WNBA", path: "basketball/wnba", logo: "wnba", byId: false, scan: "" },
+    mcbb: { prefix: "NCAAM", tab: "NCAAM", name: "Men's college basketball", path: "basketball/mens-college-basketball", logo: "ncaa", byId: true, scan: "" },
+    nhl: { prefix: "NHL", tab: "NHL", name: "NHL", path: "hockey/nhl", logo: "nhl", byId: false, scan: "" },
+  };
+  const lgInfo = (lg) => LEAGUES[lg] || LEAGUES.nfl;
+  const logoUrl = (league, id, abbr) => {
+    const l = lgInfo(league);
+    return `https://a.espncdn.com/i/teamlogos/${l.logo}/500-dark/${l.byId ? id : String(abbr).toLowerCase()}.png`;
+  };
   const keyOf = (t) => t[0] + ":" + t[1];
   const teamByKey = (key) => TEAMS.find((t) => keyOf(t) === key);
   const refKey = (r) => (r && r.id ? r.l + ":" + r.id : "");
@@ -71,9 +87,7 @@
 
     <div class="modes" id="modes">
       <button data-mode="0">My team</button>
-      <button data-mode="1">Live NFL</button>
-      <button data-mode="2">Live college</button>
-      <button data-mode="3">Any live game</button>
+      <button data-mode="5">Live games</button>
       <button data-mode="4">Favorite teams</button>
     </div>
     <div class="teambar" id="teambar">
@@ -81,7 +95,7 @@
       <button class="btn primary" id="pick">Change team</button>
     </div>
     <div class="teambar livebar" id="livebar" hidden>
-      <div class="cur"><div><div class="name">Following a random game in progress</div><div class="lg">Moves on when it ends, or after the time below.</div></div></div>
+      <div class="cur"><div><div class="name">Following a random game in progress</div><div class="lg">Moves on when it ends, or after the time below. Leagues:</div><div class="chips" id="liveChips"></div></div></div>
       <div class="stepper"><label for="rotate">Switch every</label><input type="number" id="rotate" min="1" max="30" step="1"><span>min</span></div>
     </div>
     <div class="teambar favbar" id="favbar" hidden>
@@ -121,13 +135,10 @@
       </div>
       <div class="card">
         <h2>Favorites</h2>
-        <p class="hint">Buttons 1 to 4 on a WizMote remote jump straight to these teams. In Favorite teams mode the order is the priority.</p>
-        <div id="favCtls">
-          <div class="ctl"><label>Button 1</label><select data-fav="1"></select><span class="favmove"><button data-move="1,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="1,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
-          <div class="ctl"><label>Button 2</label><select data-fav="2"></select><span class="favmove"><button data-move="2,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="2,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
-          <div class="ctl"><label>Button 3</label><select data-fav="3"></select><span class="favmove"><button data-move="3,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="3,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
-          <div class="ctl"><label>Button 4</label><select data-fav="4"></select><span class="favmove"><button data-move="4,-1" aria-label="Move up" title="Move up">&#9650;</button><button data-move="4,1" aria-label="Move down" title="Move down">&#9660;</button></span></div>
-        </div>
+        <p class="hint">Up to 16 teams from any league. In Favorite teams mode the order is the priority. Buttons 1 to 4 on a WizMote remote jump to the first four.</p>
+        <div class="ctl"><label>Only today's games<small>The playlist skips favorites that aren't playing today.</small></label><button class="sw" data-set="today" aria-label="Only today's games"></button></div>
+        <div id="favCtls"></div>
+        <button class="btn" id="favAdd">Add a favorite</button>
       </div>
       <div class="card">
         <h2>Remote</h2>
@@ -185,7 +196,7 @@
     <div class="sheet">
       <div class="head">
         <input type="search" id="q" placeholder="Search teams" autocomplete="off">
-        <div class="tabs"><button data-lg="now" class="on">On now</button><button data-lg="nfl">NFL</button><button data-lg="ncaa">College</button></div>
+        <div class="tabs"><button data-lg="now" class="on">On now</button></div>
         <button class="btn" id="close">Close</button>
       </div>
       <div class="tiles" id="tiles"></div>
@@ -288,7 +299,16 @@
     a.classList.toggle("poss", !!poss);
     a.style.color = "#" + (color || "ffffff");
     node.querySelector(".rec").textContent = rec || "";
+    // Timeout pips are football's (other sports send no timeouts).
+    node.querySelector(".pips").style.display = timeouts === null ? "none" : "";
     node.querySelectorAll(".pips i").forEach((p, i) => p.classList.toggle("on", i < (timeouts || 0)));
+  };
+  // The situation line under the clock: down and distance for football, the
+  // count and outs for baseball, the latest goal or a playoff series otherwise.
+  const situation = (g) => {
+    if (!g.sport) return g.d || "";
+    if (g.sport === 1 && g.outs >= 0) return (g.sit ? g.sit + ", " : "") + g.outs + (g.outs === 1 ? " out" : " outs");
+    return g.sit || "";
   };
 
   const renderBoard = () => {
@@ -314,8 +334,9 @@
     msg.hidden = true;
     st.classList.toggle("live", g.s === "IN");
     st.textContent = g.s === "IN" ? "LIVE" : g.s === "POST" ? endedAs(g).toUpperCase() : "UPCOMING";
-    renderTeam($("#tA"), g.l, g.ti, g.ta, g.tr, g.tt, g.p === 1, g.tc);
-    renderTeam($("#tB"), g.l, g.oi, g.oa, g.or, g.ot, g.p === 2, g.oc);
+    const football = !g.sport;
+    renderTeam($("#tA"), g.l, g.ti, g.ta, g.tr, football ? g.tt : null, g.p === 1, g.tc);
+    renderTeam($("#tB"), g.l, g.oi, g.oa, g.or, football ? g.ot : null, g.p === 2, g.oc);
     $("#sA").textContent = g.ts;
     $("#sB").textContent = g.os;
     const clock = $("#clock");
@@ -323,16 +344,20 @@
     else if (g.s === "POST") clock.textContent = endedAs(g);
     else clock.textContent = g.k || "Upcoming";
     const d = $("#down");
-    d.textContent = g.s === "IN" ? g.d || "" : g.s === "PRE" && g.tv ? "on " + g.tv : "";
+    d.textContent = g.s === "IN" ? situation(g) : g.s === "PRE" && g.tv ? "on " + g.tv : "";
     d.classList.toggle("rz", g.s === "IN" && !!g.rz);
   };
 
   // ---- mode pills ----------------------------------------------------------------
-  // Index = device mode: 0 my team, 1 live NFL, 2 live college, 3 any live game, 4 favorite teams.
+  // Device modes: 0 my team, 4 favorite teams, 5 live games in the chosen
+  // leagues. 1-3 are the older football-only live modes; the page shows them
+  // as Live games and a chip tap moves the panel to mode 5.
+  const isLive = (m) => m === "1" || m === "2" || m === "3" || m === "5";
   const modeButtons = Array.from(document.querySelectorAll("#modes button"));
   modeButtons.forEach((b) => {
     b.onclick = () => {
-      if (S && String(S.mode || 0) === b.dataset.mode) return;
+      const cur = S ? String(S.mode || 0) : "";
+      if (cur === b.dataset.mode || (b.dataset.mode === "5" && isLive(cur))) return;
       modeButtons.forEach((x) => x.classList.toggle("on", x === b));
       setGD({ mode: b.dataset.mode });
       toast(b.textContent);
@@ -369,11 +394,38 @@
     favRotate.value = v;
     setGD({ rotate: v });
   };
+  // Leagues Live mode follows. An old football live mode reads as its leagues.
+  const liveKeys = () => {
+    const m = String(S.mode || 0);
+    if (m === "1") return ["nfl"];
+    if (m === "2") return ["ncaa"];
+    if (m === "3") return ["nfl", "ncaa"];
+    return S.live || [];
+  };
+  const renderLiveChips = () => {
+    const host = $("#liveChips");
+    host.innerHTML = "";
+    const on = liveKeys();
+    for (const lg of Object.keys(LEAGUES)) {
+      if (!TEAMS.some((t) => t[0] === lg)) continue;
+      const b = el("button", "chip" + (on.includes(lg) ? " on" : ""), LEAGUES[lg].tab);
+      b.onclick = () => {
+        const next = on.includes(lg) ? on.filter((k) => k !== lg) : on.concat([lg]);
+        if (!next.length) return toast("Pick at least one league");
+        const params = { live: next.join(",") };
+        if (String(S.mode || 0) !== "5") params.mode = 5;
+        setGD(params);
+        b.classList.toggle("on");
+      };
+      host.appendChild(b);
+    }
+  };
   const renderMode = () => {
     if (!S) return;
     const mode = String(S.mode || 0);
-    modeButtons.forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
-    const live = mode !== "0" && mode !== "4";
+    modeButtons.forEach((b) => b.classList.toggle("on", b.dataset.mode === mode || (b.dataset.mode === "5" && isLive(mode))));
+    const live = isLive(mode);
+    if (live) renderLiveChips();
     const favs = mode === "4";
     $("#teambar").hidden = live || favs;
     $("#livebar").hidden = !live;
@@ -405,39 +457,70 @@
       setGD({ [sw.dataset.set]: on ? 1 : 0 });
     };
   });
-  const favSelects = Array.from(document.querySelectorAll("select[data-fav]"));
-  favSelects.forEach((fs) => {
-    const none = el("option", null, "None");
-    none.value = "none";
-    fs.appendChild(none);
-    for (const t of TEAMS) {
-      const o = el("option", null, (t[0] === "nfl" ? "NFL: " : "NCAAF: ") + t[3]);
-      o.value = keyOf(t);
-      fs.appendChild(o);
-    }
-    fs.onchange = () => setGD({ ["fav" + fs.dataset.fav]: fs.value });
-  });
-  // Reorder: swap two slots and post all four so the device sees one list.
-  document.querySelectorAll("#favCtls button[data-move]").forEach((b) => {
-    b.onclick = () => {
-      const [slot, dir] = b.dataset.move.split(",").map(Number);
-      const other = slot + dir;
-      if (other < 1 || other > 4) return;
-      const cur = favSelects.map((fs) => fs.value);
-      const tmp = cur[slot - 1];
-      cur[slot - 1] = cur[other - 1];
-      cur[other - 1] = tmp;
-      favSelects.forEach((fs, i) => (fs.value = cur[i]));
-      setGD({ fav1: cur[0], fav2: cur[1], fav3: cur[2], fav4: cur[3] });
-    };
-  });
+  // Favorites: one row per team in priority order. Every change posts the
+  // whole list (favs=) so the device always sees one ordered list.
+  let favKeys = [];
+  const favMax = () => (S && S.favmax) || 4;
+  const postFavs = (keys) => {
+    favKeys = keys;
+    renderFavs();
+    setGD({ favs: keys.join(",") });
+  };
+  const renderFavs = () => {
+    const host = $("#favCtls");
+    host.innerHTML = "";
+    favKeys.forEach((key, i) => {
+      const t = teamByKey(key);
+      const row = el("div", "ctl fav");
+      const img = el("img");
+      img.loading = "lazy";
+      img.alt = "";
+      if (t) img.src = logoUrl(t[0], t[1], t[2]);
+      row.appendChild(img);
+      const name = el("label", null, (i + 1) + ". " + (t ? t[3] : key));
+      if (t) name.appendChild(el("small", null, lgInfo(t[0]).name + (i < 4 ? " · remote button " + (i + 1) : "")));
+      row.appendChild(name);
+      const ctl = el("span", "favmove");
+      const mk = (label, title, fn) => {
+        const b = el("button", null, label);
+        b.title = title;
+        b.setAttribute("aria-label", title);
+        b.onclick = fn;
+        ctl.appendChild(b);
+      };
+      const swap = (j) => {
+        if (j < 0 || j >= favKeys.length) return;
+        const next = favKeys.slice();
+        next[i] = favKeys[j];
+        next[j] = favKeys[i];
+        postFavs(next);
+      };
+      mk("\u25B2", "Move up", () => swap(i - 1));
+      mk("\u25BC", "Move down", () => swap(i + 1));
+      mk("\u2715", "Remove", () => postFavs(favKeys.filter((_, k) => k !== i)));
+      row.appendChild(ctl);
+      host.appendChild(row);
+    });
+    if (!favKeys.length) host.appendChild(el("p", "hint", "No favorites yet."));
+    $("#favAdd").hidden = favKeys.length >= favMax();
+  };
+  const addFav = (t) => {
+    const key = keyOf(t);
+    if (favKeys.includes(key)) return toast(t[3] + " is already a favorite");
+    if (favKeys.length >= favMax()) return toast("That's the most favorites the panel holds");
+    postFavs(favKeys.concat([key]));
+    toast("Added the " + t[3]);
+  };
   const renderSettings = () => {
     if (!S) return;
     document.querySelectorAll(".sw[data-set]").forEach((sw) => sw.classList.toggle("on", !!S[sw.dataset.set]));
-    favSelects.forEach((fs, i) => {
-      if (document.activeElement === fs) return;
-      fs.value = refKey((S.favs || [])[i]) || "none";
-    });
+    const keys = (S.favs || []).map(refKey).filter(Boolean);
+    if (keys.join(",") !== favKeys.join(",")) {
+      favKeys = keys;
+      renderFavs();
+    } else {
+      $("#favAdd").hidden = favKeys.length >= favMax();
+    }
     $("#ticker").textContent = S.status || "";
     $("#play").textContent = game && game.lp ? "Last play: " + game.lp : "";
   };
@@ -529,7 +612,7 @@
   };
 
   // ---- today's games (fetched by the browser, not the device) -------------
-  const ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/";
+  const ESPN = "https://site.api.espn.com/apis/site/v2/sports/";
   let games = null;        // [{league, id, state, detail, away:{...}, home:{...}}]
   let gamesAt = 0;
   const teamById = (lg, id) => TEAMS.find((t) => t[0] === lg && t[1] === id);
@@ -542,7 +625,7 @@
   const loadGames = async (force) => {
     if (!force && games && Date.now() - gamesAt < 60000) return games;
     const d = easternDate();
-    const urls = [["nfl", `${ESPN}nfl/scoreboard?dates=${d}`], ["ncaa", `${ESPN}college-football/scoreboard?groups=80&limit=300&dates=${d}`]];
+    const urls = Object.keys(LEAGUES).map((lg) => [lg, `${ESPN}${LEAGUES[lg].path}/scoreboard?${LEAGUES[lg].scan}dates=${d}`]);
     const out = [];
     await Promise.all(urls.map(async ([lg, u]) => {
       try {
@@ -579,7 +662,7 @@
     const q = $("#q").value.trim().toLowerCase();
     const shown = list.filter((g) => !q || (g.away.name + " " + g.home.name + " " + g.away.abbr + " " + g.home.abbr).toLowerCase().includes(q));
     if (!shown.length) {
-      tiles.appendChild(el("div", "none", list.length ? "No game matches" : "No NFL or FBS games today"));
+      tiles.appendChild(el("div", "none", list.length ? "No game matches" : "No games today"));
       return;
     }
     const cur = S ? refKey(S.team) : "";
@@ -608,6 +691,7 @@
         b.appendChild(el("div", "sc", g.state === "pre" || g.state === "off" ? "" : String(s.score)));
         b.onclick = () => {
           if (!t) return;
+          if (pickFav) return choose(t);
           setGD({ team: keyOf(t) });
           toast("Now following the " + t[3]);
           $("#modal").classList.remove("open");
@@ -625,6 +709,16 @@
   };
 
   // ---- team chooser ------------------------------------------------------
+  // The picker sets My team, or with pickFav adds a favorite.
+  let pickFav = false;
+  const choose = (t) => {
+    if (pickFav) addFav(t);
+    else {
+      setGD({ team: keyOf(t) });
+      toast("Now following the " + t[3]);
+    }
+    $("#modal").classList.remove("open");
+  };
   let league = "now";
   const renderTiles = () => {
     if (league === "now") return renderGames();
@@ -646,16 +740,15 @@
       img.alt = "";
       tile.appendChild(img);
       tile.appendChild(el("div", "n", t[3]));
-      tile.appendChild(el("div", "a", (t[0] === "nfl" ? "NFL · " : "NCAAF · ") + t[2]));
-      tile.onclick = () => {
-        setGD({ team: keyOf(t) });
-        toast("Now following the " + t[3]);
-        $("#modal").classList.remove("open");
-      };
+      tile.appendChild(el("div", "a", lgInfo(t[0]).prefix + " · " + t[2]));
+      tile.onclick = () => choose(t);
       tiles.appendChild(tile);
     }
   };
-  $("#pick").onclick = async () => {
+  $("#pick").onclick = () => openPicker(false);
+  $("#favAdd").onclick = () => openPicker(true);
+  const openPicker = async (fav) => {
+    pickFav = fav;
     const cur = S ? teamByKey(refKey(S.team)) : null;
     league = cur ? cur[0] : "nfl";
     try {
@@ -668,6 +761,13 @@
     $("#modal").classList.add("open");
     setTimeout(() => $("#q").focus(), 50);
   };
+  // One tab per league that has teams in this firmware's list.
+  for (const lg of Object.keys(LEAGUES)) {
+    if (!TEAMS.some((t) => t[0] === lg)) continue;
+    const b = el("button", null, LEAGUES[lg].tab);
+    b.dataset.lg = lg;
+    $(".tabs").appendChild(b);
+  }
   const $$tabs = (lg) => document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.lg === lg));
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => { league = b.dataset.lg; $$tabs(league); $("#q").value = ""; renderTiles(); }));
   $("#q").oninput = renderTiles;
@@ -682,7 +782,7 @@
     img.style.visibility = "visible";
     img.src = logoUrl(t[0], t[1], t[2]);
     $("#curName").textContent = t[3];
-    $("#curLg").textContent = t[0] === "nfl" ? "NFL" : "College football";
+    $("#curLg").textContent = lgInfo(t[0]).name;
   };
 
   // ---- timezone suggestion from the browser --------------------------------

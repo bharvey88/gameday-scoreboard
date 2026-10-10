@@ -94,8 +94,14 @@ script:
             // Timeout pips centered under each logo
             const int acx = 18, hcx = W - 18;
             for (int i = 0; i < 3; i++) {
-              lv_obj_clear_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
-              lv_obj_clear_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
+              // Timeout pips are football's (gd_update keeps them in step).
+              if (id(gd_sport) == 0) {
+                lv_obj_clear_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
+              } else {
+                lv_obj_add_flag(abars[i], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(hbars[i], LV_OBJ_FLAG_HIDDEN);
+              }
               lv_obj_set_pos(abars[i], acx - 9 + i * 7, 48);
               lv_obj_set_pos(hbars[i], hcx - 9 + i * 7, 48);
             }
@@ -134,6 +140,38 @@ script:
             lv_obj_set_style_text_font(id(tt_splash_lbl), id(spleen_12), 0);
             lv_obj_set_pos(id(tt_splash_lbl), 0, 18);
           }
+          // Baseball's bases, drawn as a small diamond (first base on the
+          // right), and the outs. gd_update shows them during a half inning.
+          lv_obj_t *bases[3] = {id(tt_base1), id(tt_base2), id(tt_base3)};
+          lv_obj_t *outs[3] = {id(tt_out1), id(tt_out2), id(tt_out3)};
+          const int cx = W / 2;
+          if (wide) {
+            // On the situation row: count left of the diamond, outs right of it
+            for (int i = 0; i < 3; i++)
+              lv_obj_set_size(bases[i], 4, 4);
+            lv_obj_set_pos(bases[1], cx - 2, 47);
+            lv_obj_set_pos(bases[2], cx - 7, 51);
+            lv_obj_set_pos(bases[0], cx + 3, 51);
+            lv_obj_set_style_text_font(id(tt_count_lbl), id(spleen_8), 0);
+            lv_obj_set_pos(id(tt_count_lbl), 32, 48);
+            lv_obj_set_width(id(tt_count_lbl), cx - 9 - 32);
+            lv_obj_set_style_text_font(id(tt_outs_lbl), id(spleen_8), 0);
+            lv_obj_set_pos(id(tt_outs_lbl), cx + 9, 48);
+            lv_obj_set_width(id(tt_outs_lbl), 28);  // "2 OUT" is 25 px in spleen_8
+            for (int i = 0; i < 3; i++)
+              lv_obj_add_flag(outs[i], LV_OBJ_FLAG_HIDDEN);
+          } else {
+            // Between the two scores, with the outs as dots underneath
+            for (int i = 0; i < 3; i++) {
+              lv_obj_set_size(bases[i], 3, 3);
+              lv_obj_set_pos(outs[i], cx - 5 + i * 4, 51);
+            }
+            lv_obj_set_pos(bases[1], cx - 1, 43);
+            lv_obj_set_pos(bases[2], cx - 5, 47);
+            lv_obj_set_pos(bases[0], cx + 3, 47);
+            lv_obj_add_flag(id(tt_count_lbl), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(tt_outs_lbl), LV_OBJ_FLAG_HIDDEN);
+          }
 
   - id: gd_update
     parameters:
@@ -155,8 +193,16 @@ script:
       opponent_record: string
       splash_text: string
       splash_color: int
+      sport: int
+      situation: string
+      outs: int
+      bases: int
+      highlight: bool
+      team_marks: int
+      opp_marks: int
     then:
       - lambda: |-
+          id(gd_sport) = sport;
           // A side with no team yet (just after a team change) shows no logo
           if (team_abbr.empty()) lv_obj_add_flag(id(gd_team_logo_img), LV_OBJ_FLAG_HIDDEN);
           else lv_obj_clear_flag(id(gd_team_logo_img), LV_OBJ_FLAG_HIDDEN);
@@ -272,6 +318,75 @@ script:
           } else {
             lv_obj_add_flag(id(tt_down_lbl), LV_OBJ_FLAG_HIDDEN);
           }
+          // Soccer (sport 4): the latest goal on that row, "52' Saka"
+          if (W >= 128 && sport == 4 && game_state == "IN" && !situation.empty()) {
+            lv_label_set_text(id(tt_down_lbl), situation.c_str());
+            lv_obj_set_style_text_color(id(tt_down_lbl), lv_color_hex(0xFFFFFF), 0);
+            lv_obj_clear_flag(id(tt_down_lbl), LV_OBJ_FLAG_HIDDEN);
+          }
+          // Baseball (sport 1) during a half inning: bases lit gold (red with
+          // the bases loaded), the count and outs beside them on a wide
+          // display, out dots on a single panel. Timeout pips are football's.
+          const bool diamond = sport == 1 && game_state == "IN" && outs >= 0;
+          lv_obj_t *base_objs[3] = {id(tt_base1), id(tt_base2), id(tt_base3)};
+          lv_obj_t *out_objs[3] = {id(tt_out1), id(tt_out2), id(tt_out3)};
+          for (int i = 0; i < 3; i++) {
+            if (!diamond) {
+              lv_obj_add_flag(base_objs[i], LV_OBJ_FLAG_HIDDEN);
+              lv_obj_add_flag(out_objs[i], LV_OBJ_FLAG_HIDDEN);
+              continue;
+            }
+            const bool on = (bases >> i) & 1;
+            lv_obj_set_style_bg_color(base_objs[i], on ? lv_color_hex(highlight ? 0xFF3030 : 0xFFD000) : lv_color_hex(0x303030), 0);
+            lv_obj_clear_flag(base_objs[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_color(out_objs[i], i < outs ? lv_color_hex(0xFFD000) : lv_color_hex(0x303030), 0);
+            if (W < 128)
+              lv_obj_clear_flag(out_objs[i], LV_OBJ_FLAG_HIDDEN);
+          }
+          if (W >= 128 && diamond && !situation.empty()) {
+            lv_label_set_text(id(tt_count_lbl), situation.c_str());
+            lv_obj_clear_flag(id(tt_count_lbl), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(tt_count_lbl), LV_OBJ_FLAG_HIDDEN);
+          }
+          if (W >= 128 && diamond) {
+            lv_label_set_text(id(tt_outs_lbl), (to_string(outs) + " OUT").c_str());
+            lv_obj_clear_flag(id(tt_outs_lbl), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(id(tt_outs_lbl), LV_OBJ_FLAG_HIDDEN);
+          }
+          // Basketball (sport 2): the playoff series ("NY lead 2-1") on the
+          // situation row of a wide display. down_distance is always empty
+          // for it, so the football branch above has hidden the label.
+          if (sport == 2 && W >= 128 && game_state == "IN" && !situation.empty()) {
+            lv_label_set_text(id(tt_down_lbl), situation.c_str());
+            lv_obj_set_style_text_color(id(tt_down_lbl), lv_color_hex(0xFFFFFF), 0);
+            lv_obj_clear_flag(id(tt_down_lbl), LV_OBJ_FLAG_HIDDEN);
+          }
+          if (W >= 128) {
+            lv_obj_t *pips[6] = {id(tt_away_to1), id(tt_away_to2), id(tt_away_to3),
+                                 id(tt_home_to1), id(tt_home_to2), id(tt_home_to3)};
+            for (int i = 0; i < 6; i++) {
+              if (sport == 0)
+                lv_obj_clear_flag(pips[i], LV_OBJ_FLAG_HIDDEN);
+              else
+                lv_obj_add_flag(pips[i], LV_OBJ_FLAG_HIDDEN);
+            }
+          }
+          // Soccer: red cards as red marks in the pips' places under the
+          // carded side's logo (the next football update recolors them).
+          if (W >= 128 && sport == 4) {
+            lv_obj_t *amarks[3] = {id(tt_away_to1), id(tt_away_to2), id(tt_away_to3)};
+            lv_obj_t *hmarks[3] = {id(tt_home_to1), id(tt_home_to2), id(tt_home_to3)};
+            for (int i = 0; i < 3; i++) {
+              lv_obj_set_style_bg_color(amarks[i], lv_color_hex(0xFF2020), 0);
+              lv_obj_set_style_bg_color(hmarks[i], lv_color_hex(0xFF2020), 0);
+              if (i < team_marks)
+                lv_obj_clear_flag(amarks[i], LV_OBJ_FLAG_HIDDEN);
+              if (i < opp_marks)
+                lv_obj_clear_flag(hmarks[i], LV_OBJ_FLAG_HIDDEN);
+            }
+          }
           // Big game clock while live: its own row on wide displays, the
           // abbreviation row on a single panel (the logos still say who is who).
           const bool show_clock = game_state == "IN" && !clock_text.empty();
@@ -297,7 +412,9 @@ script:
                 // Touchdowns and the win get fireworks on black with the text in
                 // the team color; smaller scores keep the solid color flash.
                 const bool big = splash_text.find("TOUCHDOWN") != std::string::npos ||
-                                 splash_text.find("WINS") != std::string::npos;
+                                 splash_text.find("WINS") != std::string::npos ||
+                                 splash_text.find("HOME RUN") != std::string::npos ||
+                                 ((sport == 3 || sport == 4) && splash_text.find("GOAL") != std::string::npos);
                 if (big) {
                   uint32_t c = (uint32_t) splash_color;
                   uint32_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
@@ -508,6 +625,95 @@ lvgl:
                   height: 3
                   bg_opa: COVER
                   bg_color: 0x202020
+
+              # Baseball: bases (1st, 2nd, 3rd), outs, and the count on a wide
+              # display. Laid out by tt_apply_layout, shown by gd_update.
+              - obj:
+                  id: tt_base1
+                  scrollbar_mode: "OFF"
+                  width: 3
+                  height: 3
+                  radius: 0
+                  border_width: 0
+                  pad_all: 0
+                  bg_opa: COVER
+                  bg_color: 0x303030
+                  hidden: true
+              - obj:
+                  id: tt_base2
+                  scrollbar_mode: "OFF"
+                  width: 3
+                  height: 3
+                  radius: 0
+                  border_width: 0
+                  pad_all: 0
+                  bg_opa: COVER
+                  bg_color: 0x303030
+                  hidden: true
+              - obj:
+                  id: tt_base3
+                  scrollbar_mode: "OFF"
+                  width: 3
+                  height: 3
+                  radius: 0
+                  border_width: 0
+                  pad_all: 0
+                  bg_opa: COVER
+                  bg_color: 0x303030
+                  hidden: true
+              - obj:
+                  id: tt_out1
+                  scrollbar_mode: "OFF"
+                  width: 2
+                  height: 2
+                  radius: 0
+                  border_width: 0
+                  pad_all: 0
+                  bg_opa: COVER
+                  bg_color: 0x303030
+                  hidden: true
+              - obj:
+                  id: tt_out2
+                  scrollbar_mode: "OFF"
+                  width: 2
+                  height: 2
+                  radius: 0
+                  border_width: 0
+                  pad_all: 0
+                  bg_opa: COVER
+                  bg_color: 0x303030
+                  hidden: true
+              - obj:
+                  id: tt_out3
+                  scrollbar_mode: "OFF"
+                  width: 2
+                  height: 2
+                  radius: 0
+                  border_width: 0
+                  pad_all: 0
+                  bg_opa: COVER
+                  bg_color: 0x303030
+                  hidden: true
+              - label:
+                  id: tt_count_lbl
+                  x: 0
+                  y: 48
+                  width: 32
+                  text_align: RIGHT
+                  long_mode: CLIP
+                  hidden: true
+                  text: ""
+                  styles: ["tt_st_score_text"]
+              - label:
+                  id: tt_outs_lbl
+                  x: 0
+                  y: 48
+                  width: 32
+                  text_align: LEFT
+                  long_mode: CLIP
+                  hidden: true
+                  text: ""
+                  styles: ["tt_st_score_text"]
 
               - label:
                   id: tt_game_status_lbl

@@ -31,17 +31,21 @@ REPO = Path(__file__).resolve().parents[2]
 WEB = Path(os.environ.get("GAMEDAY_WEB", REPO / "firmware" / "web"))
 
 # Same tables the firmware and scripts/build_web.py read.
-TEAM_RE = re.compile(r'\{League::(NFL|NCAA),\s*(\d+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\}')
+TEAM_RE = re.compile(r'\{League::([A-Z]+),\s*(\d+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\}')
+LEAGUE_RE = re.compile(r'\{League::[A-Z]+,\s*"([a-z]+)",')
 TZ_RE = re.compile(r'\{"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\}')
 TEAMS = {}
 for lg, tid, abbr, name, _ in TEAM_RE.findall((REPO / "components/gameday/teams.h").read_text(encoding="utf-8")):
-    TEAMS[("nfl" if lg == "NFL" else "ncaa", int(tid))] = (abbr, name)
+    TEAMS[(lg.lower(), int(tid))] = (abbr, name)
+# kLeagues order, which is the order the firmware lists live leagues in.
+LEAGUES = LEAGUE_RE.findall((REPO / "components/gameday/leagues.h").read_text(encoding="utf-8"))
+FAV_MAX = 16
 TZ_TEXT = "\n".join(ln for ln in (REPO / "components/gameday/timezones.h").read_text(encoding="utf-8").splitlines()
                     if not ln.lstrip().startswith("//"))
 TZS = [name for name, _posix, _iana in TZ_RE.findall(TZ_TEXT)]
 
 SET_KEYS = ("team", "mode", "rotate", "fav1", "fav2", "fav3", "fav4", "tz", "tzauto", "down", "play", "odds",
-            "opp", "panels", "bootaddr", "lockon", "release", "collide")
+            "opp", "panels", "bootaddr", "lockon", "release", "collide", "favs", "today", "live")
 
 
 def team(lg, tid):
@@ -57,6 +61,7 @@ INITIAL = {
     "team": team("nfl", 6),
     "mode": 0, "rotate": 1, "lockon": 15, "release": 30, "collide": 0,
     "favs": [team("nfl", 6), team("nfl", 34), team("ncaa", 145), {}],
+    "favmax": FAV_MAX, "today": False, "live": ["nfl", "ncaa"], "live_auto": True,
     "tz": 1, "tz_name": "US Central", "tz_auto": True,
     "down": True, "play": True, "odds": True, "opp": True, "bootaddr": True,
     "misses": 0, "stale_s": 4, "fallback": False,
@@ -101,9 +106,21 @@ LOG = []
 
 def parse_team_ref(v):
     lg, _, tid = v.partition(":")
-    if lg not in ("nfl", "ncaa") or not tid.isdigit() or int(tid) == 0:
+    if lg not in LEAGUES or not tid.isdigit() or int(tid) == 0:
         return None
     return lg, int(tid)
+
+
+def set_favs(refs):
+    """set_favorites_(): the list in order, then empty slots up to the four remote slots."""
+    favs = [team(*r) for r in refs[:FAV_MAX]]
+    STATE["favs"] = favs + [{}] * (4 - len(favs))
+
+
+def live_auto_leagues():
+    """live_leagues_() with no mask: the saved team's league and the favorites'."""
+    used = {t["l"] for t in [STATE["team"]] + STATE["favs"] if t}
+    return [lg for lg in LEAGUES if lg in used] or ["nfl"]
 
 
 def apply_set(kv):
@@ -115,7 +132,7 @@ def apply_set(kv):
                 STATE["team"] = team(*ref)
         elif k == "mode":
             m = int(v) if v.lstrip("-").isdigit() else -1
-            if 0 <= m <= 4:
+            if 0 <= m <= 5:
                 STATE["mode"] = m
         elif k == "rotate":
             STATE["rotate"] = min(30, max(1, int(v or 0)))
@@ -125,11 +142,25 @@ def apply_set(kv):
             STATE["release"] = min(3600, max(30, int(v or 0)))
         elif k == "collide":
             STATE["collide"] = 1 if v == "1" else 0
+        elif k == "favs":
+            refs = []
+            for part in v.split(",") if v else []:
+                ref = parse_team_ref(part)
+                if ref in TEAMS and ref not in refs:
+                    refs.append(ref)
+            set_favs(refs)
         elif k.startswith("fav"):
             ref = parse_team_ref(v)
-            if ref is None and v not in ("none", ""):
+            if (ref is None or ref not in TEAMS) and v not in ("none", ""):
                 continue
-            STATE["favs"][int(k[3]) - 1] = team(*ref) if ref else {}
+            favs = STATE["favs"]
+            favs[int(k[3]) - 1] = team(*ref) if ref else {}
+        elif k == "today":
+            STATE["today"] = v == "1"
+        elif k == "live":
+            keys = [lg for lg in LEAGUES if lg in v.split(",")]
+            STATE["live_auto"] = not keys
+            STATE["live"] = keys or live_auto_leagues()
         elif k == "tz":
             i = int(v) if v.isdigit() else -1
             if 0 <= i < len(TZS):
