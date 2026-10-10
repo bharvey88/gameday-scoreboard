@@ -1091,6 +1091,12 @@ void GamedayComponent::run_job_() {
       j.no_event = true;
       return;
     }
+    // Both logos download while the scoreboard read below runs, so the
+    // board usually has them the moment it shows.
+    League league = j.team->league;
+    this->logos_.prefetch(::espn::team_logo_url(league, j.team->espn_id, j.team->abbr));
+    if (s.opp_id != 0)
+      this->logos_.prefetch(::espn::team_logo_url(league, s.opp_id, s.opp_abbr.c_str()));
   }
   j.game_ok = this->fetch_game_(j.team, j.schedule, j.game);
 }

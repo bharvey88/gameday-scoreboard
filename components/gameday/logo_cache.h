@@ -21,6 +21,8 @@ class LogoCache {
  public:
   void set_http(http_request::HttpRequestComponent *http) { this->http_ = http; }
   void setup();
+  // Any task. Starts downloading a logo the board is about to ask for.
+  void prefetch(const std::string &url);
 
   // The rest is main loop only.
 

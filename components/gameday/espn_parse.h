@@ -22,6 +22,10 @@ struct Schedule {
   uint32_t group{0};
   std::string team_color;
   std::string team_record;
+  // The other side of event_id, so its logo can download early. 0 when the
+  // team endpoint did not say.
+  uint32_t opp_id{0};
+  std::string opp_abbr;
 };
 
 // One scoreboard event, resolved to "us" and "them".
