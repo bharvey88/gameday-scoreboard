@@ -142,13 +142,14 @@
         <div class="sub">Matrix</div>
         <p class="hint">Click the picture that matches yours. The panel restarts with the new layout.</p>
         <div class="panels" id="panels">
-          <button class="panelpick" data-cols="1" aria-label="One panel">
+          <button class="panelpick" data-cols="1" aria-label="One 64x64 panel">
             <svg viewBox="0 0 96 48" aria-hidden="true"><rect x="30" y="6" width="36" height="36" rx="3"/></svg>
             <span>One 64x64 panel</span>
           </button>
-          <button class="panelpick" data-cols="2" aria-label="Two panels side by side">
+          <button class="panelpick" data-cols="2" aria-label="One 128x64 panel, or two 64x64 side by side">
             <svg viewBox="0 0 96 48" aria-hidden="true"><rect x="10" y="6" width="36" height="36" rx="3"/><rect x="50" y="6" width="36" height="36" rx="3"/></svg>
-            <span>Two panels wide</span>
+            <span>One 128x64 panel</span>
+            <small>or two 64x64 side by side</small>
           </button>
         </div>
         <div class="sub">Time</div>
@@ -443,7 +444,7 @@
   };
 
   // ---- panel picker ------------------------------------------------------------
-  // The "Panels" select restarts the device on change; the page waits it out.
+  // Picking a layout restarts the device; the page waits it out.
   const renderPanels = () => {
     if (!S || !S.panels) return;
     const cur = String(S.panels);
@@ -453,7 +454,7 @@
         if (b.dataset.cols === cur) return;
         document.querySelectorAll("#panels .panelpick").forEach((x) => (x.disabled = true));
         setGD({ panels: b.dataset.cols });
-        toast("Restarting with " + (b.dataset.cols === "2" ? "two panels" : "one panel"));
+        toast("Restarting as " + (b.dataset.cols === "2" ? "128x64" : "64x64"));
         waitForReboot("");
       };
     });
